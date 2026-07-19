@@ -72,18 +72,35 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 - Tests cover `/api/usage` aggregation, `/api/logs`, `/api/models`, and API-key rejection.
 - `go test ./...` and `go build ./...` pass.
 
+### Slice 6: Documentation reconciliation — COMPLETE
+- Audited README and docs to match implemented capabilities.
+- Provider status table now distinguishes implemented vs stub providers.
+- Documented static model lists, manual cost rates, and dashboard endpoints.
+
+### New provider adapters
+- Added stub adapters for `opencode`, `nvidia_nim`, and `nous_portal`.
+- Fully implemented `opencode` and `nvidia_nim` as OpenAI-compatible adapters:
+  - Chat completions (non-streaming and SSE streaming)
+  - Embeddings
+  - Dynamic model listing
+  - Static pricing maps
+  - Live health checks
+- `nous_portal` remains a stub.
+- Added unit tests for `opencode` and `nvidia_nim`.
+- Updated README and `docs/providers.md` status tables.
+- `go test ./...` and `go build ./...` pass.
+
 ## Remaining work
 
-Slice 6 from [docs/PLAN.md](PLAN.md):
-
-6. **Documentation reconciliation** — rewrite README/docs to match actual capabilities (provider support table, config vocabulary, request flow, dashboard scope).
+- Implement `nous_portal` adapter if needed.
+- Implement remaining stub providers (Anthropic, Gemini, DeepSeek, OpenRouter, Groq, Ollama, LM Studio) in future slices.
+- Consider removing router auto-detect via `SupportsModel` to align with explicit-only routing from CONTEXT.md.
 
 ## Important notes for the next agent
 
 - Always use the vocabulary from [CONTEXT.md](../CONTEXT.md); challenge any re-introduction of the ambiguous term `model`.
-- Router still has legacy auto-detect via `SupportsModel` when no route exists; CONTEXT says routing should be explicit-only — consider removing auto-detect in a later slice.
-- Slice 6 is docs-only; no behavior changes needed beyond documenting what currently works.
 - `/api/usage/costs`, `/api/config`, and `/api/config/reload` remain stubs and should be documented as planned rather than implemented.
+- Provider adapters for OpenCode and NVIDIA NIM follow the same OpenAI-compatible passthrough pattern as the OpenAI adapter; reuse it for future similar providers.
 
 ## Suggested skills for the next session
 
