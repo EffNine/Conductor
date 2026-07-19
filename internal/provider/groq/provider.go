@@ -2,65 +2,53 @@ package groq
 
 import (
 	"context"
-	"net/http"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
 	"github.com/novexa/gateway/internal/provider"
+	"github.com/novexa/gateway/internal/provider/openaibase"
 )
 
 // Provider implements the provider.Provider interface for Groq.
 type Provider struct {
-	name    string
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	*openaibase.Base
 }
 
 // NewProvider creates a new Groq provider.
 func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
 	return &Provider{
-		name:    "groq",
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		Base: openaibase.New("groq", apiKey, baseURL, timeout, openaibase.WithPricing(groqPricing)),
 	}
 }
 
-// Name returns the provider name.
-func (p *Provider) Name() string { return p.name }
-
-// ChatCompletion is not yet implemented.
-func (p *Provider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
-	return nil, provider.ErrNotImplemented
+func groqPricing(ctx context.Context) (map[string]provider.PricingInfo, error) {
+	return map[string]provider.PricingInfo{
+		"llama-3.1-70b-versatile": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00059,
+			OutputPrice: 0.00079,
+			Currency:    "USD",
+		},
+		"llama-3.1-8b-instant": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00005,
+			OutputPrice: 0.00008,
+			Currency:    "USD",
+		},
+		"mixtral-8x7b-32768": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00024,
+			OutputPrice: 0.00024,
+			Currency:    "USD",
+		},
+		"gemma-2-9b-it": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00000,
+			OutputPrice: 0.00000,
+			Currency:    "USD",
+		},
+	}, nil
 }
-
-// ChatCompletionStream is not yet implemented.
-func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
-	return nil, provider.ErrNotImplemented
-}
-
-// Embeddings is not yet implemented.
-func (p *Provider) Embeddings(ctx context.Context, req *apitypes.EmbeddingRequest) (*apitypes.EmbeddingResponse, error) {
-	return nil, provider.ErrNotImplemented
-}
-
-// ListModels is not yet implemented.
-func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	return nil, provider.ErrNotImplemented
-}
-
-// GetPricing is not yet implemented.
-func (p *Provider) GetPricing(ctx context.Context) (map[string]provider.PricingInfo, error) {
-	return nil, provider.ErrNotImplemented
-}
-
-// HealthCheck is not yet implemented.
-func (p *Provider) HealthCheck(ctx context.Context) (*provider.HealthStatus, error) {
-	return nil, provider.ErrNotImplemented
-}
-
-// SupportsModel is not yet implemented.
-func (p *Provider) SupportsModel(modelID string) bool { return false }

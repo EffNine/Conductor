@@ -1,342 +1,101 @@
 package opencode
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
 	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/pkg/sse"
+	"github.com/novexa/gateway/internal/provider/openaibase"
 )
 
 // Provider implements the provider.Provider interface for OpenCode Zen.
-// OpenCode Zen exposes an OpenAI-compatible API at /v1/chat/completions,
-// /v1/embeddings, and /v1/models.
+// Chat completions work for Zen models served via /v1/chat/completions
+// (Grok, DeepSeek, MiniMax, GLM, Kimi, etc.). GPT models use /responses and
+// Claude models use /messages — those need dedicated adapters later.
 type Provider struct {
-	name    string
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	*openaibase.Base
 }
 
 // NewProvider creates a new OpenCode provider.
 func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
 	return &Provider{
-		name:    "opencode",
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		Base: openaibase.New("opencode", apiKey, baseURL, timeout, openaibase.WithPricing(opencodePricing)),
 	}
 }
 
-// Name returns the provider name.
-func (p *Provider) Name() string { return p.name }
-
-// ChatCompletion sends a non-streaming chat completion request.
-func (p *Provider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to marshal request", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		p.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to create request", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusBadGateway,
-			provider.ErrorTypeProviderUnavailable, fmt.Sprintf("provider request failed: %v", err), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.handleErrorResponse(resp)
-	}
-
-	var chatResp apitypes.ChatCompletionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to decode response", err)
-	}
-
-	return &chatResp, nil
-}
-
-// ChatCompletionStream sends a streaming chat completion request.
-func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
-	req.Stream = true
-
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to marshal request", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		p.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to create request", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusBadGateway,
-			provider.ErrorTypeProviderUnavailable, fmt.Sprintf("stream request failed: %v", err), err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		defer resp.Body.Close()
-		return nil, p.handleErrorResponse(resp)
-	}
-
-	ch := make(chan apitypes.StreamChunk)
-
-	go func() {
-		defer close(ch)
-		defer resp.Body.Close()
-
-		eventCh := sse.NewStreamReader(resp.Body)
-		for event := range eventCh {
-			if event.Data == "[DONE]" {
-				ch <- apitypes.StreamChunk{Done: true}
-				return
-			}
-
-			var chunk apitypes.StreamChunk
-			if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
-				ch <- apitypes.StreamChunk{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
-				return
-			}
-
-			ch <- chunk
-		}
-	}()
-
-	return ch, nil
-}
-
-// Embeddings sends an embeddings request.
-func (p *Provider) Embeddings(ctx context.Context, req *apitypes.EmbeddingRequest) (*apitypes.EmbeddingResponse, error) {
-	body, err := json.Marshal(req)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to marshal request", err)
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		p.baseURL+"/embeddings", bytes.NewReader(body))
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to create request", err)
-	}
-
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusBadGateway,
-			provider.ErrorTypeProviderUnavailable, fmt.Sprintf("embeddings request failed: %v", err), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.handleErrorResponse(resp)
-	}
-
-	var embedResp apitypes.EmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&embedResp); err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to decode response", err)
-	}
-
-	return &embedResp, nil
-}
-
-// ListModels returns available models from the OpenCode API.
-func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		p.baseURL+"/models", nil)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to create request", err)
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusBadGateway,
-			provider.ErrorTypeProviderUnavailable, fmt.Sprintf("models request failed: %v", err), err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.handleErrorResponse(resp)
-	}
-
-	var apiResp struct {
-		Object string               `json:"object"`
-		Data   []apitypes.ModelInfo `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
-			provider.ErrorTypeServerError, "failed to decode response", err)
-	}
-
-	models := make([]provider.ModelInfo, 0, len(apiResp.Data))
-	for _, m := range apiResp.Data {
-		models = append(models, provider.ModelInfo{
-			ProviderModelID: m.ID,
-			ModelID:         m.ID,
-			OwnedBy:         m.OwnedBy,
-		})
-	}
-	return models, nil
-}
-
-// GetPricing returns a static pricing map for known OpenCode Zen models.
-// Adjust or extend rates via config cost.rates when needed.
-func (p *Provider) GetPricing(ctx context.Context) (map[string]provider.PricingInfo, error) {
+// Prices from https://opencode.ai/docs/zen/ (USD per 1M tokens), converted to
+// per-1000-token UnitSize used by the cost estimator.
+func opencodePricing(ctx context.Context) (map[string]provider.PricingInfo, error) {
 	return map[string]provider.PricingInfo{
 		"gpt-5.6-sol": {
 			UnitType:    provider.UnitToken,
 			UnitSize:    1000,
 			InputPrice:  0.005,
-			OutputPrice: 0.015,
+			OutputPrice: 0.030,
 			Currency:    "USD",
 		},
 		"gpt-5.6-terra": {
 			UnitType:    provider.UnitToken,
 			UnitSize:    1000,
 			InputPrice:  0.0025,
-			OutputPrice: 0.0075,
+			OutputPrice: 0.015,
 			Currency:    "USD",
 		},
 		"gpt-5.6-luna": {
 			UnitType:    provider.UnitToken,
 			UnitSize:    1000,
 			InputPrice:  0.001,
-			OutputPrice: 0.003,
+			OutputPrice: 0.006,
 			Currency:    "USD",
 		},
 		"grok-4.5": {
 			UnitType:    provider.UnitToken,
 			UnitSize:    1000,
-			InputPrice:  0.003,
-			OutputPrice: 0.009,
+			InputPrice:  0.002,
+			OutputPrice: 0.006,
+			Currency:    "USD",
+		},
+		"grok-build-0.1": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.001,
+			OutputPrice: 0.002,
 			Currency:    "USD",
 		},
 		"deepseek-v4-pro": {
 			UnitType:    provider.UnitToken,
 			UnitSize:    1000,
-			InputPrice:  0.0008,
-			OutputPrice: 0.002,
+			InputPrice:  0.00174,
+			OutputPrice: 0.00348,
+			Currency:    "USD",
+		},
+		"deepseek-v4-flash": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00014,
+			OutputPrice: 0.00028,
+			Currency:    "USD",
+		},
+		"minimax-m2.7": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.0003,
+			OutputPrice: 0.0012,
+			Currency:    "USD",
+		},
+		"glm-5.2": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.0014,
+			OutputPrice: 0.0044,
+			Currency:    "USD",
+		},
+		"kimi-k2.6": {
+			UnitType:    provider.UnitToken,
+			UnitSize:    1000,
+			InputPrice:  0.00095,
+			OutputPrice: 0.004,
 			Currency:    "USD",
 		},
 	}, nil
-}
-
-// HealthCheck checks provider health by listing models.
-func (p *Provider) HealthCheck(ctx context.Context) (*provider.HealthStatus, error) {
-	start := time.Now()
-
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		p.baseURL+"/models", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return &provider.HealthStatus{
-			Provider:  p.name,
-			IsHealthy: false,
-			LatencyMs: time.Since(start).Milliseconds(),
-			LastError: err.Error(),
-			CheckedAt: time.Now(),
-		}, nil
-	}
-	defer resp.Body.Close()
-
-	latency := time.Since(start).Milliseconds()
-	isHealthy := resp.StatusCode == http.StatusOK
-
-	status := &provider.HealthStatus{
-		Provider:  p.name,
-		IsHealthy: isHealthy,
-		LatencyMs: latency,
-		CheckedAt: time.Now(),
-	}
-
-	if !isHealthy {
-		body, _ := io.ReadAll(resp.Body)
-		status.LastError = fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body))
-	}
-
-	return status, nil
-}
-
-// SupportsModel returns true for all models since OpenCode routes by model ID.
-func (p *Provider) SupportsModel(modelID string) bool { return true }
-
-func (p *Provider) handleErrorResponse(resp *http.Response) *provider.ProviderError {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return provider.NewProviderError(p.name, resp.StatusCode,
-			provider.ErrorTypeServerError, "failed to read error response", err)
-	}
-
-	var openAIErr struct {
-		Error struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
-			Code    string `json:"code"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &openAIErr); err == nil && openAIErr.Error.Message != "" {
-		errType := openAIErr.Error.Type
-		if errType == "" {
-			errType = mapErrorType(resp.StatusCode)
-		}
-		return provider.NewProviderError(p.name, resp.StatusCode, errType, openAIErr.Error.Message, nil)
-	}
-
-	return provider.NewProviderError(p.name, resp.StatusCode,
-		mapErrorType(resp.StatusCode),
-		fmt.Sprintf("provider returned status %d", resp.StatusCode), nil)
-}
-
-func mapErrorType(statusCode int) string {
-	switch statusCode {
-	case http.StatusUnauthorized:
-		return provider.ErrorTypeAuthentication
-	case http.StatusTooManyRequests:
-		return provider.ErrorTypeRateLimit
-	case http.StatusBadRequest:
-		return provider.ErrorTypeInvalidRequest
-	default:
-		return provider.ErrorTypeServerError
-	}
 }

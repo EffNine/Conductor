@@ -52,6 +52,9 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 	add("groq", cfg.Providers.Groq)
 	add("ollama", cfg.Providers.Ollama)
 	add("lmstudio", cfg.Providers.LMStudio)
+	add("opencode", cfg.Providers.Opencode)
+	add("nvidia_nim", cfg.Providers.NvidiaNim)
+	add("nous_portal", cfg.Providers.NousPortal)
 	return out
 }
 

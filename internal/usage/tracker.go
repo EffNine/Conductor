@@ -135,6 +135,16 @@ func (t *Tracker) flush() {
 	}
 }
 
+// SetEstimator replaces the cost estimator (used during config reload).
+func (t *Tracker) SetEstimator(est *Estimator) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.estimator = est
+}
+
 // AggregateQuery filters usage aggregation.
 type AggregateQuery struct {
 	Since time.Time

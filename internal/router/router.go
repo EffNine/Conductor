@@ -107,26 +107,7 @@ func (e *Engine) Resolve(modelID string) (*ResolvedRoute, error) {
 		}, nil
 	}
 
-	// Auto-detect: find a provider that supports this model
-	if providerHint != "" {
-		if p, found := e.registry.Get(providerHint); found && p.SupportsModel(baseID) {
-			return &ResolvedRoute{
-				Provider:        p,
-				ProviderName:    providerHint,
-				ProviderModelID: baseID,
-				ModelID:         baseID,
-			}, nil
-		}
-	} else if p, found := e.registry.FindForModel(baseID); found {
-		return &ResolvedRoute{
-			Provider:        p,
-			ProviderName:    p.Name(),
-			ProviderModelID: baseID,
-			ModelID:         baseID,
-		}, nil
-	}
-
-	return nil, fmt.Errorf("model '%s' not found and no provider supports it", modelID)
+	return nil, fmt.Errorf("model '%s' not found; add a route or use a provider-prefixed ID", modelID)
 }
 
 // splitProviderPrefix returns (provider, baseModelID) when modelID starts with a

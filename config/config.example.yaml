@@ -80,6 +80,32 @@ providers:
     models:
       - "local-model"
 
+  # OpenCode Zen — OpenAI-compatible for models served via /chat/completions
+  # (Grok, DeepSeek, MiniMax, GLM, Kimi, etc.). GPT models use /responses and
+  # Claude models use /messages; those need dedicated adapters later.
+  opencode:
+    enabled: false
+    api_key: "${OPENCODE_API_KEY}"
+    base_url: "https://opencode.ai/zen/v1"
+    timeout: 60s
+    max_retries: 3
+
+  # NVIDIA NIM (hosted or self-hosted OpenAI-compatible)
+  nvidia_nim:
+    enabled: false
+    api_key: "${NVIDIA_NIM_API_KEY}"
+    base_url: "https://integrate.api.nvidia.com/v1"
+    timeout: 60s
+    max_retries: 3
+
+  # Nous Portal subscription gateway
+  nous_portal:
+    enabled: false
+    api_key: "${NOUS_PORTAL_API_KEY}"
+    base_url: "https://inference-api.nousresearch.com/v1"
+    timeout: 60s
+    max_retries: 3
+
 # Model routing (required unless you only use provider-prefixed IDs from /v1/models)
 # model_id: optional override of the upstream model slug sent to the provider
 # Prefixed Model IDs from /v1/models (e.g. groq/llama3-8b) strip the provider

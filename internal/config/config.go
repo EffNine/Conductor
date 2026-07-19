@@ -248,7 +248,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.lmstudio.max_retries", 1)
 
 	v.SetDefault("providers.opencode.enabled", false)
-	v.SetDefault("providers.opencode.base_url", "https://api.opencode.ai/v1")
+	v.SetDefault("providers.opencode.base_url", "https://opencode.ai/zen/v1")
 	v.SetDefault("providers.opencode.timeout", 60*time.Second)
 	v.SetDefault("providers.opencode.max_retries", 3)
 
@@ -258,7 +258,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.nvidia_nim.max_retries", 3)
 
 	v.SetDefault("providers.nous_portal.enabled", false)
-	v.SetDefault("providers.nous_portal.base_url", "https://api.nousresearch.com/v1")
+	v.SetDefault("providers.nous_portal.base_url", "https://inference-api.nousresearch.com/v1")
 	v.SetDefault("providers.nous_portal.timeout", 60*time.Second)
 	v.SetDefault("providers.nous_portal.max_retries", 3)
 

@@ -27,6 +27,7 @@ type Handler struct {
 	db           *database.Database
 	logger       *zap.Logger
 	startTime    time.Time
+	reloadFn     func() error
 }
 
 // New creates a new Handler
@@ -40,6 +41,11 @@ func New(r *router.Engine, reg *provider.Registry, ut *usage.Tracker, logger *za
 		logger:       logger,
 		startTime:    time.Now(),
 	}
+}
+
+// SetReloadFunc sets the optional config reload callback used by PUT /api/config/reload.
+func (h *Handler) SetReloadFunc(fn func() error) {
+	h.reloadFn = fn
 }
 
 // Register registers all HTTP routes
@@ -402,9 +408,55 @@ func (h *Handler) HandleUsage(c *fiber.Ctx) error {
 
 // HandleCosts handles GET /api/usage/costs
 func (h *Handler) HandleCosts(c *fiber.Ctx) error {
+	if h.db == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": "Usage database not available",
+				"type":    "server_error",
+			},
+		})
+	}
+
+	limit := defaultLimit(c.Query("limit"), 1000)
+	var records []database.UsageRecord
+	if err := h.db.DB.Where("estimated_cost_usd IS NOT NULL").Order("created_at DESC").Limit(limit).Find(&records).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": "Failed to query costs",
+				"type":    "server_error",
+			},
+		})
+	}
+
+	total, byProvider, byModel := usage.Aggregate(records)
 	return c.JSON(fiber.Map{
-		"message": "Cost tracking endpoint - coming soon",
+		"total":       costBucket(total),
+		"by_provider": costMap(byProvider),
+		"by_model":    costMap(byModel),
 	})
+}
+
+func costBucket(b usage.Bucket) fiber.Map {
+	m := fiber.Map{
+		"requests":          b.Requests,
+		"prompt_tokens":     b.PromptTokens,
+		"completion_tokens": b.CompletionTokens,
+		"total_tokens":      b.TotalTokens,
+	}
+	if b.CostUSD != nil {
+		m["cost_usd"] = *b.CostUSD
+	} else {
+		m["cost_usd"] = nil
+	}
+	return m
+}
+
+func costMap(m map[string]usage.Bucket) map[string]fiber.Map {
+	out := make(map[string]fiber.Map, len(m))
+	for k, v := range m {
+		out[k] = costBucket(v)
+	}
+	return out
 }
 
 // HandleLogs handles GET /api/logs
@@ -452,7 +504,24 @@ func (h *Handler) HandleConfig(c *fiber.Ctx) error {
 
 // HandleReloadConfig handles PUT /api/config/reload
 func (h *Handler) HandleReloadConfig(c *fiber.Ctx) error {
-	// TODO: Implement config reload
+	if h.reloadFn == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": "Config reload is not configured",
+				"type":    "server_error",
+			},
+		})
+	}
+
+	if err := h.reloadFn(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": err.Error(),
+				"type":    "server_error",
+			},
+		})
+	}
+
 	return c.JSON(fiber.Map{
 		"status":  "ok",
 		"message": "Configuration reloaded successfully",

@@ -41,16 +41,11 @@ func (r *Registry) All() []Provider {
 	return providers
 }
 
-// FindForModel finds a provider that supports the given model
-func (r *Registry) FindForModel(modelID string) (Provider, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	for _, p := range r.providers {
-		if p.SupportsModel(modelID) {
-			return p, true
-		}
-	}
-	return nil, false
+// Clear removes all registered providers.
+func (r *Registry) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers = make(map[string]Provider)
 }
 
 // Names returns the names of all registered providers
