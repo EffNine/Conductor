@@ -47,9 +47,7 @@ func Parse(data []byte) (*Event, error) {
 		if colonIndex+1 < len(line) {
 			value = line[colonIndex+1:]
 			// Remove leading space if present
-			if strings.HasPrefix(value, " ") {
-				value = value[1:]
-			}
+			value = strings.TrimPrefix(value, " ")
 		}
 
 		switch field {
@@ -63,7 +61,7 @@ func Parse(data []byte) (*Event, error) {
 		case "id":
 			event.ID = value
 		case "retry":
-			fmt.Sscanf(value, "%d", &event.Retry)
+			_, _ = fmt.Sscanf(value, "%d", &event.Retry)
 		}
 	}
 
@@ -149,9 +147,7 @@ func NewStreamReader(r io.ReadCloser) <-chan Event {
 			value := ""
 			if colonIndex+1 < len(line) {
 				value = line[colonIndex+1:]
-				if strings.HasPrefix(value, " ") {
-					value = value[1:]
-				}
+				value = strings.TrimPrefix(value, " ")
 			}
 
 			switch field {
@@ -165,7 +161,7 @@ func NewStreamReader(r io.ReadCloser) <-chan Event {
 			case "id":
 				currentEvent.ID = value
 			case "retry":
-				fmt.Sscanf(value, "%d", &currentEvent.Retry)
+				_, _ = fmt.Sscanf(value, "%d", &currentEvent.Retry)
 			}
 		}
 	}()

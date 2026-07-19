@@ -20,6 +20,7 @@ linters-settings:
   gosec:
     excludes:
       - G107  # Potential HTTP request made with variable URL
+      - G404  # math/rand is acceptable for non-security retry backoff jitter
   revive:
     rules:
       - name: exported
@@ -31,6 +32,12 @@ issues:
       linters:
         - errcheck
         - gosec
+    # ProviderError is an intentional, widely-used name across the provider
+    # packages; the revive "stutter" suggestion does not apply here.
+    - path: internal/provider/interface\.go
+      linters:
+        - revive
+      text: "stutters"
 
 run:
   timeout: 5m

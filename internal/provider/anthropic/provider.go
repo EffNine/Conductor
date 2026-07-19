@@ -129,9 +129,9 @@ func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatC
 			if msgStart, ok := eventObj["message_start"]; ok {
 				var ms struct {
 					Message struct {
-						ID      string `json:"id"`
-						Model   string `json:"model"`
-						Usage   usage  `json:"usage"`
+						ID    string `json:"id"`
+						Model string `json:"model"`
+						Usage usage  `json:"usage"`
 					} `json:"message"`
 				}
 				_ = json.Unmarshal(msgStart, &ms)
@@ -447,14 +447,14 @@ func mapErrorType(statusCode int) string {
 }
 
 type anthropicMessagesRequest struct {
-	Model         string              `json:"model"`
-	MaxTokens     int                 `json:"max_tokens"`
-	System        string              `json:"system,omitempty"`
-	Messages      []anthropicMessage  `json:"messages"`
-	Temperature   *float64            `json:"temperature,omitempty"`
-	TopP          *float64            `json:"top_p,omitempty"`
-	StopSequences []string            `json:"stop_sequences,omitempty"`
-	Stream        bool                `json:"stream,omitempty"`
+	Model         string             `json:"model"`
+	MaxTokens     int                `json:"max_tokens"`
+	System        string             `json:"system,omitempty"`
+	Messages      []anthropicMessage `json:"messages"`
+	Temperature   *float64           `json:"temperature,omitempty"`
+	TopP          *float64           `json:"top_p,omitempty"`
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	Stream        bool               `json:"stream,omitempty"`
 }
 
 type anthropicMessage struct {
@@ -463,13 +463,13 @@ type anthropicMessage struct {
 }
 
 type anthropicMessageResponse struct {
-	ID         string                `json:"id"`
-	Type       string                `json:"type"`
-	Role       string                `json:"role"`
-	Model      string                `json:"model"`
-	Content    []anthropicContent    `json:"content"`
-	StopReason string                `json:"stop_reason"`
-	Usage      usage                 `json:"usage"`
+	ID         string             `json:"id"`
+	Type       string             `json:"type"`
+	Role       string             `json:"role"`
+	Model      string             `json:"model"`
+	Content    []anthropicContent `json:"content"`
+	StopReason string             `json:"stop_reason"`
+	Usage      usage              `json:"usage"`
 }
 
 type anthropicContent struct {

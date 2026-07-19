@@ -43,12 +43,14 @@ func WithHealthPath(path string) Option {
 // New creates a reusable OpenAI-compatible provider base.
 func New(name, apiKey, baseURL string, timeout time.Duration, opts ...Option) *Base {
 	b := &Base{
-		name:        name,
-		apiKey:      apiKey,
-		baseURL:     baseURL,
-		client:      &http.Client{Timeout: timeout},
-		pricingFunc: func(ctx context.Context) (map[string]provider.PricingInfo, error) { return map[string]provider.PricingInfo{}, nil },
-		healthPath:  "/models",
+		name:    name,
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		client:  &http.Client{Timeout: timeout},
+		pricingFunc: func(ctx context.Context) (map[string]provider.PricingInfo, error) {
+			return map[string]provider.PricingInfo{}, nil
+		},
+		healthPath: "/models",
 	}
 	for _, opt := range opts {
 		opt(b)

@@ -85,6 +85,6 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          dockerfile: deployments/Dockerfile
+          file: deployments/Dockerfile
           push: false
           tags: novexa/gateway:latest

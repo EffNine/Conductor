@@ -10,20 +10,20 @@ import (
 
 // Config holds retry configuration
 type Config struct {
-	MaxRetries         int
-	InitialBackoff     time.Duration
-	MaxBackoff         time.Duration
-	BackoffMultiplier  float64
+	MaxRetries           int
+	InitialBackoff       time.Duration
+	MaxBackoff           time.Duration
+	BackoffMultiplier    float64
 	RetryableStatusCodes []int
 }
 
 // DefaultConfig returns a default retry configuration
 func DefaultConfig() Config {
 	return Config{
-		MaxRetries:         3,
-		InitialBackoff:     100 * time.Millisecond,
-		MaxBackoff:         5 * time.Second,
-		BackoffMultiplier:  2.0,
+		MaxRetries:           3,
+		InitialBackoff:       100 * time.Millisecond,
+		MaxBackoff:           5 * time.Second,
+		BackoffMultiplier:    2.0,
 		RetryableStatusCodes: []int{429, 500, 502, 503},
 	}
 }
@@ -46,7 +46,7 @@ func Do(ctx context.Context, cfg Config, fn func(context.Context) error) error {
 		if attempt > 0 {
 			// Calculate backoff with jitter
 			backoff := calculateBackoff(cfg, attempt)
-			
+
 			select {
 			case <-ctx.Done():
 				return fmt.Errorf("retry cancelled: %w", ctx.Err())
@@ -78,7 +78,7 @@ func DoWithResult[T any](ctx context.Context, cfg Config, fn func(context.Contex
 	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
 		if attempt > 0 {
 			backoff := calculateBackoff(cfg, attempt)
-			
+
 			select {
 			case <-ctx.Done():
 				return result, fmt.Errorf("retry cancelled: %w", ctx.Err())
@@ -86,15 +86,15 @@ func DoWithResult[T any](ctx context.Context, cfg Config, fn func(context.Contex
 			}
 		}
 
-		result, err := fn(ctx)
+		res, err := fn(ctx)
 		if err == nil {
-			return result, nil
+			return res, nil
 		}
 
 		lastErr = err
 
 		if !isRetryableError(err) {
-			return result, err
+			return res, err
 		}
 	}
 
@@ -126,7 +126,7 @@ func isRetryableError(err error) bool {
 
 // RetryableError is an error that indicates whether it should be retried
 type RetryableError struct {
-	Err      error
+	Err       error
 	Retryable bool
 }
 

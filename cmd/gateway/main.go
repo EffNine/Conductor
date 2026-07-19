@@ -24,8 +24,8 @@ import (
 	"github.com/novexa/gateway/internal/provider/nousportal"
 	"github.com/novexa/gateway/internal/provider/nvidianim"
 	"github.com/novexa/gateway/internal/provider/ollama"
-	"github.com/novexa/gateway/internal/provider/opencode"
 	"github.com/novexa/gateway/internal/provider/openai"
+	"github.com/novexa/gateway/internal/provider/opencode"
 	"github.com/novexa/gateway/internal/provider/openrouter"
 	"github.com/novexa/gateway/internal/router"
 	"github.com/novexa/gateway/internal/usage"
@@ -44,7 +44,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	logger.Info("Starting Novexa Gateway",
 		zap.Int("port", cfg.Server.Port),
@@ -109,7 +109,7 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		logger.Info("Shutting down...")
-		app.Shutdown()
+		_ = app.Shutdown()
 	}()
 
 	// Start server

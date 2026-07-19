@@ -102,7 +102,7 @@ func Recovery(logger *zap.Logger) fiber.Handler {
 					zap.Any("panic", r),
 					zap.String("path", c.Path()),
 				)
-				c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				_ = c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 					"error": fiber.Map{
 						"message": "Internal server error",
 						"type":    "server_error",
