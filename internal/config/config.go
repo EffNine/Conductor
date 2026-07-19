@@ -133,8 +133,19 @@ type UsageConfig struct {
 
 // CostConfig holds cost tracking configuration
 type CostConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Currency string `mapstructure:"currency"`
+	Enabled  bool             `mapstructure:"enabled"`
+	Currency string           `mapstructure:"currency"`
+	Rates    []ManualCostRate `mapstructure:"rates"`
+}
+
+// ManualCostRate is a configured fallback Cost Rate.
+type ManualCostRate struct {
+	Provider        string  `mapstructure:"provider"`
+	ProviderModelID string  `mapstructure:"provider_model_id"`
+	UnitType        string  `mapstructure:"unit_type"` // token, request, minute, character
+	UnitSize        int64   `mapstructure:"unit_size"`
+	InputPrice      float64 `mapstructure:"input_price"`
+	OutputPrice     float64 `mapstructure:"output_price"`
 }
 
 // Load loads configuration from file and environment variables

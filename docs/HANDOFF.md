@@ -23,57 +23,46 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 
 ### Slice 1: Domain cleanup — COMPLETE
 - Renamed `internal/model` → `internal/apitypes`.
-- Split overloaded `model` field:
-  - `RouteConfig.Model` → `RouteConfig.ModelID`
-  - `FallbackConfig.Model` → `FallbackConfig.ModelID`
-  - `ResolvedRoute.Model` → `ResolvedRoute.ProviderModelID`
-  - Added `ResolvedRoute.ModelID`
-  - `usage.Record` and `database.UsageRecord` now store both `ModelID` and `ProviderModelID`.
-- Updated `config/config.example.yaml` to use `model_id`.
+- Split overloaded `model` field into Model ID / Provider Model ID across config, router, usage, and DB.
 - `go build ./...` passes.
 
 ### Slice 2: Provider interface expansion — COMPLETE
-- Added to `Provider` interface:
-  - `ListModels(ctx) ([]ModelInfo, error)`
-  - `GetPricing(ctx) (map[string]PricingInfo, error)`
-- Added domain types:
-  - `UnitType` (`UnitToken`, `UnitRequest`, `UnitMinute`, `UnitCharacter`)
-  - `ModelInfo`, `PricingInfo`
-  - `ErrNotImplemented` sentinel.
-- Implemented real `ListModels` and `GetPricing` for OpenAI provider.
-- Added stub implementations for anthropic, deepseek, gemini, generic, groq, lmstudio, ollama, openrouter.
-- Updated `cmd/gateway/main.go` to register all stub providers when enabled.
-- `go build ./...` passes.
+- `ListModels` / `GetPricing` on `Provider`; OpenAI implemented; others stubbed with `ErrNotImplemented`.
+- `PricingInfo.UnitSize` clarifies per-N-unit pricing (e.g. per 1K tokens).
 
 ### Slice 3: Merged `/v1/models` — COMPLETE
-- Added `internal/catalog` aggregator: merges provider `ListModels`, qualifies duplicate base IDs with `provider/` prefixes, falls back to static `providers.*.models` when listing fails.
-- `/v1/models` uses the catalog; aliases are not advertised.
-- Router strips a registered provider prefix before route lookup and rejects prefix/provider mismatches.
-- Config: `ProviderConfig.Models` for Static Model List; example YAML updated for ollama/lmstudio.
-- Tests cover merge, prefixing, static fallback, alias exclusion, and prefix routing.
+- `internal/catalog` merges catalogs, prefixes duplicates, static `providers.*.models` fallback.
+- Aliases excluded from `/v1/models`; router strips provider prefixes on resolve.
+
+### Slice 4: Usage/cost enhancements — COMPLETE
+- `usage.Estimator` precedence: actual per-request cost → `GetPricing` → manual `cost.rates` → unknown (nil, no invented default).
+- Usage schema: `Requests`, `DurationMs`, `InputChars`, `OutputChars`; tokens remain primary (0 for non-token).
+- DB `EstimatedCostUSD` is nullable; `CostSource` recorded.
+- `Tracker.Aggregate` returns totals + by-provider / by-model (ready for Slice 5 `/api/usage`).
+- Config: `cost.rates[]` with provider, provider_model_id, unit_type, unit_size, prices.
+- Tests cover pricing, actual override, manual fallback, unknown, extra counters, aggregation.
 - `go test ./...` and `go build ./...` pass.
 
 ## Remaining work
 
-Slices 4–6 from [docs/PLAN.md](PLAN.md):
+Slices 5–6 from [docs/PLAN.md](PLAN.md):
 
-4. **Usage/cost enhancements** — extra usage counters, fetch pricing, per-request cost reconciliation, manual fallback.
-5. **Dashboard API endpoints** — `/api/models`, `/api/usage`, `/api/health`, `/api/logs`.
+5. **Dashboard API endpoints** — wire `/api/models` (catalog), `/api/usage` (Aggregate), `/api/health`, `/api/logs`.
 6. **Documentation reconciliation** — rewrite README/docs to match actual capabilities.
 
 ## Important notes for the next agent
 
 - Always use the vocabulary from [CONTEXT.md](../CONTEXT.md); challenge any re-introduction of the ambiguous term `model`.
-- Router still has legacy auto-detect via `SupportsModel` when no route exists; CONTEXT says routing should be explicit-only — consider removing auto-detect in a later slice.
-- Slice 4 should extend usage/cost without changing the catalog prefix rules.
-- Provider prefixes in the model list are a serialization concern only; route config still uses bare Model IDs.
+- Router still has legacy auto-detect via `SupportsModel` when no route exists; CONTEXT says explicit-only.
+- Slice 5 should call `catalog.List` and `usage.Tracker.Aggregate` rather than reimplementing them.
+- Providers do not yet populate `ActualCostUSD` from upstream responses; the estimator path is ready when they do.
+- Provider prefixes in the model list are serialization-only; route config uses bare Model IDs.
 
 ## Suggested skills for the next session
 
-- `tdd` — for test-first implementation of slices 4–5.
-- `diagnose` — if routing or model-list behavior does not match expectations.
-- `review` — before merging any slice.
-- `to-issues` — if the remaining slices need to be tracked as separate issues.
+- `tdd` — for test-first implementation of slice 5.
+- `review` — before merging.
+- `to-issues` — if remaining slices need separate tickets.
 
 ## Artifacts
 

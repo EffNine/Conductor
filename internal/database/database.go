@@ -25,8 +25,13 @@ type UsageRecord struct {
 	PromptTokens     int       `json:"prompt_tokens"`
 	CompletionTokens int       `json:"completion_tokens"`
 	TotalTokens      int       `json:"total_tokens"`
+	Requests         int       `json:"requests"`
+	DurationMs       int64     `json:"duration_ms"`
+	InputChars       int       `json:"input_chars"`
+	OutputChars      int       `json:"output_chars"`
 	LatencyMs        int64     `json:"latency_ms"`
-	EstimatedCostUSD float64   `json:"estimated_cost_usd"`
+	EstimatedCostUSD *float64  `json:"estimated_cost_usd"`
+	CostSource       string    `gorm:"type:text" json:"cost_source"`
 	StatusCode       int       `json:"status_code"`
 	IsStream         bool      `json:"is_stream"`
 	ErrorMessage     *string   `json:"error_message,omitempty"`

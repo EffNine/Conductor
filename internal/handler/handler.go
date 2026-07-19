@@ -391,6 +391,8 @@ func (h *Handler) trackUsage(requestID, modelID, providerModelID, provider strin
 		ModelID:         modelID,
 		ProviderModelID: providerModelID,
 		Provider:        provider,
+		Requests:        1,
+		DurationMs:      duration.Milliseconds(),
 		LatencyMs:       duration.Milliseconds(),
 		StatusCode:      statusCode,
 		IsStream:        isStream,

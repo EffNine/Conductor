@@ -164,3 +164,12 @@ usage:
 cost:
   enabled: true
   currency: "USD"
+  # Manual Cost Rates used when a provider has no GetPricing data
+  rates:
+    - provider: "ollama"
+      provider_model_id: "llama3"
+      unit_type: "token"
+      unit_size: 1000
+      input_price: 0.0
+      output_price: 0.0
+

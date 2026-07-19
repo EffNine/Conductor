@@ -31,8 +31,9 @@ type ModelInfo struct {
 // PricingInfo represents pricing for a model.
 type PricingInfo struct {
 	UnitType    UnitType // The billing unit (token, request, minute, character)
-	InputPrice  float64  // Price per unit for input (USD)
-	OutputPrice float64  // Price per unit for output (USD)
+	UnitSize    int64    // Units covered by InputPrice/OutputPrice (e.g. 1000 for per-1K-token rates; 0 or 1 = per unit)
+	InputPrice  float64  // Price for UnitSize input units (USD)
+	OutputPrice float64  // Price for UnitSize output units (USD)
 	Currency    string   // Currency code (default: USD)
 }
 

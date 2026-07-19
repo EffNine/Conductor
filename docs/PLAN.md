@@ -74,12 +74,12 @@ Extend usage records with optional extra counters for non-token providers. Fetch
 
 ### Acceptance criteria
 
-- [ ] Usage schema supports extra counters (`requests`, `duration_ms`, `input_chars`, `output_chars`, etc.).
-- [ ] Token fields remain primary and are zero/null for non-token providers.
-- [ ] Cost estimation uses fetched pricing when available.
-- [ ] Per-request cost returned by providers can override estimates.
-- [ ] Manual cost-rate fallback works when no pricing source is available.
-- [ ] Dashboard can aggregate totals and per-provider/per-model breakdowns.
+- [x] Usage schema supports extra counters (`requests`, `duration_ms`, `input_chars`, `output_chars`, etc.).
+- [x] Token fields remain primary and are zero/null for non-token providers.
+- [x] Cost estimation uses fetched pricing when available.
+- [x] Per-request cost returned by providers can override estimates.
+- [x] Manual cost-rate fallback works when no pricing source is available.
+- [x] Dashboard can aggregate totals and per-provider/per-model breakdowns.
 
 ### Blocked by
 

@@ -77,8 +77,9 @@ func main() {
 	// Initialize model catalog
 	modelCatalog := catalog.New(registry, catalog.StaticFromConfig(cfg))
 
-	// Initialize usage tracker
-	usageTracker := usage.NewTracker(db, logger)
+	// Initialize cost estimator + usage tracker
+	estimator := usage.NewEstimator(registry, usage.ManualRatesFromConfig(cfg))
+	usageTracker := usage.NewTracker(db, estimator, logger)
 
 	// Initialize health monitor
 	healthMonitor := health.NewMonitor(registry, logger, cfg.Health.CheckInterval, cfg.Health.Timeout)

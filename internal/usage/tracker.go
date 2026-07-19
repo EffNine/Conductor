@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -17,7 +18,12 @@ type Record struct {
 	PromptTokens     int
 	CompletionTokens int
 	TotalTokens      int
+	Requests         int
+	DurationMs       int64
+	InputChars       int
+	OutputChars      int
 	LatencyMs        int64
+	ActualCostUSD    *float64
 	StatusCode       int
 	IsStream         bool
 	ErrorMessage     *string
@@ -26,18 +32,20 @@ type Record struct {
 
 // Tracker handles usage tracking
 type Tracker struct {
-	db     *database.Database
-	logger *zap.Logger
-	mu     sync.Mutex
-	buffer []*Record
+	db        *database.Database
+	estimator *Estimator
+	logger    *zap.Logger
+	mu        sync.Mutex
+	buffer    []*Record
 }
 
-// NewTracker creates a new usage tracker
-func NewTracker(db *database.Database, logger *zap.Logger) *Tracker {
+// NewTracker creates a new usage tracker. estimator may be nil (cost left unknown).
+func NewTracker(db *database.Database, estimator *Estimator, logger *zap.Logger) *Tracker {
 	return &Tracker{
-		db:     db,
-		logger: logger,
-		buffer: make([]*Record, 0, 100),
+		db:        db,
+		estimator: estimator,
+		logger:    logger,
+		buffer:    make([]*Record, 0, 100),
 	}
 }
 
@@ -51,11 +59,9 @@ func (t *Tracker) Record(r *Record) {
 	t.buffer = append(t.buffer, r)
 	t.mu.Unlock()
 
-	// Flush immediately for low-volume usage
 	t.flush()
 }
 
-// flush writes buffered records to the database
 func (t *Tracker) flush() {
 	t.mu.Lock()
 	if len(t.buffer) == 0 {
@@ -68,8 +74,12 @@ func (t *Tracker) flush() {
 	t.buffer = t.buffer[:0]
 	t.mu.Unlock()
 
-	// Convert to database models
 	for _, r := range batch {
+		durationMs := r.DurationMs
+		if durationMs == 0 {
+			durationMs = r.LatencyMs
+		}
+
 		record := &database.UsageRecord{
 			ID:               r.RequestID,
 			RequestID:        r.RequestID,
@@ -79,12 +89,41 @@ func (t *Tracker) flush() {
 			PromptTokens:     r.PromptTokens,
 			CompletionTokens: r.CompletionTokens,
 			TotalTokens:      r.TotalTokens,
+			Requests:         r.Requests,
+			DurationMs:       durationMs,
+			InputChars:       r.InputChars,
+			OutputChars:      r.OutputChars,
 			LatencyMs:        r.LatencyMs,
-			EstimatedCostUSD: EstimateCost(r.ModelID, r.Provider, r.PromptTokens, r.CompletionTokens),
 			StatusCode:       r.StatusCode,
 			IsStream:         r.IsStream,
 			ErrorMessage:     r.ErrorMessage,
 			CreatedAt:        r.CreatedAt,
+		}
+
+		if t.estimator != nil {
+			result, err := t.estimator.Estimate(context.Background(), CostInput{
+				Provider:         r.Provider,
+				ProviderModelID:  r.ProviderModelID,
+				PromptTokens:     r.PromptTokens,
+				CompletionTokens: r.CompletionTokens,
+				Requests:         r.Requests,
+				DurationMs:       durationMs,
+				InputChars:       r.InputChars,
+				OutputChars:      r.OutputChars,
+				ActualCostUSD:    r.ActualCostUSD,
+			})
+			if err != nil {
+				t.logger.Warn("cost estimate failed",
+					zap.String("request_id", r.RequestID),
+					zap.Error(err),
+				)
+			} else {
+				record.EstimatedCostUSD = result.CostUSD
+				record.CostSource = string(result.Source)
+			}
+		} else {
+			unknown := string(CostSourceUnknown)
+			record.CostSource = unknown
 		}
 
 		if err := t.db.DB.Create(record).Error; err != nil {
@@ -96,57 +135,83 @@ func (t *Tracker) flush() {
 	}
 }
 
-// EstimateCost estimates the cost of a request
-func EstimateCost(model, provider string, promptTokens, completionTokens int) float64 {
-	// Default cost rates (USD per 1K tokens)
-	// These should be loaded from the cost_rates table in production
-	rates := getDefaultCostRates(model, provider)
-
-	promptCost := float64(promptTokens) / 1000.0 * rates.PromptCostPer1K
-	completionCost := float64(completionTokens) / 1000.0 * rates.CompletionCostPer1K
-
-	return promptCost + completionCost
+// AggregateQuery filters usage aggregation.
+type AggregateQuery struct {
+	Since time.Time
+	Until time.Time
 }
 
-// costRate represents token pricing
-type costRate struct {
-	PromptCostPer1K     float64
-	CompletionCostPer1K float64
+// AggregateSummary is totals plus breakdowns.
+type AggregateSummary struct {
+	Total      AggregateBucket
+	ByProvider map[string]AggregateBucket
+	ByModel    map[string]AggregateBucket
 }
 
-// getDefaultCostRates returns default cost rates for known models
-func getDefaultCostRates(model, provider string) costRate {
-	rates := map[string]costRate{
-		// OpenAI
-		"gpt-4o":        {PromptCostPer1K: 0.0025, CompletionCostPer1K: 0.010},
-		"gpt-4o-mini":   {PromptCostPer1K: 0.00015, CompletionCostPer1K: 0.0006},
-		"gpt-4-turbo":   {PromptCostPer1K: 0.010, CompletionCostPer1K: 0.030},
-		"gpt-3.5-turbo": {PromptCostPer1K: 0.0005, CompletionCostPer1K: 0.0015},
+// AggregateBucket holds summed usage and optional cost.
+type AggregateBucket struct {
+	Requests         int64
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+	DurationMs       int64
+	InputChars       int64
+	OutputChars      int64
+	CostUSD          *float64
+}
 
-		// Anthropic
-		"claude-sonnet-4-20250514":  {PromptCostPer1K: 0.003, CompletionCostPer1K: 0.015},
-		"claude-3-5-haiku-20241022": {PromptCostPer1K: 0.0008, CompletionCostPer1K: 0.004},
-		"claude-3-opus-20240229":    {PromptCostPer1K: 0.015, CompletionCostPer1K: 0.075},
-
-		// Gemini
-		"gemini-2.5-pro":   {PromptCostPer1K: 0.00125, CompletionCostPer1K: 0.005},
-		"gemini-2.5-flash": {PromptCostPer1K: 0.000075, CompletionCostPer1K: 0.0003},
-		"gemini-1.5-pro":   {PromptCostPer1K: 0.00125, CompletionCostPer1K: 0.005},
-		"gemini-1.5-flash": {PromptCostPer1K: 0.000075, CompletionCostPer1K: 0.0003},
-
-		// DeepSeek
-		"deepseek-chat":     {PromptCostPer1K: 0.00014, CompletionCostPer1K: 0.00028},
-		"deepseek-reasoner": {PromptCostPer1K: 0.00055, CompletionCostPer1K: 0.00219},
-
-		// Groq
-		"llama-3.3-70b-versatile": {PromptCostPer1K: 0.00059, CompletionCostPer1K: 0.00079},
-		"llama-3.1-8b-instant":    {PromptCostPer1K: 0.00005, CompletionCostPer1K: 0.00008},
+// Aggregate returns usage totals and per-provider/per-model breakdowns.
+func (t *Tracker) Aggregate(q AggregateQuery) (*AggregateSummary, error) {
+	if t == nil || t.db == nil {
+		return &AggregateSummary{
+			ByProvider: map[string]AggregateBucket{},
+			ByModel:    map[string]AggregateBucket{},
+		}, nil
 	}
 
-	if rate, ok := rates[model]; ok {
-		return rate
+	query := t.db.DB.Model(&database.UsageRecord{})
+	if !q.Since.IsZero() {
+		query = query.Where("created_at >= ?", q.Since)
+	}
+	if !q.Until.IsZero() {
+		query = query.Where("created_at < ?", q.Until)
 	}
 
-	// Default fallback rate
-	return costRate{PromptCostPer1K: 0.001, CompletionCostPer1K: 0.002}
+	var rows []database.UsageRecord
+	if err := query.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	summary := &AggregateSummary{
+		ByProvider: map[string]AggregateBucket{},
+		ByModel:    map[string]AggregateBucket{},
+	}
+	for _, row := range rows {
+		summary.Total = addBucket(summary.Total, row)
+		summary.ByProvider[row.Provider] = addBucket(summary.ByProvider[row.Provider], row)
+		summary.ByModel[row.ModelID] = addBucket(summary.ByModel[row.ModelID], row)
+	}
+	return summary, nil
+}
+
+func addBucket(b AggregateBucket, row database.UsageRecord) AggregateBucket {
+	b.Requests += int64(row.Requests)
+	if row.Requests == 0 {
+		b.Requests++
+	}
+	b.PromptTokens += int64(row.PromptTokens)
+	b.CompletionTokens += int64(row.CompletionTokens)
+	b.TotalTokens += int64(row.TotalTokens)
+	b.DurationMs += row.DurationMs
+	b.InputChars += int64(row.InputChars)
+	b.OutputChars += int64(row.OutputChars)
+	if row.EstimatedCostUSD != nil {
+		if b.CostUSD == nil {
+			v := *row.EstimatedCostUSD
+			b.CostUSD = &v
+		} else {
+			*b.CostUSD += *row.EstimatedCostUSD
+		}
+	}
+	return b
 }
