@@ -143,6 +143,7 @@ See [Architecture](docs/architecture.md) for details.
 | OpenAI | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
 | OpenCode | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
 | NVIDIA NIM | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| Nous Portal | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (empty map) |
 | Anthropic | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Gemini | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
 | DeepSeek | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |

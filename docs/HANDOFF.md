@@ -79,13 +79,12 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 
 ### New provider adapters
 - Added stub adapters for `opencode`, `nvidia_nim`, and `nous_portal`.
-- Fully implemented `opencode` and `nvidia_nim` as OpenAI-compatible adapters:
+- Fully implemented `opencode`, `nvidia_nim`, and `nous_portal` as OpenAI-compatible adapters:
   - Chat completions (non-streaming and SSE streaming)
   - Embeddings
   - Dynamic model listing
-  - Static pricing maps
+  - Static pricing maps (empty for Nous Portal because it is subscription-based)
   - Live health checks
-- `nous_portal` remains a stub.
 - Added unit tests for `opencode` and `nvidia_nim`.
 - Updated README and `docs/providers.md` status tables.
 - `go test ./...` and `go build ./...` pass.
