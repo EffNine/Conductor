@@ -106,9 +106,16 @@ func Connect(cfg *config.DatabaseConfig) (*Database, error) {
 
 	// Enable WAL mode for SQLite
 	if cfg.Driver == "sqlite" {
-		sqlDB.Exec("PRAGMA journal_mode=WAL")
-		sqlDB.Exec("PRAGMA synchronous=NORMAL")
-		sqlDB.Exec("PRAGMA busy_timeout=5000")
+		pragmas := []string{
+			"PRAGMA journal_mode=WAL",
+			"PRAGMA synchronous=NORMAL",
+			"PRAGMA busy_timeout=5000",
+		}
+		for _, pragma := range pragmas {
+			if _, err := sqlDB.Exec(pragma); err != nil {
+				return nil, fmt.Errorf("failed to apply %q: %w", pragma, err)
+			}
+		}
 	}
 
 	return &Database{DB: db}, nil

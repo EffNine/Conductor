@@ -147,10 +147,10 @@ func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionR
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
-		resp, err := fb.Provider.ChatCompletion(c.Context(), &fallbackReq)
-		if err == nil {
-			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
-			return c.JSON(resp)
+		fbResp, fbErr := fb.Provider.ChatCompletion(c.Context(), &fallbackReq)
+		if fbErr == nil {
+			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, fbResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
+			return c.JSON(fbResp)
 		}
 	}
 
@@ -180,9 +180,9 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
-		ch, err := fb.Provider.ChatCompletionStream(c.Context(), &fallbackReq)
-		if err == nil {
-			return h.streamResponse(c, ch, requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, start)
+		fbCh, fbErr := fb.Provider.ChatCompletionStream(c.Context(), &fallbackReq)
+		if fbErr == nil {
+			return h.streamResponse(c, fbCh, requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, start)
 		}
 	}
 
@@ -206,15 +206,15 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 			}
 
 			if chunk.Done {
-				w.Write([]byte("data: [DONE]\n\n"))
-				w.Flush()
+				_, _ = w.Write([]byte("data: [DONE]\n\n"))
+				_ = w.Flush()
 				break
 			}
 
 			// Write SSE data
 			data, _ := json.Marshal(chunk)
-			w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
-			w.Flush()
+			_, _ = w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
+			_ = w.Flush()
 
 			// Track tokens from usage if present
 			if chunk.Usage != nil {
