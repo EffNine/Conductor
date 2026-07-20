@@ -59,9 +59,16 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_HEALTH_CHECK_INTERVAL` | Health check interval | `60s` |
-| `NOVEXA_HEALTH_TIMEOUT` | Health check timeout | `10s` |
-| `NOVEXA_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive failures before unhealthy | `3` |
+| `NOVEXA_HEALTH_CHECK_INTERVAL` | Provider health check interval | `60s` |
+| `NOVEXA_HEALTH_TIMEOUT` | Provider health check timeout | `10s` |
+| `NOVEXA_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive provider failures before unhealthy | `3` |
+| `NOVEXA_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
+| `NOVEXA_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
+| `NOVEXA_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `5m` |
+| `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `15s` |
+| `NOVEXA_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
+| `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `2` |
+| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible | `true` |
 
 ## YAML Configuration File
 
@@ -212,10 +219,68 @@ health:
   check_interval: 60s
   timeout: 10s
   unhealthy_threshold: 3
+  # Per-model probes hide endpoints that appear in /models but fail inference
+  # (common on NVIDIA NIM free tier). Probes send max_tokens=1 chat requests.
+  models:
+    enabled: true
+    hide_unreachable: true
+    check_interval: 5m
+    timeout: 15s
+    concurrency: 3
+    unhealthy_threshold: 2
+    providers:
+      - nvidia_nim
+    unknown_as_reachable: true
 
 # Usage tracking
 usage:
   enabled: true
+```
+
+### Model reachability
+
+NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-callable endpoints. There is no catalog flag for "free and online". Novexa optionally probes each configured provider's models with a minimal `POST /chat/completions` (`max_tokens: 1`) and:
+
+- Caches online/offline status (also updated from live chat failures)
+- Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true
+- Exposes status on `GET /api/models` and `GET /api/models/status`
+- Use `GET /api/models?include_unreachable=true` to list hidden models with their status
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Run background per-model probes | `true` |
+| `hide_unreachable` | Omit unreachable models from `/v1/models` and default `/api/models` | `true` |
+| `check_interval` | Time between full probe passes | `5m` |
+| `timeout` | Timeout per individual model probe | `15s` |
+| `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
+| `unhealthy_threshold` | Consecutive failures before a model is considered unreachable | `2` |
+| `providers` | Provider names to probe; empty = all registered | `[nvidia_nim]` |
+| `unknown_as_reachable` | Treat never-probed models as reachable (keeps catalog non-empty at startup) | `true` |
+
+**Classification rules:**
+
+| Outcome | Effect |
+|---------|--------|
+| HTTP 200 on probe / live chat | Mark reachable; reset failure count |
+| 404, timeout, 502/503/504, model-not-found | Count toward `unhealthy_threshold` |
+| 429 rate limit, 401/403 auth | Neutral — do not change reachability |
+
+Disable with:
+
+```yaml
+health:
+  models:
+    enabled: false
+```
+
+Probe more than NIM (use carefully — probes consume quota):
+
+```yaml
+health:
+  models:
+    providers:
+      - nvidia_nim
+      - openrouter
 ```
 
 ## Minimal Configuration

@@ -10,9 +10,9 @@ Novexa Gateway is a single-operator, self-hosted AI API gateway. One operator ow
 
 The management dashboard exposes:
 
-- **Models** — the merged Model Catalog from all configured providers.
+- **Models** — the merged Model Catalog from all configured providers, optionally filtered by per-model online status.
 - **Usage** — estimated cost and token/resource consumption, totals and per-provider/per-model breakdowns.
-- **Health** — per-provider liveness and latency.
+- **Health** — per-provider liveness and latency, plus optional per-model reachability (especially for providers like NVIDIA NIM where the catalog includes unreachable endpoints).
 - **Logs** — recent request log entries for debugging.
 
 ## Canonical Terms
@@ -52,6 +52,11 @@ When a Model ID returned by `/v1/models` carries a provider prefix (e.g. `groq/l
 The set of models a provider reports as available for a given provider key. The gateway queries each configured provider for its catalog, merges the results, and exposes them through `/v1/models`.
 
 When the same base model identifier is available from multiple providers, each offering is advertised as a distinct Model ID with the provider identifier as a prefix, e.g. `openai/llama3-8b` and `groq/llama3-8b`. The gateway recognizes the prefix during routing.
+
+When model reachability probing is enabled, unreachable catalog entries may be omitted from `/v1/models` while remaining inspectable via the dashboard API.
+
+### Model Reachability / Online Status
+Whether a catalog Model ID currently accepts inference (typically a minimal chat completion). Provider-level health only proves the upstream API is up; it does not prove each listed model is callable. Probing is especially relevant for providers like NVIDIA NIM whose catalog mixes free hosted endpoints with unreachable or retired ones.
 
 ### Static Model List
 A manually configured list of Model IDs advertised for a provider when the provider does not support a dynamic model catalog query (e.g., generic OpenAI-compatible endpoints or some local providers).

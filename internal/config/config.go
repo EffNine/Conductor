@@ -124,9 +124,36 @@ type PerProviderLimit struct {
 
 // HealthConfig holds health monitoring configuration
 type HealthConfig struct {
-	CheckInterval      time.Duration `mapstructure:"check_interval"`
-	Timeout            time.Duration `mapstructure:"timeout"`
-	UnhealthyThreshold int           `mapstructure:"unhealthy_threshold"`
+	CheckInterval      time.Duration     `mapstructure:"check_interval"`
+	Timeout            time.Duration     `mapstructure:"timeout"`
+	UnhealthyThreshold int               `mapstructure:"unhealthy_threshold"`
+	Models             ModelHealthConfig `mapstructure:"models"`
+}
+
+// ModelHealthConfig controls per-model reachability probing and auto-hide.
+// Especially useful for NVIDIA NIM, where /models lists free and unreachable
+// endpoints without distinguishing them.
+type ModelHealthConfig struct {
+	// Enabled turns on background per-model probes. Default true.
+	Enabled bool `mapstructure:"enabled"`
+	// HideUnreachable removes models that fail the unhealthy threshold from
+	// /v1/models and /api/models. Default true.
+	HideUnreachable bool `mapstructure:"hide_unreachable"`
+	// CheckInterval between full probe passes. Default 5m (NIM catalogs are large).
+	CheckInterval time.Duration `mapstructure:"check_interval"`
+	// Timeout per individual model probe. Default 15s.
+	Timeout time.Duration `mapstructure:"timeout"`
+	// Concurrency is max parallel probes. Default 3 (stay under NIM free-tier RPM).
+	Concurrency int `mapstructure:"concurrency"`
+	// UnhealthyThreshold consecutive failures before a model is considered
+	// unreachable. Default 2. Uses health.unhealthy_threshold when unset (0).
+	UnhealthyThreshold int `mapstructure:"unhealthy_threshold"`
+	// Providers limits probing to these provider names. Default ["nvidia_nim"].
+	// Empty list means all registered providers.
+	Providers []string `mapstructure:"providers"`
+	// UnknownAsReachable keeps unprobed models visible. Default true so
+	// /v1/models is not empty at startup before the first probe finishes.
+	UnknownAsReachable bool `mapstructure:"unknown_as_reachable"`
 }
 
 // UsageConfig holds usage tracking configuration
@@ -290,6 +317,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.check_interval", 60*time.Second)
 	v.SetDefault("health.timeout", 10*time.Second)
 	v.SetDefault("health.unhealthy_threshold", 3)
+	v.SetDefault("health.models.enabled", true)
+	v.SetDefault("health.models.hide_unreachable", true)
+	v.SetDefault("health.models.check_interval", 5*time.Minute)
+	v.SetDefault("health.models.timeout", 15*time.Second)
+	v.SetDefault("health.models.concurrency", 3)
+	v.SetDefault("health.models.unhealthy_threshold", 2)
+	v.SetDefault("health.models.providers", []string{"nvidia_nim"})
+	v.SetDefault("health.models.unknown_as_reachable", true)
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)

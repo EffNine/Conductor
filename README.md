@@ -19,10 +19,11 @@ docker run -d -p 8080:8080 \
 
 - **Single API Key** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, custom apps) at one endpoint with one key
 - **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so the listed ID routes when selected
+- **Model Online Status** — Optional probes hide unreachable models (especially NVIDIA NIM free endpoints that appear in `/models` but fail inference); status on `/api/models` and `/api/models/status`
 - **Explicit Model Routing** — Optional `routes` and `aliases` for bare Model IDs; provider-prefixed catalog IDs need no route entry
 - **Fallback Chains** — Try backup providers when the primary fails
 - **Usage & Cost Tracking** — Per-request records with tokens, latency, and USD cost (provider per-request → `GetPricing` → manual `cost.rates` → unknown)
-- **Dashboard API** — Models, usage, costs, health, providers, and logs behind the same gateway key
+- **Dashboard API** — Models, model status, usage, costs, health, providers, and logs behind the same gateway key
 - **Docker & Fly.io** — Single container with SQLite; one-shot deploy via `./scripts/fly-deploy.sh`
 
 ## Quick Start
@@ -131,7 +132,8 @@ Client → API Key Check → Rate Limit → Validate → Route → Provider Adap
 - **Rate Limiter** — Global and per-provider limits
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks
 - **Provider Adapters** — Common `Provider` interface
-- **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback
+- **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback; optional reachability filter
+- **Model Prober** — Minimal chat probes (default: `nvidia_nim`) to hide unreachable catalog entries
 - **Usage Tracker** — Persists usage and estimated cost to SQLite
 
 See [Architecture](docs/architecture.md) for details.
@@ -159,7 +161,16 @@ Gemini, DeepSeek, OpenRouter, Groq, OpenCode, NVIDIA NIM, Nous Portal, Ollama, a
 Authenticated with the same gateway API key (`GET /health` is public):
 
 ```bash
+# Merged catalog (includes reachability when probing is enabled)
 curl http://localhost:8080/api/models \
+  -H "Authorization: Bearer your-key"
+
+# Per-model online status cache
+curl http://localhost:8080/api/models/status \
+  -H "Authorization: Bearer your-key"
+
+# Include models hidden from /v1/models
+curl "http://localhost:8080/api/models?include_unreachable=true" \
   -H "Authorization: Bearer your-key"
 
 curl http://localhost:8080/api/health \
@@ -177,6 +188,8 @@ curl http://localhost:8080/api/usage/costs \
 curl http://localhost:8080/api/logs \
   -H "Authorization: Bearer your-key"
 ```
+
+Model online status (especially for NVIDIA NIM free vs unreachable endpoints) is documented in [Configuration](docs/configuration.md#model-reachability), [API](docs/api.md#model-reachability), and [Providers](docs/providers.md#model-reachability-nvidia-nim).
 
 `GET /api/config` and `PUT /api/config/reload` exist; config JSON is still a stub (`coming soon`). Reload works when a reload callback is wired at startup.
 

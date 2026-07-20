@@ -12,6 +12,7 @@ import (
 	"github.com/novexa/gateway/internal/apitypes"
 	"github.com/novexa/gateway/internal/catalog"
 	"github.com/novexa/gateway/internal/database"
+	"github.com/novexa/gateway/internal/health"
 	"github.com/novexa/gateway/internal/provider"
 	"github.com/novexa/gateway/internal/router"
 	"github.com/novexa/gateway/internal/usage"
@@ -28,6 +29,8 @@ type Handler struct {
 	logger       *zap.Logger
 	startTime    time.Time
 	reloadFn     func() error
+	modelProber  *health.ModelProber
+	modelStatus  *health.ModelStatusStore
 }
 
 // New creates a new Handler
@@ -48,6 +51,12 @@ func (h *Handler) SetReloadFunc(fn func() error) {
 	h.reloadFn = fn
 }
 
+// SetModelStatus wires per-model reachability tracking (probe + reactive updates).
+func (h *Handler) SetModelStatus(store *health.ModelStatusStore, prober *health.ModelProber) {
+	h.modelStatus = store
+	h.modelProber = prober
+}
+
 // Register registers all HTTP routes
 func (h *Handler) Register(app *fiber.App) {
 	// OpenAI-compatible endpoints
@@ -60,6 +69,7 @@ func (h *Handler) Register(app *fiber.App) {
 
 	// Dashboard endpoints
 	app.Get("/api/models", h.HandleDashboardModels)
+	app.Get("/api/models/status", h.HandleModelStatus)
 	app.Get("/api/health", h.HandleProviderHealth)
 	app.Get("/api/providers", h.HandleListProviders)
 	app.Get("/api/usage", h.HandleUsage)
@@ -138,20 +148,26 @@ func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionR
 	// Try primary provider
 	resp, err := resolved.Provider.ChatCompletion(c.Context(), req)
 	if err == nil {
+		h.recordModelResult(resolved, nil, time.Since(start).Milliseconds())
 		h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 		return c.JSON(resp)
 	}
+	h.recordModelResult(resolved, err, time.Since(start).Milliseconds())
 
 	// Try fallbacks
-	for _, fb := range fallbacks {
+	for i := range fallbacks {
+		fb := fallbacks[i]
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
+		fbStart := time.Now()
 		fbResp, fbErr := fb.Provider.ChatCompletion(c.Context(), &fallbackReq)
 		if fbErr == nil {
+			h.recordModelResult(&fb, nil, time.Since(fbStart).Milliseconds())
 			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, fbResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 			return c.JSON(fbResp)
 		}
+		h.recordModelResult(&fb, fbErr, time.Since(fbStart).Milliseconds())
 	}
 
 	// All providers failed
@@ -175,18 +191,24 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	// Try primary provider
 	ch, err := resolved.Provider.ChatCompletionStream(c.Context(), req)
 	if err == nil {
+		h.recordModelResult(resolved, nil, time.Since(start).Milliseconds())
 		return h.streamResponse(c, ch, requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, start)
 	}
+	h.recordModelResult(resolved, err, time.Since(start).Milliseconds())
 
 	// Try fallbacks
-	for _, fb := range fallbacks {
+	for i := range fallbacks {
+		fb := fallbacks[i]
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
+		fbStart := time.Now()
 		fbCh, fbErr := fb.Provider.ChatCompletionStream(c.Context(), &fallbackReq)
 		if fbErr == nil {
+			h.recordModelResult(&fb, nil, time.Since(fbStart).Milliseconds())
 			return h.streamResponse(c, fbCh, requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, start)
 		}
+		h.recordModelResult(&fb, fbErr, time.Since(fbStart).Milliseconds())
 	}
 
 	// All providers failed
@@ -306,8 +328,18 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 }
 
 // HandleDashboardModels handles GET /api/models
+// Query: include_unreachable=true returns the full catalog with reachability fields
+// even when hide_unreachable would omit them from /v1/models.
 func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
-	entries, err := h.catalog.List(c.Context())
+	includeUnreachable := c.Query("include_unreachable") == "true" || c.Query("include_unreachable") == "1"
+
+	var entries []catalog.Entry
+	var err error
+	if includeUnreachable {
+		entries, err = h.catalog.ListAll(c.Context())
+	} else {
+		entries, err = h.catalog.List(c.Context())
+	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -317,7 +349,54 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 			},
 		})
 	}
-	return c.JSON(fiber.Map{"models": entries})
+
+	type modelRow struct {
+		ModelID         string  `json:"model_id"`
+		Provider        string  `json:"provider"`
+		ProviderModelID string  `json:"provider_model_id"`
+		OwnedBy         string  `json:"owned_by,omitempty"`
+		Reachable       *bool   `json:"reachable,omitempty"`
+		LatencyMs       *int64  `json:"latency_ms,omitempty"`
+		LastError       *string `json:"last_error,omitempty"`
+		CheckedAt       *string `json:"checked_at,omitempty"`
+	}
+
+	rows := make([]modelRow, 0, len(entries))
+	for _, e := range entries {
+		row := modelRow{
+			ModelID:         e.ModelID,
+			Provider:        e.Provider,
+			ProviderModelID: e.ProviderModelID,
+			OwnedBy:         e.OwnedBy,
+		}
+		if h.modelStatus != nil {
+			reachable, known := h.modelStatus.IsReachable(e.ModelID)
+			r := reachable
+			row.Reachable = &r
+			if known {
+				if st := h.modelStatus.Get(e.ModelID); st != nil {
+					lat := st.LatencyMs
+					row.LatencyMs = &lat
+					if st.LastError != "" {
+						errMsg := st.LastError
+						row.LastError = &errMsg
+					}
+					checked := st.CheckedAt.UTC().Format(time.RFC3339)
+					row.CheckedAt = &checked
+				}
+			}
+		}
+		rows = append(rows, row)
+	}
+	return c.JSON(fiber.Map{"models": rows})
+}
+
+// HandleModelStatus handles GET /api/models/status — cached probe results only.
+func (h *Handler) HandleModelStatus(c *fiber.Ctx) error {
+	if h.modelStatus == nil {
+		return c.JSON(fiber.Map{"models": []health.ModelStatus{}})
+	}
+	return c.JSON(fiber.Map{"models": h.modelStatus.GetAll()})
 }
 
 // HandleEmbeddings handles POST /v1/embeddings
@@ -596,6 +675,15 @@ func (h *Handler) trackUsage(requestID, modelID, providerModelID, provider strin
 	}
 
 	h.usageTracker.Record(record)
+}
+
+// recordModelResult updates per-model reachability from live chat traffic.
+func (h *Handler) recordModelResult(resolved *router.ResolvedRoute, err error, latencyMs int64) {
+	if h.modelProber == nil || resolved == nil {
+		return
+	}
+	catalogID := resolved.ProviderName + "/" + resolved.ProviderModelID
+	h.modelProber.RecordLiveResult(catalogID, resolved.ProviderName, resolved.ProviderModelID, err, latencyMs)
 }
 
 // providerErrorResponse returns a normalized error response

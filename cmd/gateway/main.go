@@ -89,6 +89,17 @@ func main() {
 	healthMonitor.Start()
 	defer healthMonitor.Stop()
 
+	// Per-model reachability (especially NVIDIA NIM free vs unreachable endpoints)
+	modelThreshold := cfg.Health.Models.UnhealthyThreshold
+	if modelThreshold <= 0 {
+		modelThreshold = cfg.Health.UnhealthyThreshold
+	}
+	modelStatus := health.NewModelStatusStore(modelThreshold, cfg.Health.Models.UnknownAsReachable)
+	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
+	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
+	modelProber.Start()
+	defer modelProber.Stop()
+
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
 		ReadTimeout:  cfg.Server.ReadTimeout,
@@ -101,6 +112,7 @@ func main() {
 
 	// Register handlers
 	h := handler.New(routerEngine, registry, usageTracker, logger, modelCatalog, db)
+	h.SetModelStatus(modelStatus, modelProber)
 	h.Register(app)
 
 	// Graceful shutdown
