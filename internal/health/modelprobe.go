@@ -36,7 +36,7 @@ func NewModelProber(
 	cfg config.ModelHealthConfig,
 ) *ModelProber {
 	if cfg.CheckInterval <= 0 {
-		cfg.CheckInterval = 5 * time.Minute
+		cfg.CheckInterval = 24 * time.Hour
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 15 * time.Second

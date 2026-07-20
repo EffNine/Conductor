@@ -281,7 +281,7 @@ Novexa optionally probes configured providers with a minimal chat completion (`m
 | Enabled | `true` |
 | Providers probed | `nvidia_nim` only |
 | Hide unreachable from `/v1/models` | `true` |
-| Check interval | `5m` |
+| Check interval | `24h` |
 | Unhealthy threshold | `2` consecutive failures |
 | Unprobed models visible | `true` (`unknown_as_reachable`) |
 

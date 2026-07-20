@@ -139,7 +139,7 @@ type ModelHealthConfig struct {
 	// HideUnreachable removes models that fail the unhealthy threshold from
 	// /v1/models and /api/models. Default true.
 	HideUnreachable bool `mapstructure:"hide_unreachable"`
-	// CheckInterval between full probe passes. Default 5m (NIM catalogs are large).
+	// CheckInterval between full probe passes. Default 24h.
 	CheckInterval time.Duration `mapstructure:"check_interval"`
 	// Timeout per individual model probe. Default 15s.
 	Timeout time.Duration `mapstructure:"timeout"`
@@ -319,7 +319,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.unhealthy_threshold", 3)
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
-	v.SetDefault("health.models.check_interval", 5*time.Minute)
+	v.SetDefault("health.models.check_interval", 24*time.Hour)
 	v.SetDefault("health.models.timeout", 30*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 2)

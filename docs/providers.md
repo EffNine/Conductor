@@ -157,7 +157,7 @@ Novexa probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) a
 - Enabled for **`nvidia_nim` only** (other providers are not probed unless you add them)
 - `hide_unreachable: true` — omit dead models from `/v1/models`
 - `unknown_as_reachable: true` — keep unprobed models visible until the first probe finishes
-- Interval `5m`, concurrency `3` (stay under NIM free-tier rate limits)
+- Interval `24h` (once per day), concurrency `3` (stay under NIM free-tier rate limits)
 
 ### Configuration
 
@@ -166,7 +166,7 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 5m
+    check_interval: 24h
     timeout: 15s
     concurrency: 3
     unhealthy_threshold: 2
