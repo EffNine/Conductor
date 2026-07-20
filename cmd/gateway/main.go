@@ -79,6 +79,10 @@ func main() {
 
 	// Initialize model catalog
 	modelCatalog := catalog.New(registry, catalog.StaticFromConfig(cfg))
+	modelCatalog.SetCuratedOnly(cfg.Catalog.CuratedOnly)
+	if cfg.Catalog.CuratedOnly {
+		logger.Info("Catalog curated_only enabled; advertising providers.*.models only")
+	}
 
 	// Initialize cost estimator + usage tracker
 	estimator := usage.NewEstimator(registry, usage.ManualRatesFromConfig(cfg))

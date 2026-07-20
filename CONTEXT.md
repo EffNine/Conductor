@@ -10,7 +10,7 @@ Novexa Gateway is a single-operator, self-hosted AI API gateway. One operator ow
 
 The management dashboard exposes:
 
-- **Models** — the merged Model Catalog from all configured providers, optionally filtered by per-model online status.
+- **Models** — the merged Model Catalog from all configured providers, optionally limited to a Curated Model List and/or filtered by per-model online status.
 - **Usage** — estimated cost and token/resource consumption, totals and per-provider/per-model breakdowns.
 - **Health** — per-provider liveness and latency, plus optional per-model reachability (especially for providers like NVIDIA NIM where the catalog includes unreachable endpoints).
 - **Logs** — recent request log entries for debugging.
@@ -55,11 +55,16 @@ When the same base model identifier is available from multiple providers, each o
 
 When model reachability probing is enabled, unreachable catalog entries may be omitted from `/v1/models` while remaining inspectable via the dashboard API.
 
+When **curated-only** mode is enabled, the gateway ignores dynamic provider catalogs for advertisement and instead exposes only the Curated Model List.
+
+### Curated Model List
+The operator-chosen allowlist of Model IDs advertised when curated-only mode is on. Configured per provider via the Static Model List (`providers.*.models`). Providers with an empty list contribute nothing to `/v1/models`. Reachability probes, when enabled, also target this allowlist rather than the full upstream catalog.
+
 ### Model Reachability / Online Status
 Whether a catalog Model ID currently accepts inference (typically a minimal chat completion). Provider-level health only proves the upstream API is up; it does not prove each listed model is callable. Probing is especially relevant for providers like NVIDIA NIM whose catalog mixes free hosted endpoints with unreachable or retired ones.
 
 ### Static Model List
-A manually configured list of Model IDs advertised for a provider when the provider does not support a dynamic model catalog query (e.g., generic OpenAI-compatible endpoints or some local providers).
+A manually configured list of Model IDs for a provider. Used as (1) the fallback advertised list when the provider cannot list models dynamically, and (2) the Curated Model List when curated-only mode is enabled (e.g. to shrink NVIDIA NIM's large mixed catalog).
 
 ### Resolved Route
 The concrete result of routing: a chosen provider plus the effective Provider Model ID to send upstream.

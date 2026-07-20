@@ -55,6 +55,12 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 | `NOVEXA_RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE` | Global requests per minute | `1000` |
 | `NOVEXA_RATE_LIMIT_PER_PROVIDER_REQUESTS_PER_MINUTE` | Per-provider requests per minute | `100` |
 
+### Catalog
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NOVEXA_CATALOG_CURATED_ONLY` | Advertise only `providers.*.models` (skip dynamic ListModels) | `false` |
+
 ### Health Monitoring
 
 | Variable | Description | Default |
@@ -149,6 +155,10 @@ providers:
     models:
       - "loaded-model-name"
 
+# Catalog: curated_only advertises only providers.*.models (skip dynamic catalogs)
+catalog:
+  curated_only: false
+
 # Model routing
 routes:
   "gpt-4o":
@@ -236,6 +246,35 @@ health:
 usage:
   enabled: true
 ```
+
+### Curated catalog
+
+By default `/v1/models` merges each provider's dynamic `ListModels` result (falling back to `providers.*.models` when listing fails). To advertise only an allowlist — especially useful for NVIDIA NIM's large mixed catalog — set:
+
+```yaml
+catalog:
+  curated_only: true
+
+providers:
+  nvidia_nim:
+    enabled: true
+    api_key: "${NVIDIA_NIM_API_KEY}"
+    models:
+      - "deepseek-ai/deepseek-v4-flash"
+      - "meta/llama-3.1-8b-instruct"
+  openai:
+    enabled: true
+    api_key: "${OPENAI_API_KEY}"
+    models:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `curated_only` | Advertise only `providers.*.models`; ignore dynamic ListModels for catalog and probes | `false` |
+
+Providers with an empty `models` list contribute nothing while curated-only is on. Prefixed IDs in `/v1/models` still work for chat (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`). Curated-only does not block chat for Model IDs outside the list if the client already knows them and routing succeeds.
 
 ### Model reachability
 

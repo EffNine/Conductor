@@ -91,12 +91,17 @@ providers:
     max_retries: 3
 
   # NVIDIA NIM (hosted or self-hosted OpenAI-compatible)
+  # With catalog.curated_only: true, only these Model IDs are advertised —
+  # useful because NIM's /models catalog is large and mixes unreachable endpoints.
   nvidia_nim:
     enabled: false
     api_key: "${NVIDIA_NIM_API_KEY}"
     base_url: "https://integrate.api.nvidia.com/v1"
     timeout: 60s
     max_retries: 3
+    models:
+      - "deepseek-ai/deepseek-v4-flash"
+      - "meta/llama-3.1-8b-instruct"
 
   # Nous Portal subscription gateway
   nous_portal:
@@ -105,6 +110,14 @@ providers:
     base_url: "https://inference-api.nousresearch.com/v1"
     timeout: 60s
     max_retries: 3
+
+# Catalog advertisement
+# curated_only: when true, /v1/models (and model probes) only use the Static
+# Model List under each provider's `models` field — dynamic ListModels catalogs
+# (e.g. the full NVIDIA NIM listing) are ignored. Providers with an empty
+# `models` list contribute nothing. Default false.
+catalog:
+  curated_only: false
 
 # Model routing (required unless you only use provider-prefixed IDs from /v1/models)
 # model_id: optional override of the upstream model slug sent to the provider

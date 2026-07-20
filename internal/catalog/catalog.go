@@ -26,10 +26,11 @@ type StaticModels map[string][]string
 
 // Catalog merges model lists from registered providers.
 type Catalog struct {
-	registry *provider.Registry
-	static   StaticModels
-	filter   ReachabilityFilter
-	hide     bool
+	registry    *provider.Registry
+	static      StaticModels
+	filter      ReachabilityFilter
+	hide        bool
+	curatedOnly bool
 }
 
 // New creates a Catalog. static may be nil.
@@ -38,6 +39,12 @@ func New(registry *provider.Registry, static StaticModels) *Catalog {
 		static = StaticModels{}
 	}
 	return &Catalog{registry: registry, static: static}
+}
+
+// SetCuratedOnly toggles curated-only mode. When true, List/ListAll advertise
+// only Model IDs from the configured Static Model List (providers.*.models).
+func (c *Catalog) SetCuratedOnly(enabled bool) {
+	c.curatedOnly = enabled
 }
 
 // SetReachabilityFilter configures optional auto-hide of unreachable models.
@@ -75,6 +82,7 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 // List returns the merged Model Catalog from all providers.
 // Every Model ID is provider-prefixed (e.g. nvidia_nim/deepseek-ai/deepseek-v4-flash)
 // so clients can send the listed ID directly to /v1/chat/completions.
+// When curated_only is enabled, only Static Model List entries are advertised.
 // When a reachability filter is configured with hide enabled, unreachable models
 // are omitted.
 func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
@@ -96,19 +104,19 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 
 // ListAll returns the full merged catalog without reachability filtering.
 // Used by the model prober so it can still check models that are currently hidden.
+// When curated_only is enabled, this still returns only the curated Static Model List
+// so probes target the operator's allowlist rather than the full upstream catalog.
 func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
+	if c.curatedOnly {
+		return c.listCurated(), nil
+	}
+
 	var entries []Entry
 
 	for _, p := range c.registry.All() {
 		models, err := p.ListModels(ctx)
 		if err != nil {
-			for _, id := range c.static[p.Name()] {
-				entries = append(entries, Entry{
-					ModelID:         p.Name() + "/" + id,
-					Provider:        p.Name(),
-					ProviderModelID: id,
-				})
-			}
+			entries = append(entries, c.staticEntries(p.Name())...)
 			continue
 		}
 		for _, m := range models {
@@ -125,12 +133,42 @@ func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
 		}
 	}
 
+	sortEntries(entries)
+	return entries, nil
+}
+
+// listCurated builds the catalog exclusively from providers.*.models.
+// Providers with an empty models list contribute nothing.
+func (c *Catalog) listCurated() []Entry {
+	var entries []Entry
+	for _, p := range c.registry.All() {
+		entries = append(entries, c.staticEntries(p.Name())...)
+	}
+	sortEntries(entries)
+	return entries
+}
+
+func (c *Catalog) staticEntries(providerName string) []Entry {
+	ids := c.static[providerName]
+	if len(ids) == 0 {
+		return nil
+	}
+	entries := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, Entry{
+			ModelID:         providerName + "/" + id,
+			Provider:        providerName,
+			ProviderModelID: id,
+		})
+	}
+	return entries
+}
+
+func sortEntries(entries []Entry) {
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].ModelID != entries[j].ModelID {
 			return entries[i].ModelID < entries[j].ModelID
 		}
 		return entries[i].Provider < entries[j].Provider
 	})
-
-	return entries, nil
 }

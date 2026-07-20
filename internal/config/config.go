@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -13,6 +14,7 @@ type Config struct {
 	Server    ServerConfig                `mapstructure:"server"`
 	APIKey    string                      `mapstructure:"api_key"`
 	Providers ProvidersConfig             `mapstructure:"providers"`
+	Catalog   CatalogConfig               `mapstructure:"catalog"`
 	Routes    map[string]RouteConfig      `mapstructure:"routes"`
 	Aliases   map[string]string           `mapstructure:"aliases"`
 	Fallbacks map[string][]FallbackConfig `mapstructure:"fallbacks"`
@@ -23,6 +25,14 @@ type Config struct {
 	Health    HealthConfig                `mapstructure:"health"`
 	Usage     UsageConfig                 `mapstructure:"usage"`
 	Cost      CostConfig                  `mapstructure:"cost"`
+}
+
+// CatalogConfig controls how the merged Model Catalog is built for /v1/models.
+type CatalogConfig struct {
+	// CuratedOnly, when true, advertises only Model IDs listed under each
+	// provider's `models` (Static Model List). Dynamic ListModels results are
+	// ignored for catalog advertisement and reachability probing. Default false.
+	CuratedOnly bool `mapstructure:"curated_only"`
 }
 
 // ServerConfig holds server configuration
@@ -195,6 +205,7 @@ func Load() (*Config, error) {
 	// Environment variables
 	v.AutomaticEnv()
 	v.SetEnvPrefix("NOVEXA")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {
@@ -312,6 +323,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rate_limit.enabled", true)
 	v.SetDefault("rate_limit.global.requests_per_minute", 1000)
 	v.SetDefault("rate_limit.per_provider.requests_per_minute", 100)
+
+	// Catalog defaults
+	v.SetDefault("catalog.curated_only", false)
 
 	// Health defaults
 	v.SetDefault("health.check_interval", 60*time.Second)
