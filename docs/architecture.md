@@ -63,7 +63,8 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 
 - Provider-level `HealthCheck` only proves the upstream API is up, not that each listed model accepts inference
 - Especially important for **NVIDIA NIM**: `/models` lists free and unreachable endpoints with no availability flag
-- Optional background prober sends `max_tokens: 1` chat completions for configured providers (default: `nvidia_nim`)
+- Optional background prober sends minimal chat completions for all registered providers by default (limit with `health.models.providers`)
+- Full probe pass on every startup/redeploy, then every `12h` by default
 - Results are cached and also updated from live chat traffic; rate limits / auth errors are ignored
 - Dashboard: `/api/models`, `/api/models/status`
 

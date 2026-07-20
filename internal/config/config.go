@@ -149,20 +149,21 @@ type ModelHealthConfig struct {
 	// HideUnreachable removes models that fail the unhealthy threshold from
 	// /v1/models and /api/models. Default true.
 	HideUnreachable bool `mapstructure:"hide_unreachable"`
-	// CheckInterval between full probe passes. Default 24h.
+	// CheckInterval between full probe passes. Default 12h.
 	CheckInterval time.Duration `mapstructure:"check_interval"`
 	// Timeout per individual model probe. Default 15s.
 	Timeout time.Duration `mapstructure:"timeout"`
 	// Concurrency is max parallel probes. Default 3 (stay under NIM free-tier RPM).
 	Concurrency int `mapstructure:"concurrency"`
 	// UnhealthyThreshold consecutive failures before a model is considered
-	// unreachable. Default 2. Uses health.unhealthy_threshold when unset (0).
+	// unreachable. Default 1 so a single definitive probe failure hides the
+	// model from /v1/models. Uses health.unhealthy_threshold when unset (0).
 	UnhealthyThreshold int `mapstructure:"unhealthy_threshold"`
-	// Providers limits probing to these provider names. Default ["nvidia_nim"].
-	// Empty list means all registered providers.
+	// Providers limits probing to these provider names.
+	// Empty list (default) means all registered providers.
 	Providers []string `mapstructure:"providers"`
-	// UnknownAsReachable keeps unprobed models visible. Default true so
-	// /v1/models is not empty at startup before the first probe finishes.
+	// UnknownAsReachable keeps never-probed models visible in /v1/models.
+	// Default false: only models that have passed a probe are advertised.
 	UnknownAsReachable bool `mapstructure:"unknown_as_reachable"`
 }
 
@@ -333,12 +334,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.unhealthy_threshold", 3)
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
-	v.SetDefault("health.models.check_interval", 24*time.Hour)
+	v.SetDefault("health.models.check_interval", 12*time.Hour)
 	v.SetDefault("health.models.timeout", 30*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
-	v.SetDefault("health.models.unhealthy_threshold", 2)
-	v.SetDefault("health.models.providers", []string{"nvidia_nim"})
-	v.SetDefault("health.models.unknown_as_reachable", true)
+	v.SetDefault("health.models.unhealthy_threshold", 1)
+	// Empty providers list = probe all registered providers on startup and each interval.
+	v.SetDefault("health.models.providers", []string{})
+	v.SetDefault("health.models.unknown_as_reachable", false)
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)

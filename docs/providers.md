@@ -170,10 +170,12 @@ Novexa probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) a
 
 ### Defaults
 
-- Enabled for **`nvidia_nim` only** (other providers are not probed unless you add them)
-- `hide_unreachable: true` — omit dead models from `/v1/models`
-- `unknown_as_reachable: true` — keep unprobed models visible until the first probe finishes
-- Interval `24h` (once per day), concurrency `3` (stay under NIM free-tier rate limits)
+- Enabled for **all registered providers** (set `health.models.providers` to limit scope)
+- `hide_unreachable: true` — omit models that did not pass probes from `/v1/models`
+- `unhealthy_threshold: 1` — hide after a single definitive probe failure
+- `unknown_as_reachable: false` — hide never-probed models until they pass
+- Full pass on every **startup/redeploy**, then every `12h`
+- Concurrency `3` (stay under NIM free-tier rate limits)
 
 ### Configuration
 
@@ -182,16 +184,22 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 24h
+    check_interval: 12h
     timeout: 15s
     concurrency: 3
-    unhealthy_threshold: 2
-    providers:
-      - nvidia_nim
-    unknown_as_reachable: true
+    unhealthy_threshold: 1
+    providers: []   # empty = all providers
+    unknown_as_reachable: false
 ```
 
-Disable entirely with `health.models.enabled: false`. Probe additional providers by adding names to `providers` (empty list = all registered providers).
+Disable entirely with `health.models.enabled: false`. To probe only NIM:
+
+```yaml
+health:
+  models:
+    providers:
+      - nvidia_nim
+```
 
 ### Inspect status
 

@@ -225,7 +225,7 @@ Returns the merged model catalog from all configured providers, including reacha
 }
 ```
 
-Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe.
+Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `false`) and omit latency/error until the first probe. With the default, `/v1/models` only lists models that have passed a probe.
 
 ---
 
@@ -269,22 +269,23 @@ Returns the cached per-model reachability probe results only (models that have b
 
 NVIDIA NIM (and similar catalogs) often list models that are not currently callable — retired free endpoints, capacity-limited models, or non-chat entries. There is no reliable “available” flag on `GET /models`.
 
-Novexa optionally probes configured providers with a minimal chat completion (`max_tokens: 1`) and:
+Novexa optionally probes registered providers with a minimal chat completion and:
 
-1. Caches online/offline status (also updated from live chat successes/failures)
-2. Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true
-3. Exposes status on `GET /api/models` and `GET /api/models/status`
+1. Runs a full pass on every startup/redeploy, then again every `check_interval`
+2. Caches online/offline status (also updated from live chat successes/failures)
+3. Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true
+4. Exposes status on `GET /api/models` and `GET /api/models/status`
 
 **Defaults** (see [Configuration](configuration.md#model-reachability)):
 
 | Setting | Default |
 |---------|---------|
 | Enabled | `true` |
-| Providers probed | `nvidia_nim` only |
+| Providers probed | all registered (`providers: []`) |
 | Hide unreachable from `/v1/models` | `true` |
-| Check interval | `24h` |
-| Unhealthy threshold | `2` consecutive failures |
-| Unprobed models visible | `true` (`unknown_as_reachable`) |
+| Check interval | `12h` (plus startup/redeploy pass) |
+| Unhealthy threshold | `1` consecutive failure (hide immediately) |
+| Unprobed models visible | `false` (`unknown_as_reachable`) |
 
 Rate limits (`429`) and auth errors (`401`/`403`) do **not** mark a model offline.
 
