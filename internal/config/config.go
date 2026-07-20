@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -152,8 +153,8 @@ type ModelHealthConfig struct {
 	// Providers limits probing to these provider names.
 	// Empty list (default) means all registered providers.
 	Providers []string `mapstructure:"providers"`
-	// UnknownAsReachable keeps unprobed models visible. Default true so
-	// /v1/models is not empty at startup before the first probe finishes.
+	// UnknownAsReachable keeps never-probed models visible in /v1/models.
+	// Default false: only models that have passed a probe are advertised.
 	UnknownAsReachable bool `mapstructure:"unknown_as_reachable"`
 }
 
@@ -196,6 +197,7 @@ func Load() (*Config, error) {
 	// Environment variables
 	v.AutomaticEnv()
 	v.SetEnvPrefix("NOVEXA")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file (optional)
 	if err := v.ReadInConfig(); err != nil {
@@ -326,7 +328,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.unhealthy_threshold", 1)
 	// Empty providers list = probe all registered providers on startup and each interval.
 	v.SetDefault("health.models.providers", []string{})
-	v.SetDefault("health.models.unknown_as_reachable", true)
+	v.SetDefault("health.models.unknown_as_reachable", false)
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)

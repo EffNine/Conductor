@@ -68,7 +68,7 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 | `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `15s` |
 | `NOVEXA_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
 | `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
-| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible | `true` |
+| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible | `false` |
 
 ## YAML Configuration File
 
@@ -229,7 +229,7 @@ health:
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
-    unknown_as_reachable: true
+    unknown_as_reachable: false
 
 # Usage tracking
 usage:
@@ -242,20 +242,20 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 
 - Runs a full probe pass on every startup/redeploy, then again every `check_interval`
 - Caches online/offline status (also updated from live chat failures)
-- Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true (default). A single definitive probe failure is enough to hide (`unhealthy_threshold: 1`)
+- Hides models from `GET /v1/models` unless they have **passed** a probe (`hide_unreachable: true`, `unknown_as_reachable: false`). Failed and not-yet-probed models are omitted
 - Exposes status on `GET /api/models` and `GET /api/models/status`
 - Use `GET /api/models?include_unreachable=true` to list hidden models with their status
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | `enabled` | Run background per-model probes | `true` |
-| `hide_unreachable` | Omit unreachable models from `/v1/models` and default `/api/models` | `true` |
+| `hide_unreachable` | Omit unreachable / unpassed models from `/v1/models` and default `/api/models` | `true` |
 | `check_interval` | Time between full probe passes (after the startup pass) | `12h` |
 | `timeout` | Timeout per individual model probe | `15s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
 | `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
 | `providers` | Provider names to probe; empty = all registered | `[]` (all) |
-| `unknown_as_reachable` | Treat never-probed models as reachable (keeps catalog non-empty at startup) | `true` |
+| `unknown_as_reachable` | If false, never-probed models are hidden until they pass | `false` |
 
 **Classification rules:**
 

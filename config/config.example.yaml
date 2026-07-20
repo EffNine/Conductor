@@ -191,8 +191,8 @@ health:
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
-    # Keep unprobed models visible until the first probe finishes.
-    unknown_as_reachable: true
+    # false = only advertise models that passed a probe (hide unprobed + failed)
+    unknown_as_reachable: false
 
 # Usage tracking
 usage:

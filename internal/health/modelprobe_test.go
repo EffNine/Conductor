@@ -19,6 +19,71 @@ import (
 	"go.uber.org/zap"
 )
 
+func TestModelProberOnlyAdvertisesPassedWhenUnknownHidden(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data: []apitypes.ModelInfo{
+					{ID: "good", Object: "model"},
+					{ID: "bad", Object: "model"},
+					{ID: "pending", Object: "model"}, // will not be probed if we only probe subset — actually ProbeAll probes all
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+			var req apitypes.ChatCompletionRequest
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			switch req.Model {
+			case "bad":
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"error":{"message":"model not found"}}`))
+			case "pending":
+				// simulate inconclusive timeout-ish: 503
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"error":{"message":"overloaded"}}`))
+			default:
+				_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+					ID:      "ok",
+					Object:  "chat.completion",
+					Choices: []apitypes.Choice{{Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "pong"}}},
+				})
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("openai", srv.URL+"/v1"))
+	store := health.NewModelStatusStore(1, false) // hide unprobed / failed
+	cat := catalog.New(reg, nil)
+	cat.SetReachabilityFilter(store, true)
+
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            2 * time.Second,
+		Concurrency:        3,
+		UnhealthyThreshold: 1,
+		UnknownAsReachable: false,
+	})
+	prober.ProbeAll()
+
+	entries, err := cat.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := make([]string, len(entries))
+	for i, e := range entries {
+		ids[i] = e.ModelID
+	}
+	if len(ids) != 1 || ids[0] != "openai/good" {
+		t.Fatalf("advertised=%v, want only openai/good (bad failed, pending inconclusive/unrecorded)", ids)
+	}
+}
+
 func TestModelProberHidesNonTransientProbeFailuresFromCatalog(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

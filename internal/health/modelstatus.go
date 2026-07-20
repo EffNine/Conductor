@@ -87,7 +87,9 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 }
 
 // ShouldAdvertise returns true if the model should appear in /v1/models when
-// hideUnreachable is enabled.
+// hideUnreachable is enabled. With unknownAsReachable=false (default), only
+// models that have passed a probe (Reachable=true) are advertised — unprobed
+// and failed models are omitted.
 func (s *ModelStatusStore) ShouldAdvertise(modelID string) bool {
 	reachable, known := s.IsReachable(modelID)
 	if !known {

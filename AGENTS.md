@@ -35,8 +35,9 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
 - **Model reachability probes (esp. NVIDIA NIM).** `/models` catalogs can list free and
   unreachable endpoints with no availability flag. By default the gateway probes **all**
   registered providers with a minimal chat completion on every startup/redeploy, then every
-  `12h`, and hides failures from `/v1/models` after a single definitive probe failure
-  (`hide_unreachable: true`, `unhealthy_threshold: 1`). Status: `GET /api/models`,
+  `12h`, and only advertises models that **passed** a probe (`hide_unreachable: true`,
+  `unhealthy_threshold: 1`, `unknown_as_reachable: false`). Failed and not-yet-probed
+  models are omitted from `/v1/models`. Status: `GET /api/models`,
   `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config under
   `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
