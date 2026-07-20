@@ -72,6 +72,13 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 - Tests cover `/api/usage` aggregation, `/api/logs`, `/api/models`, and API-key rejection.
 - `go test ./...` and `go build ./...` pass.
 
+### Model online status / auto-hide — COMPLETE
+- Background probes (`health.models`, default providers: `nvidia_nim`) send minimal chat completions to detect unreachable catalog entries.
+- Unreachable models are omitted from `GET /v1/models` when `hide_unreachable` is true.
+- Dashboard: `GET /api/models` (reachability fields), `GET /api/models/status`, `?include_unreachable=true`.
+- Live chat outcomes also update the reachability cache; 429/401/403 are neutral.
+- Documented in `docs/api.md`, `docs/providers.md`, `docs/configuration.md`, `docs/architecture.md`, `docs/quickstart.md`, README, CONTEXT, AGENTS.
+
 ### Slice 6: Documentation reconciliation — COMPLETE
 - Audited README and docs to match implemented capabilities.
 - Provider status table now distinguishes implemented vs stub providers.
