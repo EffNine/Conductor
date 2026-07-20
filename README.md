@@ -11,87 +11,95 @@
 docker run -d -p 8080:8080 \
   -e NOVEXA_API_KEY=my-key \
   -e OPENAI_API_KEY=sk-... \
-  ghcr.io/effnine/novexa-gateway:latest
+  -v novexa-data:/app/data \
+  novexa/gateway:latest
 ```
 
 ## Features
 
-- **Single API Key** — Connect OpenAI-compatible clients (VS Code, Claude Code, Continue, Aider, Open WebUI, custom apps) to one endpoint with one key
-- **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so it routes when selected
-
-- **Explicit Model Routing** — Map Model IDs to providers and optional upstream Provider Model IDs; aliases for operator convenience
+- **Single API Key** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, custom apps) at one endpoint with one key
+- **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so the listed ID routes when selected
+- **Explicit Model Routing** — Optional `routes` and `aliases` for bare Model IDs; provider-prefixed catalog IDs need no route entry
 - **Fallback Chains** — Try backup providers when the primary fails
-- **Provider-Prefix Routing** — Use `provider/model-id` in clients; gateway strips the prefix before route lookup
-- **Usage Tracking** — Per-request records with token counters, extra counters for non-token providers, latency, and cost source
-- **Cost Estimation** — Cost resolved via provider per-request cost → `GetPricing` → manual `cost.rates` → unknown (USD only)
-- **Dashboard API** — `/api/models`, `/api/usage`, `/api/health`, `/api/logs`, all protected by the gateway API key
-- **Docker Ready** — Single container with SQLite
-- **Free Cloud Deploy** — Fly.io one-shot: `./scripts/fly-deploy.sh` (also Railway / Render)
+- **Usage & Cost Tracking** — Per-request records with tokens, latency, and USD cost (provider per-request → `GetPricing` → manual `cost.rates` → unknown)
+- **Dashboard API** — Models, usage, costs, health, providers, and logs behind the same gateway key
+- **Docker & Fly.io** — Single container with SQLite; one-shot deploy via `./scripts/fly-deploy.sh`
 
 ## Quick Start
 
 ### Prerequisites
 
-- Docker installed
-- At least one AI provider API key
+- Docker, **or** Go 1.21+, `gcc`, and CGO enabled (SQLite via `mattn/go-sqlite3`)
+- At least one upstream provider API key
 
-### Run the Gateway
+### Run with Docker
 
 ```bash
-# Create a .env file
 cat > .env << EOF
 NOVEXA_API_KEY=your-secret-gateway-key
 OPENAI_API_KEY=sk-your-openai-key
 EOF
 
-# Run with Docker
 docker run -d \
   --name novexa-gateway \
   -p 8080:8080 \
   --env-file .env \
   -v novexa-data:/app/data \
-  ghcr.io/effnine/novexa-gateway:latest
+  novexa/gateway:latest
 ```
 
 ### Test It
 
+Catalog IDs are always provider-prefixed. Use the ID returned by `/v1/models`:
+
 ```bash
+# List models
+curl http://localhost:8080/v1/models \
+  -H "Authorization: Bearer your-secret-gateway-key"
+
+# Chat (no config.yaml routes required for prefixed IDs)
 curl http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer your-secret-gateway-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-4o",
+    "model": "openai/gpt-4o",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 ```
+
+Bare IDs like `gpt-4o` only work if you add a matching `routes` entry (or alias) in `config.yaml`.
 
 ## Configuration
 
 ### Minimal Setup
 
-Provider API keys and the gateway key are required. Everything else has defaults.
+Only `NOVEXA_API_KEY` is required to boot. Setting a provider env var auto-enables that provider (no `config.yaml` needed):
 
 ```bash
 export NOVEXA_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
+# Also supported: ANTHROPIC_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY,
+# OPENROUTER_API_KEY, GROQ_API_KEY, OPENCODE_API_KEY, NVIDIA_NIM_API_KEY,
+# NOUS_PORTAL_API_KEY
 ```
+
+Ollama and LM Studio are enabled via `config.yaml` (`enabled` / `base_url`), not env auto-enable.
 
 ### Advanced Configuration
 
-Create a `config.yaml` for routes, aliases, fallbacks, static model lists, and cost rates:
+Copy [`config/config.example.yaml`](config/config.example.yaml) to `config.yaml` (searched in `.`, `./config`, `/etc/novexa`) for routes, aliases, fallbacks, static model lists, and cost rates:
 
 ```yaml
 routes:
   "gpt-4o":
     provider: openai
-  "claude-sonnet-4-20250514":
+  "claude-sonnet":
     provider: anthropic
     model_id: "claude-3-5-sonnet-20241022"
 
 aliases:
   "fast": "gpt-4o-mini"
   "smart": "gpt-4o"
-  "coding": "deepseek-chat"
 
 fallbacks:
   "deepseek-chat":
@@ -109,6 +117,8 @@ cost:
       output_usd: 0.010
 ```
 
+**Routing tip:** Prefer provider-prefixed Model IDs from `/v1/models` for upstream slugs that contain dots (e.g. `meta/llama-3.1-8b-instruct`). Viper’s `.` key delimiter can silently break route keys that contain a dot.
+
 See [Configuration Reference](docs/configuration.md) for full details.
 
 ## Architecture
@@ -117,16 +127,97 @@ See [Configuration Reference](docs/configuration.md) for full details.
 Client → API Key Check → Rate Limit → Validate → Route → Provider Adapter → Normalize → Response
 ```
 
-The gateway is a Go/Fiber middleware pipeline. Stages are independent and testable.
-
-- **Auth**: Single gateway API key via `NOVEXA_API_KEY`
-- **Rate Limiter**: Global and per-provider limits
-- **Router**: Model→provider mapping with alias resolution, provider prefix stripping, and fallback chains
-- **Provider Adapters**: Common `Provider` interface
-- **Catalog**: Merges provider model lists with prefix deduplication and static fallback
-- **Usage Tracker**: Persists usage and estimated cost to SQLite
+- **Auth** — Single gateway API key via `NOVEXA_API_KEY`
+- **Rate Limiter** — Global and per-provider limits
+- **Router** — Alias → route → provider-prefix dispatch → fallbacks
+- **Provider Adapters** — Common `Provider` interface
+- **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback
+- **Usage Tracker** — Persists usage and estimated cost to SQLite
 
 See [Architecture](docs/architecture.md) for details.
+
+## Supported Providers
+
+| Provider | Chat | Embeddings | Streaming | List Models | Pricing |
+|----------|------|------------|-----------|-------------|---------|
+| OpenAI | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| Anthropic | ✅ | ❌ | ✅ | ✅ (static) | ✅ (static map) |
+| Gemini | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| DeepSeek | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| OpenRouter | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| Groq | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
+| Nous Portal | ✅ | ✅ | ✅ | ✅ | ✅ (empty map; use `cost.rates`) |
+| Ollama | ✅ | ✅ | ✅ | ✅ | — (use `cost.rates`) |
+| LM Studio | ✅ | ✅ | ✅ | ✅ | — (use `cost.rates`) |
+
+Gemini, DeepSeek, OpenRouter, Groq, OpenCode, NVIDIA NIM, Nous Portal, Ollama, and LM Studio use the shared OpenAI-compatible adapter. Anthropic uses the Messages API (embeddings are not supported).
+
+## Dashboard API
+
+Authenticated with the same gateway API key (`GET /health` is public):
+
+```bash
+curl http://localhost:8080/api/models \
+  -H "Authorization: Bearer your-key"
+
+curl http://localhost:8080/api/health \
+  -H "Authorization: Bearer your-key"
+
+curl http://localhost:8080/api/providers \
+  -H "Authorization: Bearer your-key"
+
+curl http://localhost:8080/api/usage \
+  -H "Authorization: Bearer your-key"
+
+curl http://localhost:8080/api/usage/costs \
+  -H "Authorization: Bearer your-key"
+
+curl http://localhost:8080/api/logs \
+  -H "Authorization: Bearer your-key"
+```
+
+`GET /api/config` and `PUT /api/config/reload` exist; config JSON is still a stub (`coming soon`). Reload works when a reload callback is wired at startup.
+
+## Deploy
+
+### Fly.io (recommended free deploy)
+
+```bash
+export NOVEXA_API_KEY=your-secret-gateway-key
+export OPENAI_API_KEY=sk-your-openai-key   # or another provider key
+./scripts/fly-deploy.sh
+# or: make fly-deploy
+```
+
+Canonical config is [`fly.toml`](fly.toml) (`primary_region = "sin"`). Match the volume region when creating one:
+
+```bash
+REGION=sin APP_NAME=novexa-gateway-you ./scripts/fly-deploy.sh
+```
+
+Gateway URL: `https://<app-name>.fly.dev` (use `/v1` as the OpenAI base URL). Machines may cold-start when `min_machines_running = 0`.
+
+See [Deployment Guide](docs/deployment.md) for Railway, Render, and other options.
+
+## Development
+
+```bash
+git clone https://github.com/EffNine/novexa-gateway.git
+cd novexa-gateway
+
+# Requires Go 1.21+, gcc, and CGO (do not set CGO_ENABLED=0)
+make build
+make test
+
+export NOVEXA_API_KEY=test-key
+export OPENAI_API_KEY=sk-test
+make run
+# binary: ./bin/novexa-gateway
+```
+
+Useful targets: `make lint`, `make docker-build` (uses context `.`; prefer `docker build -f deployments/Dockerfile -t novexa/gateway:latest .`).
 
 ## Documentation
 
@@ -136,66 +227,6 @@ See [Architecture](docs/architecture.md) for details.
 - [API Reference](docs/api.md)
 - [Deployment Guide](docs/deployment.md)
 - [Contributing](docs/contributing.md)
-
-## Supported Providers
-
-| Provider | Status | Chat | Embeddings | Streaming | List Models | Pricing |
-|----------|--------|------|------------|-----------|-------------|---------|
-| OpenAI | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| OpenCode | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| NVIDIA NIM | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| Nous Portal | Implemented | ✅ | ✅ | ✅ | ✅ | ✅ (empty map) |
-| Anthropic | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Gemini | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| DeepSeek | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| OpenRouter | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Groq | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Ollama | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| LM Studio | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Generic | Stub | ❌ | ❌ | ❌ | ❌ | ❌ |
-
-Stubs are registered when enabled and can be completed by implementing the provider adapter. Routes, aliases, static model lists, and manual cost rates work for all providers even while adapters are stubs.
-
-## Dashboard API
-
-All endpoints use the same gateway API key:
-
-```bash
-# Merged model catalog
-curl http://localhost:8080/api/models \
-  -H "Authorization: Bearer your-key"
-
-# Provider health
-curl http://localhost:8080/api/health \
-  -H "Authorization: Bearer your-key"
-
-# Usage totals and breakdowns
-curl http://localhost:8080/api/usage \
-  -H "Authorization: Bearer your-key"
-
-# Recent request logs
-curl http://localhost:8080/api/logs \
-  -H "Authorization: Bearer your-key"
-```
-
-## Development
-
-```bash
-# Clone
-git clone https://github.com/EffNine/novexa-gateway.git
-cd novexa-gateway
-
-# Build
-make build
-
-# Test
-make test
-
-# Run
-export NOVEXA_API_KEY=test-key
-export OPENAI_API_KEY=sk-test
-./bin/gateway
-```
 
 ## License
 
