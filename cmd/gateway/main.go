@@ -94,11 +94,7 @@ func main() {
 	defer healthMonitor.Stop()
 
 	// Per-model reachability (especially NVIDIA NIM free vs unreachable endpoints)
-	modelThreshold := cfg.Health.Models.UnhealthyThreshold
-	if modelThreshold <= 0 {
-		modelThreshold = cfg.Health.UnhealthyThreshold
-	}
-	modelStatus := health.NewModelStatusStore(modelThreshold, cfg.Health.Models.UnknownAsReachable)
+	modelStatus := health.NewModelStatusStore(cfg.Health.Models.UnhealthyThreshold, cfg.Health.Models.UnknownAsReachable)
 	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
 	modelProber.Start()

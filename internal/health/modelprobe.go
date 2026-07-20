@@ -3,6 +3,7 @@ package health
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,7 +37,7 @@ func NewModelProber(
 	cfg config.ModelHealthConfig,
 ) *ModelProber {
 	if cfg.CheckInterval <= 0 {
-		cfg.CheckInterval = 24 * time.Hour
+		cfg.CheckInterval = 12 * time.Hour
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 15 * time.Second
@@ -64,6 +65,7 @@ func NewModelProber(
 }
 
 // Start begins periodic probing. Safe to call once.
+// Runs an immediate full pass on startup (covers redeploys), then every CheckInterval.
 func (p *ModelProber) Start() {
 	if !p.cfg.Enabled {
 		return
@@ -72,7 +74,20 @@ func (p *ModelProber) Start() {
 	go func() {
 		defer p.wg.Done()
 
-		// Initial pass shortly after startup so /v1/models can settle.
+		scope := "all providers"
+		if len(p.providerFilter) > 0 {
+			names := make([]string, 0, len(p.providerFilter))
+			for name := range p.providerFilter {
+				names = append(names, name)
+			}
+			scope = "providers=" + strings.Join(names, ",")
+		}
+		p.logger.Info("model probe: starting",
+			zap.String("scope", scope),
+			zap.Duration("interval", p.cfg.CheckInterval),
+		)
+
+		// Initial pass on startup/redeploy so /v1/models reflects reachability quickly.
 		p.ProbeAll()
 
 		ticker := time.NewTicker(p.cfg.CheckInterval)
@@ -181,9 +196,10 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 	if IsNeutralProbeFailure(statusCode, msg) || IsInconclusiveProbeFailure(statusCode, msg) {
 		return
 	}
-	if IsUnreachableProbeFailure(statusCode, msg) {
-		p.store.RecordFailure(entry.ModelID, entry.Provider, entry.ProviderModelID, msg, statusCode)
-	}
+	// Controlled probe request: any other failure means the model should not be
+	// advertised (404, gone, invalid model, unexpected 4xx/5xx not classified
+	// as transient). hide_unreachable then omits it from /v1/models.
+	p.store.RecordFailure(entry.ModelID, entry.Provider, entry.ProviderModelID, msg, statusCode)
 }
 
 func (p *ModelProber) shouldProbe(providerName string) bool {
