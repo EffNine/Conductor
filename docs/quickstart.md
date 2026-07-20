@@ -182,7 +182,7 @@ curl http://localhost:8080/api/models \
 
 ### Model Online Status
 
-When NVIDIA NIM (or other probed providers) is enabled, the gateway probes models and can hide unreachable ones from `/v1/models`:
+When NVIDIA NIM (or other probed providers) is enabled, the gateway probes models and can hide unreachable ones from `/v1/models`. Novexa runs an initial probe at startup, then repeats the background pass once per day by default:
 
 ```bash
 # Probe cache
@@ -247,6 +247,7 @@ Only the OpenAI adapter is fully implemented. Other providers are stubs and will
 - For stub providers, configure a static `models` list
 - Aliases do not appear in `/v1/models`
 - For NVIDIA NIM: the model may have failed online-status probes — check `/api/models/status` or `/api/models?include_unreachable=true`
+- Recurring probes run once per day by default; live request failures can still update model status immediately
 
 ### Streaming not working
 

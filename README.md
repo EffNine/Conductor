@@ -19,7 +19,7 @@ docker run -d -p 8080:8080 \
 
 - **Single API Key** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, custom apps) at one endpoint with one key
 - **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so the listed ID routes when selected
-- **Model Online Status** — Optional probes hide unreachable models (especially NVIDIA NIM free endpoints that appear in `/models` but fail inference); status on `/api/models` and `/api/models/status`
+- **Model Online Status** — Optional probes hide unreachable models (especially NVIDIA NIM free endpoints that appear in `/models` but fail inference); the recurring background pass runs once per day by default, with status on `/api/models` and `/api/models/status`
 - **Explicit Model Routing** — Optional `routes` and `aliases` for bare Model IDs; provider-prefixed catalog IDs need no route entry
 - **Fallback Chains** — Try backup providers when the primary fails
 - **Usage & Cost Tracking** — Per-request records with tokens, latency, and USD cost (provider per-request → `GetPricing` → manual `cost.rates` → unknown)
@@ -133,7 +133,7 @@ Client → API Key Check → Rate Limit → Validate → Route → Provider Adap
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks
 - **Provider Adapters** — Common `Provider` interface
 - **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback; optional reachability filter
-- **Model Prober** — Minimal chat probes (default: `nvidia_nim`) to hide unreachable catalog entries
+- **Model Prober** — Minimal chat probes (default: `nvidia_nim`) to hide unreachable catalog entries; recurring probe interval defaults to `24h`
 - **Usage Tracker** — Persists usage and estimated cost to SQLite
 
 See [Architecture](docs/architecture.md) for details.
