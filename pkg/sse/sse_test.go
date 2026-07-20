@@ -16,7 +16,7 @@ func TestNewStreamReaderSkipsCommentOnlyKeepalives(t *testing.T) {
 			"data: [DONE]\n\n",
 	))
 
-	var events []sse.Event
+	events := make([]sse.Event, 0, 2)
 	for ev := range sse.NewStreamReader(body) {
 		events = append(events, ev)
 	}
