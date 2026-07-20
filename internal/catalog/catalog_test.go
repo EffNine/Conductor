@@ -2,6 +2,7 @@ package catalog_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/novexa/gateway/internal/apitypes"
@@ -31,10 +32,32 @@ func TestCatalogListsModelsFromAllProviders(t *testing.T) {
 	}
 
 	ids := modelIDs(entries)
-	assertContains(t, ids, "gpt-4o")
-	assertContains(t, ids, "llama3-8b")
+	assertContains(t, ids, "openai/gpt-4o")
+	assertContains(t, ids, "groq/llama3-8b")
 	if len(entries) != 2 {
 		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
+	}
+}
+
+func TestCatalogAlwaysPrefixesProvider(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "deepseek-ai/deepseek-v4-flash", ModelID: "deepseek-ai/deepseek-v4-flash", OwnedBy: "deepseek-ai"},
+		},
+	})
+
+	c := catalog.New(reg, nil)
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+
+	ids := modelIDs(entries)
+	assertContains(t, ids, "nvidia_nim/deepseek-ai/deepseek-v4-flash")
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1: %v", len(entries), ids)
 	}
 }
 
@@ -83,8 +106,8 @@ func TestCatalogUsesStaticModelsWhenListFails(t *testing.T) {
 	}
 
 	ids := modelIDs(entries)
-	assertContains(t, ids, "llama3")
-	assertContains(t, ids, "mistral")
+	assertContains(t, ids, "ollama/llama3")
+	assertContains(t, ids, "ollama/mistral")
 	if len(entries) != 2 {
 		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
 	}
@@ -92,8 +115,9 @@ func TestCatalogUsesStaticModelsWhenListFails(t *testing.T) {
 		if e.Provider != "ollama" {
 			t.Fatalf("provider = %q, want ollama", e.Provider)
 		}
-		if e.ProviderModelID != e.ModelID {
-			t.Fatalf("ProviderModelID %q != ModelID %q", e.ProviderModelID, e.ModelID)
+		wantBare := strings.TrimPrefix(e.ModelID, "ollama/")
+		if e.ProviderModelID != wantBare {
+			t.Fatalf("ProviderModelID %q != bare %q", e.ProviderModelID, wantBare)
 		}
 	}
 }

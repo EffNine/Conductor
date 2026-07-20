@@ -17,7 +17,8 @@ docker run -d -p 8080:8080 \
 ## Features
 
 - **Single API Key** — Connect OpenAI-compatible clients (VS Code, Claude Code, Continue, Aider, Open WebUI, custom apps) to one endpoint with one key
-- **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers and qualifies duplicate model IDs with provider prefixes
+- **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so it routes when selected
+
 - **Explicit Model Routing** — Map Model IDs to providers and optional upstream Provider Model IDs; aliases for operator convenience
 - **Fallback Chains** — Try backup providers when the primary fails
 - **Provider-Prefix Routing** — Use `provider/model-id` in clients; gateway strips the prefix before route lookup

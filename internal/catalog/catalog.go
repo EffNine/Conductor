@@ -59,6 +59,8 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 }
 
 // List returns the merged Model Catalog from all providers.
+// Every Model ID is provider-prefixed (e.g. nvidia_nim/deepseek-ai/deepseek-v4-flash)
+// so clients can send the listed ID directly to /v1/chat/completions.
 func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	var entries []Entry
 
@@ -67,7 +69,7 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 		if err != nil {
 			for _, id := range c.static[p.Name()] {
 				entries = append(entries, Entry{
-					ModelID:         id,
+					ModelID:         p.Name() + "/" + id,
 					Provider:        p.Name(),
 					ProviderModelID: id,
 				})
@@ -80,15 +82,13 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 				baseID = m.ProviderModelID
 			}
 			entries = append(entries, Entry{
-				ModelID:         baseID,
+				ModelID:         p.Name() + "/" + baseID,
 				Provider:        p.Name(),
 				ProviderModelID: m.ProviderModelID,
 				OwnedBy:         m.OwnedBy,
 			})
 		}
 	}
-
-	qualifyDuplicates(entries)
 
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].ModelID != entries[j].ModelID {
@@ -98,17 +98,4 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	})
 
 	return entries, nil
-}
-
-// qualifyDuplicates prefixes Model IDs that appear under more than one provider.
-func qualifyDuplicates(entries []Entry) {
-	counts := make(map[string]int, len(entries))
-	for _, e := range entries {
-		counts[e.ModelID]++
-	}
-	for i := range entries {
-		if counts[entries[i].ModelID] > 1 {
-			entries[i].ModelID = entries[i].Provider + "/" + entries[i].ModelID
-		}
-	}
 }
