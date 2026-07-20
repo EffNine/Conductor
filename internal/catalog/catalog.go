@@ -100,7 +100,7 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	if c.filter == nil || !c.hide {
 		return entries, nil
 	}
-	// Do not hide anything until the first probe pass finishes.
+	// During the first probe pass, keep the full catalog visible (no flicker).
 	if ready, ok := c.filter.(FilterReadiness); ok && !ready.FilterReady() {
 		return entries, nil
 	}
@@ -109,11 +109,6 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 		if c.filter.ShouldAdvertise(e.ModelID) {
 			filtered = append(filtered, e)
 		}
-	}
-	// Never flash an empty picker when the upstream catalog is non-empty
-	// (e.g. every model still unknown with unknown_as_reachable=false).
-	if len(filtered) == 0 && len(entries) > 0 {
-		return entries, nil
 	}
 	return filtered, nil
 }

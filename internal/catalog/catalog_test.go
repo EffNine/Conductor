@@ -274,8 +274,9 @@ func TestCatalogAvoidsEmptyFlashWhenAllFiltered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("empty filtered list should fall back to full catalog, got %d", len(entries))
+	// After filter ready, available-only mode may legitimately return empty.
+	if len(entries) != 0 {
+		t.Fatalf("after filter ready with all hidden, want empty available list, got %d", len(entries))
 	}
 }
 

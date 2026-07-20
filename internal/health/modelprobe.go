@@ -37,7 +37,7 @@ func NewModelProber(
 	cfg config.ModelHealthConfig,
 ) *ModelProber {
 	if cfg.CheckInterval <= 0 {
-		cfg.CheckInterval = 24 * time.Hour
+		cfg.CheckInterval = 12 * time.Hour
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 15 * time.Second
@@ -132,11 +132,13 @@ func (p *ModelProber) ProbeAll() {
 
 	sem := make(chan struct{}, p.cfg.Concurrency)
 	var wg sync.WaitGroup
+	probed := 0
 
 	for _, e := range entries {
 		if !p.shouldProbe(e.Provider) {
 			continue
 		}
+		probed++
 		entry := e
 		wg.Add(1)
 		sem <- struct{}{}
@@ -148,7 +150,7 @@ func (p *ModelProber) ProbeAll() {
 	}
 	wg.Wait()
 	p.store.MarkFilterReady()
-	p.logger.Info("model probe: pass complete", zap.Int("probed", len(entries)))
+	p.logger.Info("model probe: pass complete", zap.Int("probed", probed), zap.Int("catalog", len(entries)))
 }
 
 // ProbeModel sends a minimal chat completion to test reachability.

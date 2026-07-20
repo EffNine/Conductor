@@ -225,7 +225,7 @@ Returns the merged model catalog from all configured providers, including reacha
 }
 ```
 
-Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe. Unprobed models stay visible; definitive failures are hidden when `hide_unreachable` is on.
+Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe. Full catalog stays visible until the first probe pass finishes; then only probe-passed models are listed.
 
 ---
 
@@ -281,11 +281,11 @@ Novexa optionally probes registered providers with a minimal chat completion and
 | Setting | Default |
 |---------|---------|
 | Enabled | `true` |
-| Providers probed | `nvidia_nim` only |
+| Providers probed | all registered (`providers: []`) |
 | Hide unreachable from `/v1/models` | `true` |
-| Check interval | `24h` (plus startup/redeploy pass) |
-| Unhealthy threshold | `2` consecutive failures |
-| Unprobed models visible | `true` (`unknown_as_reachable`) |
+| Check interval | `12h` (plus startup/redeploy pass) |
+| Unhealthy threshold | `1` consecutive failure |
+| Unprobed models visible after first pass | `false` (available-only) |
 
 Rate limits (`429`) and auth errors (`401`/`403`) do **not** mark a model offline.
 
