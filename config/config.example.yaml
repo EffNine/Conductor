@@ -64,7 +64,10 @@ providers:
 
   ollama:
     enabled: false
-    base_url: "http://localhost:11434"
+    # Local OpenAI-compatible API (default). For Ollama Cloud, set OLLAMA_API_KEY
+    # (auto-enables and points at https://ollama.com/v1) or set base_url explicitly.
+    api_key: "${OLLAMA_API_KEY}"
+    base_url: "http://localhost:11434/v1"
     timeout: 120s
     max_retries: 1
     # Static Model List used when the provider cannot list models dynamically
