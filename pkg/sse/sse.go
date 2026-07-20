@@ -128,8 +128,11 @@ func NewStreamReader(r io.ReadCloser) <-chan Event {
 			line := scanner.Text()
 
 			if line == "" {
-				// Empty line = end of event
-				ch <- currentEvent
+				// Empty line = end of event. Skip comment-only / keepalive
+				// events that have no data (e.g. ": OPENROUTER PROCESSING").
+				if currentEvent.Data != "" || currentEvent.Event != "" || currentEvent.ID != "" {
+					ch <- currentEvent
+				}
 				currentEvent = Event{}
 				continue
 			}

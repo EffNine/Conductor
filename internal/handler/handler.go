@@ -164,6 +164,9 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	start := time.Now()
 	requestID := uuid.New().String()
 
+	// Ask upstreams for a final usage chunk (many omit it unless requested).
+	req.EnsureStreamUsage()
+
 	// Set SSE headers
 	c.Set("Content-Type", "text/event-stream")
 	c.Set("Cache-Control", "no-cache")
@@ -194,7 +197,16 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 // streamResponse writes streaming chunks to the response
 func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, requestID, modelID, providerModelID, providerName string, start time.Time) error {
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		var totalPromptTokens, totalCompletionTokens int
+		var usageData *apitypes.Usage
+		var sawContent bool
+		var reasoningBuf string
+		var lastMeta apitypes.StreamChunk
+
+		writeChunk := func(chunk apitypes.StreamChunk) {
+			data, _ := json.Marshal(chunk)
+			_, _ = w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
+			_ = w.Flush()
+		}
 
 		for chunk := range ch {
 			if chunk.Error != nil {
@@ -206,30 +218,55 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 			}
 
 			if chunk.Done {
+				// Reasoning-only streams (e.g. big-pickle) never set content.
+				// Emit one synthetic content chunk so chat apps show a reply.
+				if !sawContent && reasoningBuf != "" {
+					synth := apitypes.StreamChunk{
+						ID:      lastMeta.ID,
+						Object:  "chat.completion.chunk",
+						Created: lastMeta.Created,
+						Model:   lastMeta.Model,
+						Choices: []apitypes.Choice{{
+							Index: 0,
+							Delta: &apitypes.Message{
+								Role:    "assistant",
+								Content: reasoningBuf,
+							},
+						}},
+					}
+					writeChunk(synth)
+				}
 				_, _ = w.Write([]byte("data: [DONE]\n\n"))
 				_ = w.Flush()
 				break
 			}
 
-			// Write SSE data
-			data, _ := json.Marshal(chunk)
-			_, _ = w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
-			_ = w.Flush()
+			for _, choice := range chunk.Choices {
+				if choice.Delta == nil {
+					continue
+				}
+				if choice.Delta.Content != "" {
+					sawContent = true
+				}
+				if choice.Delta.Reasoning != "" {
+					reasoningBuf += choice.Delta.Reasoning
+				}
+				if choice.Delta.ReasoningContent != "" {
+					reasoningBuf += choice.Delta.ReasoningContent
+				}
+			}
+			if chunk.ID != "" || chunk.Model != "" {
+				lastMeta = chunk
+			}
 
-			// Track tokens from usage if present
+			writeChunk(chunk)
+
 			if chunk.Usage != nil {
-				totalPromptTokens = chunk.Usage.PromptTokens
-				totalCompletionTokens = chunk.Usage.CompletionTokens
+				usageData = chunk.Usage
 			}
 		}
 
-		// Track usage
-		usage := &apitypes.Usage{
-			PromptTokens:     totalPromptTokens,
-			CompletionTokens: totalCompletionTokens,
-			TotalTokens:      totalPromptTokens + totalCompletionTokens,
-		}
-		h.trackUsage(requestID, modelID, providerModelID, providerName, usage, time.Since(start), fiber.StatusOK, true, nil)
+		h.trackUsage(requestID, modelID, providerModelID, providerName, usageData, time.Since(start), fiber.StatusOK, true, nil)
 	})
 
 	return nil

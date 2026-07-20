@@ -68,11 +68,11 @@ func TestListModelsExcludesAliases(t *testing.T) {
 		if id == "fast" {
 			t.Fatalf("alias %q must not appear in /v1/models: %v", id, ids)
 		}
-		if id == "gpt-4o" {
+		if id == "openai/gpt-4o" {
 			foundGPT = true
 		}
 	}
 	if !foundGPT {
-		t.Fatalf("missing gpt-4o in %v", ids)
+		t.Fatalf("missing openai/gpt-4o in %v", ids)
 	}
 }

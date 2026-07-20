@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/novexa/gateway/internal/apitypes"
@@ -90,6 +91,7 @@ func (b *Base) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionR
 		return nil, provider.NewProviderError(b.name, http.StatusInternalServerError,
 			provider.ErrorTypeServerError, "failed to decode response", err)
 	}
+	apitypes.NormalizeChoices(chatResp.Choices)
 	return &chatResp, nil
 }
 
@@ -97,6 +99,7 @@ func (b *Base) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionR
 func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompletionRequest) (
 	<-chan apitypes.StreamChunk, error) {
 	req.Stream = true
+	req.EnsureStreamUsage()
 
 	body, err := json.Marshal(req)
 	if err != nil {
@@ -127,6 +130,12 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 
 		eventCh := sse.NewStreamReader(resp.Body)
 		for event := range eventCh {
+			// Upstream proxies (e.g. OpenRouter via OpenCode Zen) emit SSE
+			// comments like ": OPENROUTER PROCESSING" which become empty
+			// events. Skip them — unmarshaling "" aborts the whole stream.
+			if strings.TrimSpace(event.Data) == "" {
+				continue
+			}
 			if event.Data == "[DONE]" {
 				ch <- apitypes.StreamChunk{Done: true}
 				return
@@ -136,6 +145,11 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 				ch <- apitypes.StreamChunk{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
 				return
 			}
+			// Do not promote reasoning→content on stream deltas: models like
+			// Nemotron emit reasoning chunks before content, and promoting
+			// would concatenate thinking into the visible reply. Non-stream
+			// responses still normalize; the handler flushes reasoning as
+			// content only if the stream never sent any content.
 			ch <- chunk
 		}
 	}()
