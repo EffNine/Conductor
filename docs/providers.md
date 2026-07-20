@@ -199,12 +199,10 @@ Novexa probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) a
 
 ### Defaults
 
-- Enabled for **`nvidia_nim` only** by default (empty `providers` = all)
-- `hide_unreachable: true` — omit definitive probe failures from `/v1/models`
-- `unhealthy_threshold: 2` — hide after consecutive definitive failures
-- `unknown_as_reachable: true` — keep never-probed models visible during the first pass
-- Full pass on startup/redeploy, then every `24h`
-- Concurrency `3` (stay under NIM free-tier rate limits)
+- Enabled for **all registered providers** by default (`providers: []`)
+- During the first probe pass, `/v1/models` keeps the full catalog (no flicker)
+- After that pass, only models that **passed** are listed (`unknown_as_reachable: false`)
+- `unhealthy_threshold: 1`, interval `12h`, concurrency `3`
 
 ### Configuration
 
@@ -213,13 +211,12 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 24h
+    check_interval: 12h
     timeout: 15s
     concurrency: 3
-    unhealthy_threshold: 2
-    providers:
-      - nvidia_nim
-    unknown_as_reachable: true
+    unhealthy_threshold: 1
+    providers: []
+    unknown_as_reachable: false
 ```
 
 Disable entirely with `health.models.enabled: false`. To probe only NIM:

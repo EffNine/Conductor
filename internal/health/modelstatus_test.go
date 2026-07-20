@@ -7,17 +7,13 @@ import (
 	"github.com/novexa/gateway/internal/health"
 )
 
-func TestModelStatusStoreDefaultThresholdIsTwo(t *testing.T) {
-	store := health.NewModelStatusStore(0, true) // 0 → default threshold 2
+func TestModelStatusStoreDefaultThresholdIsOne(t *testing.T) {
+	store := health.NewModelStatusStore(0, false) // 0 → default threshold 1
 	store.MarkFilterReady()
 
 	store.RecordFailure("nvidia_nim/meta/llama", "nvidia_nim", "meta/llama", "model not found", http.StatusNotFound)
-	if !store.ShouldAdvertise("nvidia_nim/meta/llama") {
-		t.Fatal("should still advertise after 1 failure with default threshold 2")
-	}
-	store.RecordFailure("nvidia_nim/meta/llama", "nvidia_nim", "meta/llama", "model not found", http.StatusNotFound)
 	if store.ShouldAdvertise("nvidia_nim/meta/llama") {
-		t.Fatal("should hide after 2 consecutive failures")
+		t.Fatal("should hide after 1 definitive failure with default threshold 1")
 	}
 }
 
@@ -110,26 +106,30 @@ func TestShouldAdvertiseBeforeFilterReadyKeepsAllVisible(t *testing.T) {
 	}
 }
 
-func TestDefaultKeepsUnprobedAndHidesAfterThreshold(t *testing.T) {
-	// Production defaults: threshold 2, unknown_as_reachable true.
-	store := health.NewModelStatusStore(2, true)
-	store.MarkFilterReady()
-	catIDs := []string{"openai/good", "openai/bad", "openai/pending"}
+func TestDefaultAvailableOnlyAfterFilterReady(t *testing.T) {
+	// Production defaults: threshold 1, unknown_as_reachable false, hide until pass.
+	store := health.NewModelStatusStore(1, false)
 
 	store.RecordSuccess("openai/good", "openai", "good", 5)
 	store.RecordFailure("openai/bad", "openai", "bad", "not found", http.StatusNotFound)
-	store.RecordFailure("openai/bad", "openai", "bad", "not found", http.StatusNotFound)
 	// openai/pending never probed
 
+	// Before first pass completes: full catalog stays visible (no flicker).
+	for _, id := range []string{"openai/good", "openai/bad", "openai/pending"} {
+		if !store.ShouldAdvertise(id) {
+			t.Fatalf("%s should stay visible before filter ready", id)
+		}
+	}
+
+	store.MarkFilterReady()
 	var advertised []string
-	for _, id := range catIDs {
+	for _, id := range []string{"openai/good", "openai/bad", "openai/pending"} {
 		if store.ShouldAdvertise(id) {
 			advertised = append(advertised, id)
 		}
 	}
-	want := map[string]bool{"openai/good": true, "openai/pending": true}
-	if len(advertised) != 2 || !want[advertised[0]] || !want[advertised[1]] {
-		t.Fatalf("advertised=%v, want good+pending", advertised)
+	if len(advertised) != 1 || advertised[0] != "openai/good" {
+		t.Fatalf("after filter ready, advertised=%v, want only openai/good", advertised)
 	}
 }
 
