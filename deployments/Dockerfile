@@ -11,7 +11,8 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-s -w" -o /app/gateway ./cmd/gateway
+RUN CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOOS=linux \
+    go build -ldflags="-s -w" -o /app/gateway ./cmd/gateway
 
 # Runtime stage
 FROM alpine:3.19
