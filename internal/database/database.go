@@ -2,6 +2,8 @@ package database
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/novexa/gateway/internal/config"
@@ -81,6 +83,11 @@ func Connect(cfg *config.DatabaseConfig) (*Database, error) {
 
 	switch cfg.Driver {
 	case "sqlite":
+		if dir := filepath.Dir(cfg.DSN); dir != "" && dir != "." {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return nil, fmt.Errorf("failed to create database directory %q: %w", dir, err)
+			}
+		}
 		dialector = sqlite.Open(cfg.DSN)
 	default:
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
