@@ -104,17 +104,22 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 }
 
 // ShouldAdvertise returns true if the model should appear in /v1/models when
-// hideUnreachable is enabled. Before the first probe pass finishes, all models
-// remain advertised (no empty flicker). After that, only reachable models are
-// advertised when unknownAsReachable is false.
+// hideUnreachable is enabled.
+//
+// Rules:
+//   - Confirmed failures (Reachable=false) are always hidden, including mid-pass
+//     so the list shrinks toward available models without waiting for the full pass.
+//   - Unprobed models stay visible until the first pass finishes (avoids empty
+//     flicker on cold start), then follow unknownAsReachable (default false =
+//     available-only).
 func (s *ModelStatusStore) ShouldAdvertise(modelID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.filterReady {
-		return true
-	}
 	st, ok := s.statuses[modelID]
 	if !ok {
+		if !s.filterReady {
+			return true
+		}
 		return s.unknownAsReachable
 	}
 	return st.Reachable

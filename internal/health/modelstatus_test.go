@@ -93,32 +93,42 @@ func TestUnknownAsReachableFalseHidesUnprobed(t *testing.T) {
 	}
 }
 
-func TestShouldAdvertiseBeforeFilterReadyKeepsAllVisible(t *testing.T) {
+func TestShouldAdvertiseBeforeFilterReadyKeepsUnprobedHidesFailed(t *testing.T) {
 	store := health.NewModelStatusStore(1, false)
 	store.RecordFailure("nvidia_nim/bad", "nvidia_nim", "bad", "model not found", http.StatusNotFound)
-	// filter not ready yet — even failed / unknown_as_reachable=false stay visible
-	if !store.ShouldAdvertise("nvidia_nim/bad") || !store.ShouldAdvertise("nvidia_nim/unseen") {
-		t.Fatal("models must stay visible before first probe pass completes")
+	store.RecordSuccess("nvidia_nim/good", "nvidia_nim", "good", 5)
+
+	// Mid-pass: hide confirmed failures, keep unprobed + passed (no empty flicker).
+	if store.ShouldAdvertise("nvidia_nim/bad") {
+		t.Fatal("confirmed failure must hide even before filter ready")
 	}
+	if !store.ShouldAdvertise("nvidia_nim/good") || !store.ShouldAdvertise("nvidia_nim/unseen") {
+		t.Fatal("passed and unprobed must stay visible before filter ready")
+	}
+
 	store.MarkFilterReady()
 	if store.ShouldAdvertise("nvidia_nim/bad") || store.ShouldAdvertise("nvidia_nim/unseen") {
-		t.Fatal("after filter ready, failed/unprobed should hide with unknown_as_reachable=false")
+		t.Fatal("after filter ready with unknown_as_reachable=false, only passed remain")
+	}
+	if !store.ShouldAdvertise("nvidia_nim/good") {
+		t.Fatal("passed model must remain after filter ready")
 	}
 }
 
 func TestDefaultAvailableOnlyAfterFilterReady(t *testing.T) {
-	// Production defaults: threshold 1, unknown_as_reachable false, hide until pass.
+	// Production defaults: threshold 1, unknown_as_reachable false.
 	store := health.NewModelStatusStore(1, false)
 
 	store.RecordSuccess("openai/good", "openai", "good", 5)
 	store.RecordFailure("openai/bad", "openai", "bad", "not found", http.StatusNotFound)
 	// openai/pending never probed
 
-	// Before first pass completes: full catalog stays visible (no flicker).
-	for _, id := range []string{"openai/good", "openai/bad", "openai/pending"} {
-		if !store.ShouldAdvertise(id) {
-			t.Fatalf("%s should stay visible before filter ready", id)
-		}
+	// Mid-pass: bad hidden, good+pending visible.
+	if store.ShouldAdvertise("openai/bad") {
+		t.Fatal("failed must hide mid-pass")
+	}
+	if !store.ShouldAdvertise("openai/good") || !store.ShouldAdvertise("openai/pending") {
+		t.Fatal("good+pending must stay visible mid-pass")
 	}
 
 	store.MarkFilterReady()

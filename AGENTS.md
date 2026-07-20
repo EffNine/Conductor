@@ -36,12 +36,12 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   router strips and dispatches without needing a matching route entry.
 - **Model reachability probes (esp. NVIDIA NIM).** `/models` catalogs can list free and
   unreachable endpoints with no availability flag. By default the gateway probes **all**
-  registered providers on startup/redeploy (then every `12h`). While the first probe pass
-  runs, `/v1/models` keeps the full catalog visible (no empty flicker). After that pass,
-  only models that **passed** a probe are listed (`unknown_as_reachable: false`,
-  `hide_unreachable: true`, `unhealthy_threshold: 1`). Status: `GET /api/models`,
-  `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config under
-  `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
+  registered providers on startup/redeploy (then every `12h`). Confirmed failures drop out of
+  `/v1/models` as soon as they fail (list shrinks, never flashes empty). Unprobed models stay
+  visible until the first pass finishes, then only models that **passed** remain
+  (`unknown_as_reachable: false`). Status: `GET /api/models`, `GET /api/models/status`,
+  `GET /api/models?include_unreachable=true`. Config under `health.models`
+  (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
 - **Curated models only.** Set `catalog.curated_only: true` (or `NOVEXA_CATALOG_CURATED_ONLY=true`)
   and list Model IDs under each provider's `models:` field. `/v1/models` and reachability probes

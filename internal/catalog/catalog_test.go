@@ -234,6 +234,8 @@ func TestCatalogHidesUnreachableWhenFilterEnabled(t *testing.T) {
 }
 
 func TestCatalogSkipsHideUntilFilterReady(t *testing.T) {
+	// Renamed behavior: filter still applies mid-pass via ShouldAdvertise;
+	// stubFilter without per-status still hides based on hide map even when ready=false.
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{
 		name: "nvidia_nim",
@@ -251,8 +253,12 @@ func TestCatalogSkipsHideUntilFilterReady(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if len(entries) != 2 {
-		t.Fatalf("before filter ready, want full catalog, got %v", modelIDs(entries))
+	ids := modelIDs(entries)
+	assertContains(t, ids, "nvidia_nim/good")
+	for _, id := range ids {
+		if id == "nvidia_nim/bad" {
+			t.Fatalf("confirmed bad should hide mid-pass: %v", ids)
+		}
 	}
 }
 
