@@ -144,13 +144,18 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
-	maxTokens := 1
+	// Lightweight reachability check: enough tokens for a one-word reply,
+	// thinking_budget 0 so reasoning models (Seed-OSS, Nemotron) answer directly
+	// without a long thinking phase or empty content from max_tokens: 1.
+	maxTokens := 16
+	thinkingBudget := 0
 	req := &apitypes.ChatCompletionRequest{
 		Model: entry.ProviderModelID,
 		Messages: []apitypes.Message{
 			{Role: "user", Content: "ping"},
 		},
-		MaxTokens: &maxTokens,
+		MaxTokens:      &maxTokens,
+		ThinkingBudget: &thinkingBudget,
 	}
 
 	start := time.Now()
@@ -173,10 +178,10 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 		zap.String("error", msg),
 	)
 
-	if IsNeutralProbeFailure(statusCode, msg) {
+	if IsNeutralProbeFailure(statusCode, msg) || IsInconclusiveProbeFailure(statusCode, msg) {
 		return
 	}
-	if IsUnreachableProbeFailure(statusCode, msg) || statusCode >= 400 {
+	if IsUnreachableProbeFailure(statusCode, msg) {
 		p.store.RecordFailure(entry.ModelID, entry.Provider, entry.ProviderModelID, msg, statusCode)
 	}
 }
@@ -219,5 +224,10 @@ func (p *ModelProber) RecordLiveResult(modelID, providerName, providerModelID st
 		return
 	}
 	statusCode, msg := classifyProbeError(err)
-	p.store.RecordFailure(modelID, providerName, providerModelID, msg, statusCode)
+	if IsNeutralProbeFailure(statusCode, msg) || IsInconclusiveProbeFailure(statusCode, msg) {
+		return
+	}
+	if IsUnreachableProbeFailure(statusCode, msg) {
+		p.store.RecordFailure(modelID, providerName, providerModelID, msg, statusCode)
+	}
 }

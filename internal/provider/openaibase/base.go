@@ -112,7 +112,15 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 		return nil, err
 	}
 
-	resp, err := b.client.Do(httpReq)
+	// Do not apply http.Client.Timeout to streaming: it caps the entire body read
+	// and cuts off long reasoning models (e.g. NVIDIA NIM Seed-OSS) mid-stream.
+	// Cancellation comes from the request context instead.
+	streamClient := &http.Client{Transport: b.client.Transport}
+	if streamClient.Transport == nil {
+		streamClient.Transport = http.DefaultTransport
+	}
+
+	resp, err := streamClient.Do(httpReq)
 	if err != nil {
 		return nil, provider.NewProviderError(b.name, http.StatusBadGateway,
 			provider.ErrorTypeProviderUnavailable, fmt.Sprintf("stream request failed: %v", err), err)

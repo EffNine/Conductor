@@ -281,7 +281,7 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("providers.nvidia_nim.enabled", false)
 	v.SetDefault("providers.nvidia_nim.base_url", "https://integrate.api.nvidia.com/v1")
-	v.SetDefault("providers.nvidia_nim.timeout", 60*time.Second)
+	v.SetDefault("providers.nvidia_nim.timeout", 180*time.Second)
 	v.SetDefault("providers.nvidia_nim.max_retries", 3)
 
 	v.SetDefault("providers.nous_portal.enabled", false)
@@ -320,7 +320,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
 	v.SetDefault("health.models.check_interval", 5*time.Minute)
-	v.SetDefault("health.models.timeout", 15*time.Second)
+	v.SetDefault("health.models.timeout", 30*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 2)
 	v.SetDefault("health.models.providers", []string{"nvidia_nim"})

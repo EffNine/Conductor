@@ -25,6 +25,10 @@ type ChatCompletionRequest struct {
 	Reasoning        *ReasoningConfig `json:"reasoning,omitempty"`
 	ReasoningEffort  string           `json:"reasoning_effort,omitempty"` // max|xhigh|high|medium|low|minimal|none
 	IncludeReasoning *bool            `json:"include_reasoning,omitempty"`
+
+	// ThinkingBudget is a Seed-OSS / NVIDIA NIM chat-template token budget for
+	// internal reasoning. Multiples of 512 are recommended; 0 skips thinking.
+	ThinkingBudget *int `json:"thinking_budget,omitempty"`
 }
 
 // StreamOptions configures streaming behavior (OpenAI-compatible).

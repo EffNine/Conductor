@@ -77,14 +77,38 @@ func TestIsUnreachableProbeFailure(t *testing.T) {
 		want bool
 	}{
 		{http.StatusNotFound, "model not found", true},
+		{http.StatusGone, "retired", true},
 		{http.StatusBadRequest, "does not exist", true},
-		{0, "timeout", true},
+		{http.StatusBadRequest, "invalid max_tokens", false},
+		{0, "timeout", false},
+		{http.StatusBadGateway, "upstream error", false},
+		{http.StatusServiceUnavailable, "overloaded", false},
+		{http.StatusGatewayTimeout, "gateway timeout", false},
 		{http.StatusTooManyRequests, "rate limit", false},
 		{http.StatusUnauthorized, "bad key", false},
 		{http.StatusOK, "", false},
 	}
 	for _, tc := range cases {
 		got := health.IsUnreachableProbeFailure(tc.code, tc.msg)
+		if got != tc.want {
+			t.Fatalf("code=%d msg=%q: got %v want %v", tc.code, tc.msg, got, tc.want)
+		}
+	}
+}
+
+func TestIsInconclusiveProbeFailure(t *testing.T) {
+	cases := []struct {
+		code int
+		msg  string
+		want bool
+	}{
+		{0, "timeout", true},
+		{0, "context deadline exceeded", true},
+		{http.StatusBadGateway, "bad gateway", true},
+		{http.StatusNotFound, "missing", false},
+	}
+	for _, tc := range cases {
+		got := health.IsInconclusiveProbeFailure(tc.code, tc.msg)
 		if got != tc.want {
 			t.Fatalf("code=%d msg=%q: got %v want %v", tc.code, tc.msg, got, tc.want)
 		}

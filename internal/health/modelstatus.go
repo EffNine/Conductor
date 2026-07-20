@@ -161,24 +161,38 @@ func IsNeutralProbeFailure(statusCode int, errMsg string) bool {
 }
 
 // IsUnreachableProbeFailure reports errors that indicate the model endpoint
-// itself is missing, retired, or not callable.
+// itself is missing, retired, or not callable. Only definitive signals count;
+// transient outages, timeouts, and generic 400s must not hide working models.
 func IsUnreachableProbeFailure(statusCode int, errMsg string) bool {
-	if IsNeutralProbeFailure(statusCode, errMsg) {
+	if IsNeutralProbeFailure(statusCode, errMsg) || IsInconclusiveProbeFailure(statusCode, errMsg) {
 		return false
 	}
 	switch statusCode {
-	case http.StatusNotFound, http.StatusGone, http.StatusBadGateway,
-		http.StatusServiceUnavailable, http.StatusGatewayTimeout,
-		http.StatusBadRequest:
-		return true
-	case 0:
-		// Network / timeout errors often arrive with status 0.
+	case http.StatusNotFound, http.StatusGone:
 		return true
 	}
 	msg := strings.ToLower(errMsg)
-	return strings.Contains(msg, "not found") ||
-		strings.Contains(msg, "does not exist") ||
-		strings.Contains(msg, "unavailable") ||
-		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "no such model")
+	return strings.Contains(msg, "no such model") ||
+		strings.Contains(msg, "model not found") ||
+		strings.Contains(msg, "model_not_found") ||
+		strings.Contains(msg, "does not exist")
+}
+
+// IsInconclusiveProbeFailure reports probe/live errors that should not change
+// reachability (slow responses, capacity blips, client timeouts).
+func IsInconclusiveProbeFailure(statusCode int, errMsg string) bool {
+	switch statusCode {
+	case http.StatusBadGateway, http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout, http.StatusRequestTimeout:
+		return true
+	}
+	if statusCode != 0 {
+		return false
+	}
+	msg := strings.ToLower(errMsg)
+	return strings.Contains(msg, "timeout") ||
+		strings.Contains(msg, "deadline exceeded") ||
+		strings.Contains(msg, "context canceled") ||
+		strings.Contains(msg, "connection reset") ||
+		strings.Contains(msg, "eof")
 }
