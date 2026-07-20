@@ -36,10 +36,11 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   unreachable endpoints with no availability flag. By default the gateway probes `nvidia_nim`
   with a minimal chat completion on startup and once per day (`24h`), and hides definitive
   failures from `/v1/models` after consecutive misses (`unhealthy_threshold: 2`). Unprobed
-  models stay visible (`unknown_as_reachable: true`). Status: `GET /api/models`,
-  `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config under
-  `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
-  Probe everyone with `health.models.providers: []`.
+  models stay visible (`unknown_as_reachable: true`). Hiding starts only after the first
+  probe pass finishes, so Fly cold-starts do not briefly return an empty model list.
+  Status: `GET /api/models`, `GET /api/models/status`, `GET /api/models?include_unreachable=true`.
+  Config under `health.models` (see `docs/configuration.md`). Disable with
+  `health.models.enabled: false`. Probe everyone with `health.models.providers: []`.
 - **Curated models only.** Set `catalog.curated_only: true` (or `NOVEXA_CATALOG_CURATED_ONLY=true`)
   and list Model IDs under each provider's `models:` field. `/v1/models` and reachability probes
   then use that allowlist instead of the full dynamic provider catalog — useful for NVIDIA NIM.

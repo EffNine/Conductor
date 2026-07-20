@@ -208,7 +208,7 @@ func TestCatalogHidesUnreachableWhenFilterEnabled(t *testing.T) {
 		},
 	})
 
-	store := &stubFilter{hide: map[string]bool{"nvidia_nim/bad": true}}
+	store := &stubFilter{hide: map[string]bool{"nvidia_nim/bad": true}, ready: true}
 	c := catalog.New(reg, nil)
 	c.SetReachabilityFilter(store, true)
 
@@ -233,13 +233,62 @@ func TestCatalogHidesUnreachableWhenFilterEnabled(t *testing.T) {
 	}
 }
 
+func TestCatalogSkipsHideUntilFilterReady(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "good", ModelID: "good"},
+			{ProviderModelID: "bad", ModelID: "bad"},
+		},
+	})
+
+	store := &stubFilter{hide: map[string]bool{"nvidia_nim/bad": true}, ready: false}
+	c := catalog.New(reg, nil)
+	c.SetReachabilityFilter(store, true)
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("before filter ready, want full catalog, got %v", modelIDs(entries))
+	}
+}
+
+func TestCatalogAvoidsEmptyFlashWhenAllFiltered(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "a", ModelID: "a"},
+			{ProviderModelID: "b", ModelID: "b"},
+		},
+	})
+
+	store := &stubFilter{hide: map[string]bool{"nvidia_nim/a": true, "nvidia_nim/b": true}, ready: true}
+	c := catalog.New(reg, nil)
+	c.SetReachabilityFilter(store, true)
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("empty filtered list should fall back to full catalog, got %d", len(entries))
+	}
+}
+
 type stubFilter struct {
-	hide map[string]bool
+	hide  map[string]bool
+	ready bool
 }
 
 func (s *stubFilter) ShouldAdvertise(modelID string) bool {
 	return !s.hide[modelID]
 }
+
+func (s *stubFilter) FilterReady() bool { return s.ready }
 
 func modelIDs(entries []catalog.Entry) []string {
 	ids := make([]string, len(entries))

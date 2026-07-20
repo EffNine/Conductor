@@ -25,6 +25,10 @@ type ModelStatusStore struct {
 	statuses           map[string]*ModelStatus
 	unhealthyThreshold int
 	unknownAsReachable bool
+	// filterReady is set after the first full probe pass completes. Until then
+	// ShouldAdvertise keeps every model visible so Fly cold-starts / redeploys
+	// do not briefly return an empty /v1/models list.
+	filterReady bool
 }
 
 // NewModelStatusStore creates an empty store.
@@ -37,6 +41,20 @@ func NewModelStatusStore(unhealthyThreshold int, unknownAsReachable bool) *Model
 		unhealthyThreshold: unhealthyThreshold,
 		unknownAsReachable: unknownAsReachable,
 	}
+}
+
+// MarkFilterReady enables reachability-based hiding after the first probe pass.
+func (s *ModelStatusStore) MarkFilterReady() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.filterReady = true
+}
+
+// FilterReady reports whether /v1/models may hide unreachable models.
+func (s *ModelStatusStore) FilterReady() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.filterReady
 }
 
 // RecordSuccess marks a model as reachable.
@@ -86,13 +104,19 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 }
 
 // ShouldAdvertise returns true if the model should appear in /v1/models when
-// hideUnreachable is enabled.
+// hideUnreachable is enabled. Before the first probe pass finishes, all models
+// remain advertised to avoid an empty catalog on process start.
 func (s *ModelStatusStore) ShouldAdvertise(modelID string) bool {
-	reachable, known := s.IsReachable(modelID)
-	if !known {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.filterReady {
+		return true
+	}
+	st, ok := s.statuses[modelID]
+	if !ok {
 		return s.unknownAsReachable
 	}
-	return reachable
+	return st.Reachable
 }
 
 // Get returns a copy of the status for a model, or nil if unknown.

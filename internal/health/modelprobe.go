@@ -147,6 +147,8 @@ func (p *ModelProber) ProbeAll() {
 		}()
 	}
 	wg.Wait()
+	p.store.MarkFilterReady()
+	p.logger.Info("model probe: pass complete", zap.Int("probed", len(entries)))
 }
 
 // ProbeModel sends a minimal chat completion to test reachability.
