@@ -19,7 +19,7 @@ docker run -d -p 8080:8080 \
 
 - **Single API Key** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, custom apps) at one endpoint with one key
 - **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so the listed ID routes when selected
-- **Model Online Status** — Optional probes hide unreachable models (especially NVIDIA NIM free endpoints that appear in `/models` but fail inference); a full pass runs on every startup/redeploy, then every 12 hours by default, with status on `/api/models` and `/api/models/status`
+- **Model Online Status** — Probes hide models that have not passed (failed or not yet probed); a full pass runs on every startup/redeploy, then every 12 hours by default, with status on `/api/models` and `/api/models/status`
 - **Explicit Model Routing** — Optional `routes` and `aliases` for bare Model IDs; provider-prefixed catalog IDs need no route entry
 - **Fallback Chains** — Try backup providers when the primary fails
 - **Usage & Cost Tracking** — Per-request records with tokens, latency, and USD cost (provider per-request → `GetPricing` → manual `cost.rates` → unknown)
