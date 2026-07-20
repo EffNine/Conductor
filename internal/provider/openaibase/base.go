@@ -153,6 +153,12 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 				ch <- apitypes.StreamChunk{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
 				return
 			}
+			// Skip data: {} / zero-value chunks. Re-emitting them as
+			// {"id":"","model":"","choices":null} makes OpenCode and similar
+			// aggregators drop the reply (empty content, empty model).
+			if chunk.IsEmpty() {
+				continue
+			}
 			// Do not promote reasoning→content on stream deltas: models like
 			// Nemotron emit reasoning chunks before content, and promoting
 			// would concatenate thinking into the visible reply. Non-stream

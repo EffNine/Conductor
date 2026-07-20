@@ -75,6 +75,8 @@ func TestChatCompletionStreamSkipsKeepalivesAndKeepsReasoning(t *testing.T) {
 		data, _ := json.Marshal(chunk)
 		fmt.Fprintf(w, "data: %s\n\n", data)
 		flusher.Flush()
+		fmt.Fprintf(w, "data: {}\n\n")
+		flusher.Flush()
 		fmt.Fprintf(w, "data: [DONE]\n\n")
 		flusher.Flush()
 	}))
@@ -92,6 +94,7 @@ func TestChatCompletionStreamSkipsKeepalivesAndKeepsReasoning(t *testing.T) {
 	var reasoning []string
 	var contents []string
 	var sawDone bool
+	var emptyChunks int
 	for chunk := range ch {
 		if chunk.Error != nil {
 			t.Fatalf("stream error: %v", chunk.Error)
@@ -100,6 +103,9 @@ func TestChatCompletionStreamSkipsKeepalivesAndKeepsReasoning(t *testing.T) {
 			sawDone = true
 			break
 		}
+		if chunk.IsEmpty() {
+			emptyChunks++
+		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
 			contents = append(contents, chunk.Choices[0].Delta.Content)
 			reasoning = append(reasoning, chunk.Choices[0].Delta.Reasoning)
@@ -107,6 +113,9 @@ func TestChatCompletionStreamSkipsKeepalivesAndKeepsReasoning(t *testing.T) {
 	}
 	if !sawDone {
 		t.Fatal("expected [DONE]")
+	}
+	if emptyChunks != 0 {
+		t.Fatalf("empty chunks forwarded: %d", emptyChunks)
 	}
 	if strings.Join(contents, "") != "" {
 		t.Fatalf("content should stay empty on deltas, got %q", strings.Join(contents, ""))

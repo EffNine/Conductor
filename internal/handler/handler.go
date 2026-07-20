@@ -294,6 +294,12 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 				break
 			}
 
+			// Drop zero-value chunks (upstream data: {}) so clients never see
+			// empty model/id frames that wipe aggregated replies.
+			if chunk.IsEmpty() {
+				continue
+			}
+
 			for _, choice := range chunk.Choices {
 				accumulateMessage(choice.Delta)
 				accumulateMessage(choice.Message)

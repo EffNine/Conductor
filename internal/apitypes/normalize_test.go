@@ -149,4 +149,48 @@ func TestEnsureStreamUsage(t *testing.T) {
 	}
 }
 
+func TestMessageMarshalOmitsEmptyRoleAndContent(t *testing.T) {
+	// DeepSeek-style stream deltas often send role:"". Re-emitting that
+	// breaks OpenCode's Zod schema for custom OpenAI providers.
+	raw, err := json.Marshal(&apitypes.Message{
+		Role:             "",
+		Content:          "",
+		ReasoningContent: "thinking",
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if _, ok := got["role"]; ok {
+		t.Fatalf("empty role should be omitted, got %s", raw)
+	}
+	if _, ok := got["content"]; ok {
+		t.Fatalf("empty content should be omitted, got %s", raw)
+	}
+	if got["reasoning_content"] != "thinking" {
+		t.Fatalf("reasoning_content = %v", got["reasoning_content"])
+	}
+}
+
+func TestStreamChunkIsEmpty(t *testing.T) {
+	if !((apitypes.StreamChunk{}).IsEmpty()) {
+		t.Fatal("zero chunk should be empty")
+	}
+	if (apitypes.StreamChunk{ID: "x"}).IsEmpty() {
+		t.Fatal("chunk with id should not be empty")
+	}
+	if (apitypes.StreamChunk{Choices: []apitypes.Choice{{}}}).IsEmpty() {
+		t.Fatal("chunk with choices should not be empty")
+	}
+	if (apitypes.StreamChunk{Usage: &apitypes.Usage{PromptTokens: 1}}).IsEmpty() {
+		t.Fatal("usage chunk should not be empty")
+	}
+	if (apitypes.StreamChunk{Done: true}).IsEmpty() {
+		t.Fatal("done sentinel should not be empty")
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }
