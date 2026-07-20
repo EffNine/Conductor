@@ -122,6 +122,82 @@ func TestCatalogUsesStaticModelsWhenListFails(t *testing.T) {
 	}
 }
 
+func TestCatalogCuratedOnlyUsesStaticAllowlist(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "noise/a", ModelID: "noise/a"},
+			{ProviderModelID: "noise/b", ModelID: "noise/b"},
+			{ProviderModelID: "deepseek-ai/deepseek-v4-flash", ModelID: "deepseek-ai/deepseek-v4-flash"},
+		},
+	})
+	reg.Register(&stubProvider{
+		name: "openai",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "gpt-4o", ModelID: "gpt-4o"},
+			{ProviderModelID: "gpt-4o-mini", ModelID: "gpt-4o-mini"},
+		},
+	})
+
+	c := catalog.New(reg, catalog.StaticModels{
+		"nvidia_nim": {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.1-8b-instruct"},
+		// openai has no curated list → contributes nothing in curated_only mode
+	})
+	c.SetCuratedOnly(true)
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := modelIDs(entries)
+	assertContains(t, ids, "nvidia_nim/deepseek-ai/deepseek-v4-flash")
+	assertContains(t, ids, "nvidia_nim/meta/llama-3.1-8b-instruct")
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
+	}
+	for _, id := range ids {
+		if id == "openai/gpt-4o" || id == "nvidia_nim/noise/a" {
+			t.Fatalf("non-curated model leaked into catalog: %v", ids)
+		}
+	}
+
+	all, err := c.ListAll(context.Background())
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("ListAll should also be curated-only, got %d: %v", len(all), modelIDs(all))
+	}
+}
+
+func TestCatalogCuratedOnlyDisabledKeepsDynamicList(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "noise/a", ModelID: "noise/a"},
+			{ProviderModelID: "keep/me", ModelID: "keep/me"},
+		},
+	})
+
+	c := catalog.New(reg, catalog.StaticModels{
+		"nvidia_nim": {"keep/me"},
+	})
+	// curated_only defaults to false
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := modelIDs(entries)
+	assertContains(t, ids, "nvidia_nim/noise/a")
+	assertContains(t, ids, "nvidia_nim/keep/me")
+	if len(entries) != 2 {
+		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
+	}
+}
+
 func TestCatalogHidesUnreachableWhenFilterEnabled(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{

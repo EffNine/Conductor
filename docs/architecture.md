@@ -55,6 +55,7 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 - `/v1/models` queries each provider's `ListModels`
 - Duplicate base Model IDs are qualified with `provider/model-id`
 - Providers without dynamic listing use the static `models` list from config
+- With `catalog.curated_only: true`, only the Curated Model List (`providers.*.models`) is advertised; dynamic catalogs are ignored (including for reachability probes)
 - Aliases are never advertised in the catalog
 - When model reachability probing is enabled, unreachable models are omitted from `/v1/models` (full list via `/api/models?include_unreachable=true`)
 

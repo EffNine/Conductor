@@ -79,6 +79,12 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 - Live chat outcomes also update the reachability cache; 429/401/403 are neutral.
 - Documented in `docs/api.md`, `docs/providers.md`, `docs/configuration.md`, `docs/architecture.md`, `docs/quickstart.md`, README, CONTEXT, AGENTS.
 
+### Curated models only — COMPLETE
+- `catalog.curated_only` advertises only the Static Model List under `providers.*.models`.
+- Dynamic `ListModels` catalogs are ignored for `/v1/models` and for reachability probes when curated-only is on.
+- Providers with an empty `models` list contribute nothing in curated-only mode.
+- Documented in CONTEXT (Curated Model List), configuration, providers, architecture, API, README, example config.
+
 ### Slice 6: Documentation reconciliation — COMPLETE
 - Audited README and docs to match implemented capabilities.
 - Provider status table now distinguishes implemented vs stub providers.
