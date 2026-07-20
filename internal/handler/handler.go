@@ -223,11 +223,61 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 		var sawContent bool
 		var reasoningBuf string
 		var lastMeta apitypes.StreamChunk
+		sentDone := false
 
 		writeChunk := func(chunk apitypes.StreamChunk) {
 			data, _ := json.Marshal(chunk)
 			_, _ = w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
 			_ = w.Flush()
+		}
+
+		accumulateMessage := func(m *apitypes.Message) {
+			if m == nil {
+				return
+			}
+			if m.Content != "" {
+				sawContent = true
+			}
+			if m.Reasoning != "" {
+				reasoningBuf += m.Reasoning
+			}
+			if m.ReasoningContent != "" {
+				reasoningBuf += m.ReasoningContent
+			}
+		}
+
+		// Reasoning-only streams (e.g. Seed-OSS, big-pickle) emit text in
+		// reasoning/reasoning_content with empty content. Chat apps that only
+		// read delta.content need a synthetic content chunk. Emit it before
+		// finish_reason so clients that finalize on stop still see a reply.
+		flushReasoningAsContent := func() {
+			if sawContent || reasoningBuf == "" {
+				return
+			}
+			writeChunk(apitypes.StreamChunk{
+				ID:      lastMeta.ID,
+				Object:  "chat.completion.chunk",
+				Created: lastMeta.Created,
+				Model:   lastMeta.Model,
+				Choices: []apitypes.Choice{{
+					Index: 0,
+					Delta: &apitypes.Message{
+						Role:    "assistant",
+						Content: reasoningBuf,
+					},
+				}},
+			})
+			sawContent = true
+		}
+
+		finishStream := func() {
+			if sentDone {
+				return
+			}
+			flushReasoningAsContent()
+			_, _ = w.Write([]byte("data: [DONE]\n\n"))
+			_ = w.Flush()
+			sentDone = true
 		}
 
 		for chunk := range ch {
@@ -240,45 +290,23 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 			}
 
 			if chunk.Done {
-				// Reasoning-only streams (e.g. big-pickle) never set content.
-				// Emit one synthetic content chunk so chat apps show a reply.
-				if !sawContent && reasoningBuf != "" {
-					synth := apitypes.StreamChunk{
-						ID:      lastMeta.ID,
-						Object:  "chat.completion.chunk",
-						Created: lastMeta.Created,
-						Model:   lastMeta.Model,
-						Choices: []apitypes.Choice{{
-							Index: 0,
-							Delta: &apitypes.Message{
-								Role:    "assistant",
-								Content: reasoningBuf,
-							},
-						}},
-					}
-					writeChunk(synth)
-				}
-				_, _ = w.Write([]byte("data: [DONE]\n\n"))
-				_ = w.Flush()
+				finishStream()
 				break
 			}
 
 			for _, choice := range chunk.Choices {
-				if choice.Delta == nil {
-					continue
-				}
-				if choice.Delta.Content != "" {
-					sawContent = true
-				}
-				if choice.Delta.Reasoning != "" {
-					reasoningBuf += choice.Delta.Reasoning
-				}
-				if choice.Delta.ReasoningContent != "" {
-					reasoningBuf += choice.Delta.ReasoningContent
-				}
+				accumulateMessage(choice.Delta)
+				accumulateMessage(choice.Message)
 			}
 			if chunk.ID != "" || chunk.Model != "" {
 				lastMeta = chunk
+			}
+
+			for _, choice := range chunk.Choices {
+				if choice.FinishReason != nil && *choice.FinishReason != "" {
+					flushReasoningAsContent()
+					break
+				}
 			}
 
 			writeChunk(chunk)
@@ -287,6 +315,9 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 				usageData = chunk.Usage
 			}
 		}
+
+		// Upstream timeout or truncated body may close the channel without [DONE].
+		finishStream()
 
 		h.trackUsage(requestID, modelID, providerModelID, providerName, usageData, time.Since(start), fiber.StatusOK, true, nil)
 	})

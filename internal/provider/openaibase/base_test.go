@@ -218,3 +218,47 @@ func TestChatCompletionStreamRequestsIncludeUsage(t *testing.T) {
 		t.Fatalf("usage = %+v, want completion_tokens=2", usage)
 	}
 }
+
+func TestChatCompletionStreamIgnoresClientTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		// Delay longer than the provider client timeout configured below.
+		time.Sleep(150 * time.Millisecond)
+		fmt.Fprintf(w, "data: {\"id\":\"s1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"late\"}}]}\n\n")
+		flusher.Flush()
+		fmt.Fprintf(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	p := openaibase.New("nvidia_nim", "key", server.URL, 50*time.Millisecond)
+	ch, err := p.ChatCompletionStream(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "bytedance/seed-oss-36b-instruct",
+		Messages: []apitypes.Message{{Role: "user", Content: "Hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	var content string
+	var sawDone bool
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("stream error: %v", chunk.Error)
+		}
+		if chunk.Done {
+			sawDone = true
+			break
+		}
+		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
+			content += chunk.Choices[0].Delta.Content
+		}
+	}
+	if !sawDone {
+		t.Fatal("expected [DONE]")
+	}
+	if content != "late" {
+		t.Fatalf("content = %q, want late (stream should not use http.Client.Timeout)", content)
+	}
+}

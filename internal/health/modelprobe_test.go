@@ -212,3 +212,128 @@ func (p *probeTestProvider) HealthCheck(context.Context) (*provider.HealthStatus
 }
 
 func (p *probeTestProvider) SupportsModel(string) bool { return true }
+
+func TestModelProberUsesThinkingBudgetZero(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "bytedance/seed-oss-36b-instruct", Object: "model"}},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+				ID:      "chatcmpl-1",
+				Object:  "chat.completion",
+				Choices: []apitypes.Choice{{Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "pong"}}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	store := health.NewModelStatusStore(1, true)
+	cat := catalog.New(reg, nil)
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:     true,
+		Timeout:     2 * time.Second,
+		Concurrency: 1,
+		Providers:   []string{"nvidia_nim"},
+	})
+	prober.ProbeAll()
+
+	if gotBody["thinking_budget"] != float64(0) {
+		t.Fatalf("thinking_budget = %v, want 0", gotBody["thinking_budget"])
+	}
+	if gotBody["max_tokens"] != float64(16) {
+		t.Fatalf("max_tokens = %v, want 16", gotBody["max_tokens"])
+	}
+}
+
+func TestModelProberIgnoresTimeoutsAndTransientErrors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "slow/model", Object: "model"}},
+			})
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":{"message":"upstream unavailable"}}`))
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	store := health.NewModelStatusStore(1, true)
+	cat := catalog.New(reg, nil)
+	cat.SetReachabilityFilter(store, true)
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            50 * time.Millisecond,
+		Concurrency:        1,
+		UnhealthyThreshold: 1,
+		Providers:          []string{"nvidia_nim"},
+		UnknownAsReachable: true,
+	})
+	prober.ProbeAll()
+
+	if store.Get("nvidia_nim/slow/model") != nil {
+		t.Fatalf("timeout/transient probe should not mark model offline: %+v", store.Get("nvidia_nim/slow/model"))
+	}
+	entries, err := cat.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ModelID != "nvidia_nim/slow/model" {
+		t.Fatalf("model should stay advertised after inconclusive probe: %+v", entries)
+	}
+}
+
+func TestRecordLiveResultIgnoresNeutralAndTransientFailures(t *testing.T) {
+	store := health.NewModelStatusStore(1, true)
+	prober := health.NewModelProber(nil, nil, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:   true,
+		Providers: []string{"nvidia_nim"},
+	})
+
+	prober.RecordLiveResult(
+		"nvidia_nim/seed",
+		"nvidia_nim",
+		"bytedance/seed-oss-36b-instruct",
+		provider.NewProviderError("nvidia_nim", http.StatusTooManyRequests, provider.ErrorTypeRateLimit, "rate limit", nil),
+		100,
+	)
+	prober.RecordLiveResult(
+		"nvidia_nim/seed",
+		"nvidia_nim",
+		"bytedance/seed-oss-36b-instruct",
+		provider.NewProviderError("nvidia_nim", http.StatusBadGateway, provider.ErrorTypeProviderUnavailable, "upstream unavailable", nil),
+		100,
+	)
+	if store.Get("nvidia_nim/seed") != nil {
+		t.Fatal("neutral/transient live failures should not update model status")
+	}
+
+	prober.RecordLiveResult(
+		"nvidia_nim/seed",
+		"nvidia_nim",
+		"bytedance/seed-oss-36b-instruct",
+		provider.NewProviderError("nvidia_nim", http.StatusNotFound, provider.ErrorTypeInvalidRequest, "model not found", nil),
+		100,
+	)
+	st := store.Get("nvidia_nim/seed")
+	if st == nil || st.Reachable {
+		t.Fatalf("404 live failure should mark model offline: %+v", st)
+	}
+}
