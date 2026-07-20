@@ -41,7 +41,9 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config under
   `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
-
+- **Curated models only.** Set `catalog.curated_only: true` (or `NOVEXA_CATALOG_CURATED_ONLY=true`)
+  and list Model IDs under each provider's `models:` field. `/v1/models` and reachability probes
+  then use that allowlist instead of the full dynamic provider catalog — useful for NVIDIA NIM.
 ### Local end-to-end testing without real provider keys
 
 There are no real upstream credentials in this environment. To exercise the full pipeline

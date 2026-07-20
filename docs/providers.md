@@ -81,6 +81,22 @@ providers:
 
 Static models appear in `/v1/models` when the provider's dynamic listing is unavailable.
 
+### Curated-only mode
+
+To advertise **only** the static lists (and skip large dynamic catalogs such as NVIDIA NIM), set `catalog.curated_only: true`. See [Configuration — Curated catalog](configuration.md#curated-catalog).
+
+```yaml
+catalog:
+  curated_only: true
+
+providers:
+  nvidia_nim:
+    enabled: true
+    models:
+      - "deepseek-ai/deepseek-v4-flash"
+      - "meta/llama-3.1-8b-instruct"
+```
+
 ## Model Routing
 
 Routes map a user-facing **Model ID** to a provider and optional upstream **Provider Model ID**.

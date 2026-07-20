@@ -107,7 +107,7 @@ data: [DONE]
 
 **Endpoint**: `GET /v1/models`
 
-Lists available models from configured providers. When model reachability probing is enabled (`health.models`), models that fail consecutive probes are omitted (see [Model Reachability](#model-reachability)).
+Lists available models from configured providers. With `catalog.curated_only`, only the Static Model List under each provider is advertised (see [Configuration — Curated catalog](configuration.md#curated-catalog)). When model reachability probing is enabled (`health.models`), models that fail consecutive probes are omitted (see [Model Reachability](#model-reachability)).
 
 #### Response
 
@@ -135,6 +135,7 @@ Lists available models from configured providers. When model reachability probin
 - Every Model ID is provider-prefixed (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) so clients can send the listed ID directly to `/v1/chat/completions`.
 - `owned_by` reflects the provider or the upstream owner when reported.
 - Aliases are never listed.
+- With `catalog.curated_only: true`, only `providers.*.models` entries appear.
 - Unreachable models (when probing + `hide_unreachable` are on) are not listed; use `GET /api/models?include_unreachable=true` to inspect them.
 
 ---
