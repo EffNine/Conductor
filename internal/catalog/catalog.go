@@ -21,9 +21,8 @@ type ReachabilityFilter interface {
 	ShouldAdvertise(modelID string) bool
 }
 
-// FilterReadiness is implemented by reachability filters that should not hide
-// models until an initial probe pass has finished (avoids empty /v1/models on
-// cold start while the in-memory status cache is still empty).
+// FilterReadiness is implemented by ModelStatusStore. After FilterReady() becomes
+// true, unprobed models follow unknown_as_reachable (default false = available-only).
 type FilterReadiness interface {
 	FilterReady() bool
 }
@@ -100,10 +99,8 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	if c.filter == nil || !c.hide {
 		return entries, nil
 	}
-	// During the first probe pass, keep the full catalog visible (no flicker).
-	if ready, ok := c.filter.(FilterReadiness); ok && !ready.FilterReady() {
-		return entries, nil
-	}
+	// Always apply ShouldAdvertise: confirmed failures drop out during the pass;
+	// unprobed stay until FilterReady (see ModelStatusStore.ShouldAdvertise).
 	filtered := make([]Entry, 0, len(entries))
 	for _, e := range entries {
 		if c.filter.ShouldAdvertise(e.ModelID) {
