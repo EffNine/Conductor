@@ -1,19 +1,17 @@
-# Canonical Fly config lives at the repo root: ../fly.toml
-# Deploy from the repository root so the Docker build context is correct:
+# Novexa Gateway — Fly.io (run from repo root: fly deploy)
 #
-#   fly deploy
-#   # or
+# One-shot setup:
 #   ./scripts/fly-deploy.sh
-#
-# This file is kept for backwards compatibility with docs that reference
-# deployments/fly.toml. Prefer the root fly.toml.
+# Or manually:
+#   fly apps create <app>
+#   fly volumes create novexa_data --size 1 --region iad
+#   fly secrets set NOVEXA_API_KEY=... OPENAI_API_KEY=...
+#   fly deploy
 
 app = "novexa-gateway"
 primary_region = "iad"
 
 [build]
-  # NOTE: only correct when build context is the repo root
-  # (fly deploy . -c deployments/fly.toml). Prefer root fly.toml instead.
   dockerfile = "deployments/Dockerfile"
 
 [env]

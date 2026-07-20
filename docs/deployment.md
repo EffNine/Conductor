@@ -106,72 +106,46 @@ Your gateway will be available at `https://your-app.railway.app`
 
 ---
 
-### Fly.io
+### Fly.io (recommended free deploy)
 
-Fly.io offers free VMs with global edge deployment.
+Fly.io offers a free shared VM tier with persistent volumes and HTTPS.
 
-#### 1. Create `fly.toml`
+Canonical config: [`fly.toml`](../fly.toml) at the repo root (build context must be the repo root so `deployments/Dockerfile` can copy Go sources).
 
-```toml
-app = "novexa-gateway"
-primary_region = "iad"
-
-[build]
-  dockerfile = "deployments/Dockerfile"
-
-[env]
-  PORT = "8080"
-
-[http_service]
-  internal_port = 8080
-  force_https = true
-  auto_stop_machines = true
-  auto_start_machines = true
-  min_machines_running = 0
-
-[mounts]
-  source = "novexa_data"
-  destination = "/app/data"
-```
-
-#### 2. Deploy
+#### One-shot deploy
 
 ```bash
-# Install Fly CLI
+# Install Fly CLI (once)
 curl -L https://fly.io/install.sh | sh
-
-# Login
 fly auth login
 
-# Create app
-fly apps create novexa-gateway
-
-# Create volume for SQLite
-fly volumes create novexa_data --size 1
-
-# Set secrets
-fly secrets set NOVEXA_API_KEY=your-secret-key
-fly secrets set OPENAI_API_KEY=sk-your-openai-key
-
-# Deploy
-fly deploy
+# Deploy (creates app + SQLite volume + secrets + release)
+export NOVEXA_API_KEY=your-secret-gateway-key
+export OPENAI_API_KEY=sk-your-openai-key
+./scripts/fly-deploy.sh
+# or: make fly-deploy
 ```
 
-#### 3. Get URL
+If `novexa-gateway` is taken: `APP_NAME=novexa-gateway-you ./scripts/fly-deploy.sh`
+
+#### Manual steps
 
 ```bash
+fly apps create novexa-gateway
+fly volumes create novexa_data --size 1 --region iad
+fly secrets set NOVEXA_API_KEY=your-secret-key OPENAI_API_KEY=sk-your-openai-key
+fly deploy
 fly status
 ```
 
-Your gateway will be available at `https://novexa-gateway.fly.dev`
+Your gateway will be at `https://<app-name>.fly.dev` (use `/v1` as the OpenAI base URL).
 
 #### Notes
 
-- Fly.io offers 3 shared-cpu-1x VMs with 256MB RAM free
-- Persistent volumes for SQLite data
-- Automatic HTTPS
-- Global edge deployment
-- Machines auto-stop when idle (saves resources)
+- Free shared-cpu-1x / 256MB VM; 1GB volume for SQLite
+- Automatic HTTPS; machines auto-stop when idle and wake on request
+- Health check: `GET /health`
+- Set any implemented provider key: `OPENAI_API_KEY`, `OPENCODE_API_KEY`, `NVIDIA_NIM_API_KEY`, or `NOUS_PORTAL_API_KEY`
 
 ---
 

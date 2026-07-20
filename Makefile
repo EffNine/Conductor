@@ -88,6 +88,11 @@ docker-push:
 	@echo "Pushing Docker image..."
 	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
 
+## fly-deploy: One-shot deploy to Fly.io (needs fly auth + NOVEXA_API_KEY)
+fly-deploy:
+	@chmod +x scripts/fly-deploy.sh
+	@./scripts/fly-deploy.sh
+
 ## install: Install the binary
 install: build
 	@echo "Installing $(BINARY_NAME)..."

@@ -25,7 +25,7 @@ docker run -d -p 8080:8080 \
 - **Cost Estimation** — Cost resolved via provider per-request cost → `GetPricing` → manual `cost.rates` → unknown (USD only)
 - **Dashboard API** — `/api/models`, `/api/usage`, `/api/health`, `/api/logs`, all protected by the gateway API key
 - **Docker Ready** — Single container with SQLite
-- **Free Cloud Deploy** — Deploy to Railway, Fly.io, or Render
+- **Free Cloud Deploy** — Fly.io one-shot: `./scripts/fly-deploy.sh` (also Railway / Render)
 
 ## Quick Start
 
