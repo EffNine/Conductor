@@ -1,41 +1,36 @@
-# Novexa Gateway — Fly.io (run from repo root: fly deploy)
+# fly.toml app configuration file generated for novexa-gateway on 2026-07-20T11:28:26Z
 #
-# One-shot setup:
-#   ./scripts/fly-deploy.sh
-# Or manually:
-#   fly apps create <app>
-#   fly volumes create novexa_data --size 1 --region iad
-#   fly secrets set NOVEXA_API_KEY=... OPENAI_API_KEY=...
-#   fly deploy
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "novexa-gateway"
-primary_region = "sin"
+app = 'novexa-gateway'
+primary_region = 'sin'
 
 [build]
-  dockerfile = "deployments/Dockerfile"
+  dockerfile = 'deployments/Dockerfile'
 
 [env]
-  NOVEXA_SERVER_PORT = "8080"
+  NOVEXA_SERVER_PORT = '8080'
+
+[[mounts]]
+  source = 'novexa_data'
+  destination = '/app/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  processes = ['app']
 
   [[http_service.checks]]
-    interval = "15s"
-    timeout = "5s"
-    grace_period = "30s"
-    method = "GET"
-    path = "/health"
-
-[mounts]
-  source = "novexa_data"
-  destination = "/app/data"
+    interval = '15s'
+    timeout = '5s'
+    grace_period = '30s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
+  size = 'shared-cpu-1x'
+  memory = '256mb'
