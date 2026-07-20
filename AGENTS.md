@@ -33,17 +33,18 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   Model ID from `/v1/models` instead (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`), which the
   router strips and dispatches without needing a matching route entry.
 - **Model reachability probes (esp. NVIDIA NIM).** `/models` catalogs can list free and
-  unreachable endpoints with no availability flag. By default the gateway probes **all**
-  registered providers with a minimal chat completion on every startup/redeploy, then every
-  `12h`, and only advertises models that **passed** a probe (`hide_unreachable: true`,
-  `unhealthy_threshold: 1`, `unknown_as_reachable: false`). Failed and not-yet-probed
-  models are omitted from `/v1/models`. Status: `GET /api/models`,
-  `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config under
-  `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
-  Limit scope with `health.models.providers: [nvidia_nim]`.
+  unreachable endpoints with no availability flag. By default the gateway probes `nvidia_nim`
+  with a minimal chat completion on startup and once per day (`24h`), and hides definitive
+  failures from `/v1/models` after consecutive misses (`unhealthy_threshold: 2`). Unprobed
+  models stay visible (`unknown_as_reachable: true`). Hiding starts only after the first
+  probe pass finishes, so Fly cold-starts do not briefly return an empty model list.
+  Status: `GET /api/models`, `GET /api/models/status`, `GET /api/models?include_unreachable=true`.
+  Config under `health.models` (see `docs/configuration.md`). Disable with
+  `health.models.enabled: false`. Probe everyone with `health.models.providers: []`.
 - **Curated models only.** Set `catalog.curated_only: true` (or `NOVEXA_CATALOG_CURATED_ONLY=true`)
   and list Model IDs under each provider's `models:` field. `/v1/models` and reachability probes
   then use that allowlist instead of the full dynamic provider catalog — useful for NVIDIA NIM.
+
 ### Local end-to-end testing without real provider keys
 
 There are no real upstream credentials in this environment. To exercise the full pipeline

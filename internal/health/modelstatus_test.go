@@ -7,21 +7,23 @@ import (
 	"github.com/novexa/gateway/internal/health"
 )
 
-func TestModelStatusStoreHidesAfterFirstFailureByDefault(t *testing.T) {
-	store := health.NewModelStatusStore(0, true) // 0 → default threshold 1
+func TestModelStatusStoreDefaultThresholdIsTwo(t *testing.T) {
+	store := health.NewModelStatusStore(0, true) // 0 → default threshold 2
+	store.MarkFilterReady()
 
 	store.RecordFailure("nvidia_nim/meta/llama", "nvidia_nim", "meta/llama", "model not found", http.StatusNotFound)
-	if store.ShouldAdvertise("nvidia_nim/meta/llama") {
-		t.Fatal("failed probe must not be advertised (threshold 1)")
+	if !store.ShouldAdvertise("nvidia_nim/meta/llama") {
+		t.Fatal("should still advertise after 1 failure with default threshold 2")
 	}
-	st := store.Get("nvidia_nim/meta/llama")
-	if st == nil || st.Reachable {
-		t.Fatalf("expected unreachable after one failure, got %+v", st)
+	store.RecordFailure("nvidia_nim/meta/llama", "nvidia_nim", "meta/llama", "model not found", http.StatusNotFound)
+	if store.ShouldAdvertise("nvidia_nim/meta/llama") {
+		t.Fatal("should hide after 2 consecutive failures")
 	}
 }
 
 func TestModelStatusStoreHidesAfterThreshold(t *testing.T) {
 	store := health.NewModelStatusStore(2, true)
+	store.MarkFilterReady()
 
 	if !store.ShouldAdvertise("nvidia_nim/meta/llama") {
 		t.Fatal("unprobed model should be advertised when unknown_as_reachable=true")
@@ -65,6 +67,7 @@ func TestModelStatusStoreSuccessResetsFailures(t *testing.T) {
 
 func TestNeutralFailuresDoNotHideModels(t *testing.T) {
 	store := health.NewModelStatusStore(1, true)
+	store.MarkFilterReady()
 	store.RecordFailure("nvidia_nim/a", "nvidia_nim", "a", "rate limit exceeded", http.StatusTooManyRequests)
 	store.RecordFailure("nvidia_nim/a", "nvidia_nim", "a", "unauthorized", http.StatusUnauthorized)
 
@@ -78,6 +81,7 @@ func TestNeutralFailuresDoNotHideModels(t *testing.T) {
 
 func TestUnknownAsReachableFalseHidesUnprobed(t *testing.T) {
 	store := health.NewModelStatusStore(1, false)
+	store.MarkFilterReady()
 	if store.ShouldAdvertise("nvidia_nim/unseen") {
 		t.Fatal("unprobed models should be hidden when unknown_as_reachable=false")
 	}
@@ -93,12 +97,27 @@ func TestUnknownAsReachableFalseHidesUnprobed(t *testing.T) {
 	}
 }
 
-func TestDefaultAdvertiseOnlyPassedProbes(t *testing.T) {
-	// Mirrors production defaults: threshold 1, unknown_as_reachable false.
+func TestShouldAdvertiseBeforeFilterReadyKeepsAllVisible(t *testing.T) {
 	store := health.NewModelStatusStore(1, false)
+	store.RecordFailure("nvidia_nim/bad", "nvidia_nim", "bad", "model not found", http.StatusNotFound)
+	// filter not ready yet — even failed / unknown_as_reachable=false stay visible
+	if !store.ShouldAdvertise("nvidia_nim/bad") || !store.ShouldAdvertise("nvidia_nim/unseen") {
+		t.Fatal("models must stay visible before first probe pass completes")
+	}
+	store.MarkFilterReady()
+	if store.ShouldAdvertise("nvidia_nim/bad") || store.ShouldAdvertise("nvidia_nim/unseen") {
+		t.Fatal("after filter ready, failed/unprobed should hide with unknown_as_reachable=false")
+	}
+}
+
+func TestDefaultKeepsUnprobedAndHidesAfterThreshold(t *testing.T) {
+	// Production defaults: threshold 2, unknown_as_reachable true.
+	store := health.NewModelStatusStore(2, true)
+	store.MarkFilterReady()
 	catIDs := []string{"openai/good", "openai/bad", "openai/pending"}
 
 	store.RecordSuccess("openai/good", "openai", "good", 5)
+	store.RecordFailure("openai/bad", "openai", "bad", "not found", http.StatusNotFound)
 	store.RecordFailure("openai/bad", "openai", "bad", "not found", http.StatusNotFound)
 	// openai/pending never probed
 
@@ -108,8 +127,9 @@ func TestDefaultAdvertiseOnlyPassedProbes(t *testing.T) {
 			advertised = append(advertised, id)
 		}
 	}
-	if len(advertised) != 1 || advertised[0] != "openai/good" {
-		t.Fatalf("advertised=%v, want only openai/good", advertised)
+	want := map[string]bool{"openai/good": true, "openai/pending": true}
+	if len(advertised) != 2 || !want[advertised[0]] || !want[advertised[1]] {
+		t.Fatalf("advertised=%v, want good+pending", advertised)
 	}
 }
 

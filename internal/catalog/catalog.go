@@ -21,6 +21,13 @@ type ReachabilityFilter interface {
 	ShouldAdvertise(modelID string) bool
 }
 
+// FilterReadiness is implemented by reachability filters that should not hide
+// models until an initial probe pass has finished (avoids empty /v1/models on
+// cold start while the in-memory status cache is still empty).
+type FilterReadiness interface {
+	FilterReady() bool
+}
+
 // StaticModels maps provider name → configured static Model IDs.
 type StaticModels map[string][]string
 
@@ -93,11 +100,20 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	if c.filter == nil || !c.hide {
 		return entries, nil
 	}
+	// Do not hide anything until the first probe pass finishes.
+	if ready, ok := c.filter.(FilterReadiness); ok && !ready.FilterReady() {
+		return entries, nil
+	}
 	filtered := make([]Entry, 0, len(entries))
 	for _, e := range entries {
 		if c.filter.ShouldAdvertise(e.ModelID) {
 			filtered = append(filtered, e)
 		}
+	}
+	// Never flash an empty picker when the upstream catalog is non-empty
+	// (e.g. every model still unknown with unknown_as_reachable=false).
+	if len(filtered) == 0 && len(entries) > 0 {
+		return entries, nil
 	}
 	return filtered, nil
 }
