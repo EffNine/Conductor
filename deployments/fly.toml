@@ -9,7 +9,7 @@
 # deployments/fly.toml. Prefer the root fly.toml.
 
 app = "novexa-gateway"
-primary_region = "iad"
+primary_region = "sin"
 
 [build]
   # NOTE: only correct when build context is the repo root

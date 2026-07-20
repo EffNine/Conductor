@@ -9,7 +9,7 @@
 #   fly deploy
 
 app = "novexa-gateway"
-primary_region = "iad"
+primary_region = "sin"
 
 [build]
   dockerfile = "deployments/Dockerfile"
