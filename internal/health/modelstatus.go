@@ -34,7 +34,7 @@ type ModelStatusStore struct {
 // NewModelStatusStore creates an empty store.
 func NewModelStatusStore(unhealthyThreshold int, unknownAsReachable bool) *ModelStatusStore {
 	if unhealthyThreshold <= 0 {
-		unhealthyThreshold = 2
+		unhealthyThreshold = 1
 	}
 	return &ModelStatusStore{
 		statuses:           make(map[string]*ModelStatus),
@@ -105,7 +105,8 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 
 // ShouldAdvertise returns true if the model should appear in /v1/models when
 // hideUnreachable is enabled. Before the first probe pass finishes, all models
-// remain advertised to avoid an empty catalog on process start.
+// remain advertised (no empty flicker). After that, only reachable models are
+// advertised when unknownAsReachable is false.
 func (s *ModelStatusStore) ShouldAdvertise(modelID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
