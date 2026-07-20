@@ -194,18 +194,19 @@ health:
   check_interval: 60s
   timeout: 10s
   unhealthy_threshold: 3
-  # Per-model reachability probes. Runs a full pass on every startup/redeploy,
-  # then again every check_interval. Empty providers list = all registered providers.
+  # Per-model reachability probes (esp. NVIDIA NIM). Startup pass + daily interval.
+  # Default probes nvidia_nim only; empty providers list = all registered providers.
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 12h
+    check_interval: 24h
     timeout: 15s
     concurrency: 3
-    unhealthy_threshold: 1
-    providers: []
-    # false = only advertise models that passed a probe (hide unprobed + failed)
-    unknown_as_reachable: false
+    unhealthy_threshold: 2
+    providers:
+      - nvidia_nim
+    # Keep unprobed models visible until the first probe finishes.
+    unknown_as_reachable: true
 
 # Usage tracking
 usage:

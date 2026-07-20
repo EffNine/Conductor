@@ -70,11 +70,11 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 | `NOVEXA_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive provider failures before unhealthy | `3` |
 | `NOVEXA_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
 | `NOVEXA_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
-| `NOVEXA_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `12h` |
+| `NOVEXA_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `24h` |
 | `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `15s` |
 | `NOVEXA_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
-| `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
-| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible | `false` |
+| `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `2` |
+| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible | `true` |
 
 ## YAML Configuration File
 
@@ -234,12 +234,13 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 12h
+    check_interval: 24h
     timeout: 15s
     concurrency: 3
-    unhealthy_threshold: 1
-    providers: []
-    unknown_as_reachable: false
+    unhealthy_threshold: 2
+    providers:
+      - nvidia_nim
+    unknown_as_reachable: true
 
 # Usage tracking
 usage:
@@ -281,7 +282,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 
 - Runs a full probe pass on every startup/redeploy, then again every `check_interval`
 - Caches online/offline status (also updated from live chat failures)
-- Hides models from `GET /v1/models` unless they have **passed** a probe (`hide_unreachable: true`, `unknown_as_reachable: false`). Failed and not-yet-probed models are omitted
+- Hides definitive probe failures from `GET /v1/models` when `hide_unreachable` is true. Unprobed models stay visible (`unknown_as_reachable: true`)
 - Exposes status on `GET /api/models` and `GET /api/models/status`
 - Use `GET /api/models?include_unreachable=true` to list hidden models with their status
 
@@ -289,12 +290,12 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 |-------|-------------|---------|
 | `enabled` | Run background per-model probes | `true` |
 | `hide_unreachable` | Omit unreachable / unpassed models from `/v1/models` and default `/api/models` | `true` |
-| `check_interval` | Time between full probe passes (after the startup pass) | `12h` |
+| `check_interval` | Time between full probe passes (after the startup pass) | `24h` |
 | `timeout` | Timeout per individual model probe | `15s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
-| `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
-| `providers` | Provider names to probe; empty = all registered | `[]` (all) |
-| `unknown_as_reachable` | If false, never-probed models are hidden until they pass | `false` |
+| `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `2` |
+| `providers` | Provider names to probe; empty = all registered | `[nvidia_nim]` |
+| `unknown_as_reachable` | Keep never-probed models visible during probing | `true` |
 
 **Classification rules:**
 

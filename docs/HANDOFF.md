@@ -74,12 +74,10 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 
 ### Model online status / auto-hide — COMPLETE
 - Background probes (`health.models`) send minimal chat completions to detect unreachable catalog entries.
-- Default: probe **all** registered providers; full pass on startup/redeploy, then every `12h`.
-- A single definitive probe failure hides the model from `GET /v1/models` (`hide_unreachable: true`, `unhealthy_threshold: 1`).
-- Default `unknown_as_reachable: false` — never-probed models are also hidden until they pass.
-- Dashboard: `GET /api/models` (reachability fields), `GET /api/models/status`, `?include_unreachable=true`.
-- Live chat outcomes also update the reachability cache; 429/401/403 are neutral; timeouts/5xx are inconclusive.
-- Documented in `docs/api.md`, `docs/providers.md`, `docs/configuration.md`, `docs/architecture.md`, `docs/quickstart.md`, README, CONTEXT, AGENTS.
+- Default: probe `nvidia_nim` only; full pass on startup/redeploy, then every `24h`.
+- Hide after `unhealthy_threshold: 2` consecutive definitive failures; unprobed stay visible.
+- Dashboard: `GET /api/models`, `GET /api/models/status`, `?include_unreachable=true`.
+- Documented in docs + README + AGENTS.
 
 ### Curated models only — COMPLETE
 - `catalog.curated_only` advertises only the Static Model List under `providers.*.models`.
