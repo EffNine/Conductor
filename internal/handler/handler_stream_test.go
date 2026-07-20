@@ -216,6 +216,107 @@ func TestStreamFlushesReasoningOnAbruptClose(t *testing.T) {
 	}
 }
 
+func TestStreamSkipsEmptyChunksAndOmitsEmptyRole(t *testing.T) {
+	stop := "stop"
+	prov := &streamStubProvider{
+		chunks: []apitypes.StreamChunk{
+			{
+				ID: "s1", Object: "chat.completion.chunk", Created: 1, Model: "deepseek-v4-flash-free",
+				Choices: []apitypes.Choice{{
+					Index: 0,
+					Delta: &apitypes.Message{Role: "assistant", ReasoningContent: "plan"},
+				}},
+			},
+			{
+				ID: "s1", Object: "chat.completion.chunk", Created: 1, Model: "deepseek-v4-flash-free",
+				Choices: []apitypes.Choice{{
+					Index: 0,
+					// Empty role must not be re-emitted (OpenCode Zod rejects it).
+					Delta: &apitypes.Message{Role: "", Content: "Hi"},
+				}},
+			},
+			{}, // upstream data: {} — must not wipe model/content for aggregators
+			{
+				ID: "s1", Object: "chat.completion.chunk", Created: 1, Model: "deepseek-v4-flash-free",
+				Choices: []apitypes.Choice{{
+					Index:        0,
+					Delta:        &apitypes.Message{},
+					FinishReason: &stop,
+				}},
+			},
+			{Done: true},
+		},
+	}
+
+	reg := provider.NewRegistry()
+	reg.Register(prov)
+	cfg := &config.Config{
+		Routes: map[string]config.RouteConfig{
+			"deepseek-v4-flash-free": {Provider: "nvidia_nim", ModelID: "deepseek-v4-flash-free"},
+		},
+	}
+	engine := router.NewEngine(cfg, reg)
+	cat := catalog.New(reg, nil)
+	db := openTestDB(t)
+	h := handler.New(engine, reg, nil, zap.NewNop(), cat, db)
+
+	app := fiber.New()
+	h.Register(app)
+
+	body := `{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hi"}],"stream":true}`
+	req, _ := http.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req, 5000)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+
+	events := parseSSEEvents(string(raw))
+	var sawContent, sawEmptyFrame bool
+	for _, ev := range events {
+		if ev == "[DONE]" {
+			continue
+		}
+		var payload map[string]any
+		if err := json.Unmarshal([]byte(ev), &payload); err != nil {
+			t.Fatalf("unmarshal event: %v (%s)", err, ev)
+		}
+		if payload["id"] == nil && payload["model"] == nil {
+			choices, _ := payload["choices"].([]any)
+			if len(choices) == 0 && payload["usage"] == nil {
+				sawEmptyFrame = true
+			}
+		}
+		choices, _ := payload["choices"].([]any)
+		for _, rawChoice := range choices {
+			choice, _ := rawChoice.(map[string]any)
+			delta, _ := choice["delta"].(map[string]any)
+			if delta == nil {
+				continue
+			}
+			if role, ok := delta["role"]; ok && role == "" {
+				t.Fatalf("empty role re-emitted in %s", ev)
+			}
+			if content, _ := delta["content"].(string); content == "Hi" {
+				sawContent = true
+			}
+		}
+	}
+	if !sawContent {
+		t.Fatalf("missing content chunk in %s", raw)
+	}
+	if sawEmptyFrame {
+		t.Fatalf("empty frame forwarded in %s", raw)
+	}
+}
+
 func parseSSEEvents(body string) []string {
 	var events []string
 	scanner := bufio.NewScanner(strings.NewReader(body))

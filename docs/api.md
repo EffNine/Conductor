@@ -61,6 +61,8 @@ Creates a model response for the given chat conversation.
 
 When the upstream model returns reasoning (`message.reasoning` or `message.reasoning_content`) with empty `content`, the gateway copies reasoning into `content` so chat apps still show a reply. `usage.completion_tokens_details.reasoning_tokens` is preserved when the provider reports it.
 
+Streaming responses omit empty `delta.role` / `delta.content` and drop zero-value `data: {}` frames. That keeps OpenCode (and similar custom OpenAI clients) from rejecting the stream or wiping `model`/`content` when aggregating.
+
 #### Non-Streaming Response
 
 ```json
