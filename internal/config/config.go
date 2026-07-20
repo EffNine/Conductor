@@ -320,7 +320,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
 	v.SetDefault("health.models.check_interval", 5*time.Minute)
-	v.SetDefault("health.models.timeout", 15*time.Second)
+	v.SetDefault("health.models.timeout", 30*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 2)
 	v.SetDefault("health.models.providers", []string{"nvidia_nim"})
