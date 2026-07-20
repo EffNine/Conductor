@@ -49,6 +49,16 @@ Creates a model response for the given chat conversation.
 - `frequency_penalty` (number): Frequency penalty (-2 to 2). Default: 0
 - `presence_penalty` (number): Presence penalty (-2 to 2). Default: 0
 - `stop` (string|array): Stop sequences. Default: null
+- `reasoning` (object): Reasoning controls for models that support thinking tokens. Forwarded to the upstream provider when present.
+  - `effort` (string): `max` | `xhigh` | `high` | `medium` | `low` | `minimal` | `none`
+  - `max_tokens` (number): Reasoning token budget (Anthropic-style)
+  - `exclude` (boolean): Omit reasoning text from the response
+  - `enabled` (boolean): Enable reasoning with provider defaults
+  - `summary` (string): `auto` | `concise` | `detailed`
+- `reasoning_effort` (string): OpenAI-style shorthand for `reasoning.effort` (`high`, `medium`, `low`, …)
+- `include_reasoning` (boolean): Legacy OpenRouter flag to include reasoning in the response
+
+When the upstream model returns reasoning (`message.reasoning` or `message.reasoning_content`) with empty `content`, the gateway copies reasoning into `content` so chat apps still show a reply. `usage.completion_tokens_details.reasoning_tokens` is preserved when the provider reports it.
 
 #### Non-Streaming Response
 

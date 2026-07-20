@@ -194,7 +194,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 // streamResponse writes streaming chunks to the response
 func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, requestID, modelID, providerModelID, providerName string, start time.Time) error {
 	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
-		var totalPromptTokens, totalCompletionTokens int
+		var usageData *apitypes.Usage
 
 		for chunk := range ch {
 			if chunk.Error != nil {
@@ -216,20 +216,13 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 			_, _ = w.Write([]byte(fmt.Sprintf("data: %s\n\n", data)))
 			_ = w.Flush()
 
-			// Track tokens from usage if present
+			// Keep the latest usage object (includes reasoning token details when present)
 			if chunk.Usage != nil {
-				totalPromptTokens = chunk.Usage.PromptTokens
-				totalCompletionTokens = chunk.Usage.CompletionTokens
+				usageData = chunk.Usage
 			}
 		}
 
-		// Track usage
-		usage := &apitypes.Usage{
-			PromptTokens:     totalPromptTokens,
-			CompletionTokens: totalCompletionTokens,
-			TotalTokens:      totalPromptTokens + totalCompletionTokens,
-		}
-		h.trackUsage(requestID, modelID, providerModelID, providerName, usage, time.Since(start), fiber.StatusOK, true, nil)
+		h.trackUsage(requestID, modelID, providerModelID, providerName, usageData, time.Since(start), fiber.StatusOK, true, nil)
 	})
 
 	return nil

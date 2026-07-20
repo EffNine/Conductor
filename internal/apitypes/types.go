@@ -18,6 +18,38 @@ type ChatCompletionRequest struct {
 	Seed             *int                   `json:"seed,omitempty"`
 	Tools            []Tool                 `json:"tools,omitempty"`
 	ToolChoice       interface{}            `json:"tool_choice,omitempty"`
+
+	// Reasoning controls (forwarded when the upstream model/provider supports them).
+	// Prefer Reasoning (OpenRouter-style); ReasoningEffort is the OpenAI shorthand.
+	Reasoning        *ReasoningConfig `json:"reasoning,omitempty"`
+	ReasoningEffort  string           `json:"reasoning_effort,omitempty"` // max|xhigh|high|medium|low|minimal|none
+	IncludeReasoning *bool            `json:"include_reasoning,omitempty"`
+}
+
+// ReasoningConfig controls reasoning/thinking for models that support it
+// (OpenRouter, OpenCode Zen, OpenAI o-series / GPT-5, etc.).
+type ReasoningConfig struct {
+	// Effort is OpenAI-style effort: max, xhigh, high, medium, low, minimal, none.
+	Effort string `json:"effort,omitempty"`
+	// MaxTokens is an Anthropic-style reasoning token budget.
+	MaxTokens *int `json:"max_tokens,omitempty"`
+	// Exclude omits reasoning tokens from the response when true.
+	Exclude *bool `json:"exclude,omitempty"`
+	// Enabled turns reasoning on with provider defaults when effort/max_tokens unset.
+	Enabled *bool `json:"enabled,omitempty"`
+	// Summary controls reasoning summary verbosity: auto, concise, detailed.
+	Summary string `json:"summary,omitempty"`
+}
+
+// SupportsReasoningParams reports whether this request asks for reasoning controls.
+func (r *ChatCompletionRequest) SupportsReasoningParams() bool {
+	if r == nil {
+		return false
+	}
+	if r.ReasoningEffort != "" || r.IncludeReasoning != nil {
+		return true
+	}
+	return r.Reasoning != nil
 }
 
 // Message represents a chat message
@@ -111,9 +143,25 @@ type LogProbs struct {
 
 // Usage represents token usage
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens            int                      `json:"prompt_tokens"`
+	CompletionTokens        int                      `json:"completion_tokens"`
+	TotalTokens             int                      `json:"total_tokens"`
+	PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+}
+
+// PromptTokensDetails breaks down prompt token usage.
+type PromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens,omitempty"`
+	AudioTokens  int `json:"audio_tokens,omitempty"`
+}
+
+// CompletionTokensDetails breaks down completion token usage.
+type CompletionTokensDetails struct {
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }
 
 // StreamChunk represents a streaming chunk
