@@ -9,6 +9,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Ollama OpenAI-compatible endpoints (local vs cloud).
+const (
+	defaultOllamaBaseURL = "http://localhost:11434/v1"
+	ollamaCloudBaseURL   = "https://ollama.com/v1"
+)
+
 // Config holds all configuration for the application
 type Config struct {
 	Server    ServerConfig                `mapstructure:"server"`
@@ -276,7 +282,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.groq.max_retries", 3)
 
 	v.SetDefault("providers.ollama.enabled", false)
-	v.SetDefault("providers.ollama.base_url", "http://localhost:11434")
+	v.SetDefault("providers.ollama.base_url", defaultOllamaBaseURL)
 	v.SetDefault("providers.ollama.timeout", 120*time.Second)
 	v.SetDefault("providers.ollama.max_retries", 1)
 
@@ -370,6 +376,32 @@ func autoEnableProviders(cfg *Config) {
 	hydrate(&cfg.Providers.Opencode, "OPENCODE_API_KEY")
 	hydrate(&cfg.Providers.NvidiaNim, "NVIDIA_NIM_API_KEY")
 	hydrate(&cfg.Providers.NousPortal, "NOUS_PORTAL_API_KEY")
+
+	// Ollama: local by default; OLLAMA_API_KEY enables Ollama Cloud when no host is set.
+	// OLLAMA_BASE_URL only overrides the host (compose always sets a default — do not
+	// treat it as an enable signal by itself).
+	ollama := &cfg.Providers.Ollama
+	wasEnabled := ollama.Enabled
+	hydrate(ollama, "OLLAMA_API_KEY")
+	if base := os.Getenv("OLLAMA_BASE_URL"); base != "" && (ollama.Enabled || ollama.APIKey != "") {
+		ollama.BaseURL = base
+	} else if !wasEnabled && ollama.APIKey != "" && isDefaultLocalOllamaBaseURL(ollama.BaseURL) {
+		ollama.BaseURL = ollamaCloudBaseURL
+	}
+}
+
+// isDefaultLocalOllamaBaseURL reports whether u is empty or the built-in local Ollama host.
+func isDefaultLocalOllamaBaseURL(u string) bool {
+	switch strings.TrimRight(strings.TrimSpace(u), "/") {
+	case "",
+		"http://localhost:11434",
+		"http://localhost:11434/v1",
+		"http://127.0.0.1:11434",
+		"http://127.0.0.1:11434/v1":
+		return true
+	default:
+		return false
+	}
 }
 
 // validate validates the configuration

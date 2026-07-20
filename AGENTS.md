@@ -21,6 +21,8 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   `api_key` field in `config.yaml`. Without it, startup fails config validation.
 - **Providers auto-enable from env vars.** Setting `OPENAI_API_KEY` (etc.) auto-enables that
   provider even without a `config.yaml`. See `internal/config/config.go` `autoEnableProviders`.
+  `OLLAMA_API_KEY` enables Ollama Cloud (`https://ollama.com/v1`); `OLLAMA_BASE_URL` overrides
+  the host when Ollama is enabled (e.g. local Docker). Local Ollama can also be enabled via YAML alone.
 - **Config file is optional and gitignored.** `config.yaml` (searched in `.`, `./config`,
   `/etc/novexa`) plus `data/` and `*.db` are all in `.gitignore`, so a local dev config never
   gets committed. Copy `config/config.example.yaml` to `config.yaml` to customize routes.

@@ -81,10 +81,10 @@ export NOVEXA_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 # Also supported: ANTHROPIC_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY,
 # OPENROUTER_API_KEY, GROQ_API_KEY, OPENCODE_API_KEY, NVIDIA_NIM_API_KEY,
-# NOUS_PORTAL_API_KEY
+# NOUS_PORTAL_API_KEY, OLLAMA_API_KEY (Ollama Cloud → https://ollama.com/v1)
 ```
 
-Ollama and LM Studio are enabled via `config.yaml` (`enabled` / `base_url`), not env auto-enable.
+LM Studio is enabled via `config.yaml` (`enabled` / `base_url`). Local Ollama uses the same (optional `OLLAMA_BASE_URL` host override). Setting `OLLAMA_API_KEY` alone enables Ollama Cloud.
 
 ### Advanced Configuration
 

@@ -145,7 +145,7 @@ Your gateway will be at `https://<app-name>.fly.dev` (use `/v1` as the OpenAI ba
 - Free shared-cpu-1x / 256MB VM; 1GB volume for SQLite
 - Automatic HTTPS; machines auto-stop when idle and wake on request
 - Health check: `GET /health`
-- Set any implemented provider key: `OPENAI_API_KEY`, `OPENCODE_API_KEY`, `NVIDIA_NIM_API_KEY`, or `NOUS_PORTAL_API_KEY`
+- Set any implemented provider key: `OPENAI_API_KEY`, `OPENCODE_API_KEY`, `NVIDIA_NIM_API_KEY`, `NOUS_PORTAL_API_KEY`, or `OLLAMA_API_KEY` (Ollama Cloud)
 
 ---
 

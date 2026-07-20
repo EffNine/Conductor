@@ -12,7 +12,7 @@ Novexa Gateway has provider adapters for 9 upstream services. The following tabl
 | DeepSeek | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | OpenRouter | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | Groq | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
-| Ollama | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
+| Ollama | ✅ | ✅ | ✅ | ✅ | — (use `cost.rates`) | Local `localhost:11434/v1` or Cloud via `OLLAMA_API_KEY` → `ollama.com/v1` |
 | LM Studio | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | Generic | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Zen base `https://opencode.ai/zen/v1`; chat/completions models only |
@@ -48,14 +48,43 @@ providers:
 
 OpenAI returns a static pricing map for known chat and embedding models. Prices are in USD per 1,000 tokens. You can override or extend rates with `cost.rates`.
 
+## Ollama (local and Cloud)
+
+Ollama uses the shared OpenAI-compatible adapter (`/v1/chat/completions`).
+
+### Ollama Cloud
+
+1. Create an API key at [ollama.com/settings/keys](https://ollama.com/settings/keys)
+2. Set the environment variable (auto-enables and defaults to `https://ollama.com/v1`):
+
+```bash
+export OLLAMA_API_KEY=your_api_key
+```
+
+### Local Ollama
+
+Enable in YAML (or set `OLLAMA_BASE_URL`). No API key is required locally:
+
+```yaml
+providers:
+  ollama:
+    enabled: true
+    base_url: "http://localhost:11434/v1"
+    models:
+      - "llama3.1:8b"
+      - "mistral:7b"
+```
+
+`OLLAMA_BASE_URL` overrides the host when Ollama is already enabled (YAML or `OLLAMA_API_KEY`). It does not enable the provider by itself. If both `OLLAMA_API_KEY` and `OLLAMA_BASE_URL` are set, the base URL wins and the key is still sent as `Authorization: Bearer`.
+
 ## Other Providers
 
-The remaining adapters are stubs. You can still configure them for:
+Several adapters are stubs or share the OpenAI-compatible base. You can still configure them for:
 
 - **Static model lists** advertised in `/v1/models`
 - **Routes and aliases** resolved by the router
 - **Manual cost rates** under `cost.rates`
-- **Health checks** (return `not implemented`)
+- **Health checks** (return `not implemented` for stubs)
 
 To complete a stub adapter, implement the `provider.Provider` interface in `internal/provider/<name>/provider.go`.
 
@@ -67,7 +96,7 @@ For providers without dynamic `ListModels` support, configure a static list:
 providers:
   ollama:
     enabled: true
-    base_url: "http://localhost:11434"
+    base_url: "http://localhost:11434/v1"
     models:
       - "llama3.1:8b"
       - "mistral:7b"

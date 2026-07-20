@@ -31,6 +31,11 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 | `DEEPSEEK_API_KEY` | DeepSeek API key |
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `GROQ_API_KEY` | Groq API key |
+| `OPENCODE_API_KEY` | OpenCode Zen API key |
+| `NVIDIA_NIM_API_KEY` | NVIDIA NIM API key |
+| `NOUS_PORTAL_API_KEY` | Nous Portal API key |
+| `OLLAMA_API_KEY` | Ollama Cloud API key (auto-enables; default base `https://ollama.com/v1`) |
+| `OLLAMA_BASE_URL` | Override Ollama OpenAI-compatible base URL when the provider is enabled (e.g. Docker host) |
 
 ### Database Settings
 
@@ -141,7 +146,8 @@ providers:
 
   ollama:
     enabled: false
-    base_url: "http://localhost:11434"
+    api_key: "${OLLAMA_API_KEY}"
+    base_url: "http://localhost:11434/v1"
     timeout: 120s
     max_retries: 1
     models:
