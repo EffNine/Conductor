@@ -308,7 +308,7 @@ novexa-gateway/
 │   ├── middleware/      # Fiber middleware
 │   ├── model/           # Data types
 │   ├── usage/           # Usage tracking
-│   ├── health/          # Health monitoring
+│   ├── health/          # Provider health monitor + per-model reachability probes
 │   └── database/        # Database layer
 ├── pkg/                 # Public reusable packages
 ├── docs/                # Documentation

@@ -10,10 +10,15 @@ import (
 
 // Entry is one advertised model in the merged catalog.
 type Entry struct {
-	ModelID         string // User-facing Model ID (may be provider-prefixed)
-	Provider        string
-	ProviderModelID string
-	OwnedBy         string
+	ModelID         string `json:"model_id"`
+	Provider        string `json:"provider"`
+	ProviderModelID string `json:"provider_model_id"`
+	OwnedBy         string `json:"owned_by,omitempty"`
+}
+
+// ReachabilityFilter decides whether a catalog entry should be advertised.
+type ReachabilityFilter interface {
+	ShouldAdvertise(modelID string) bool
 }
 
 // StaticModels maps provider name → configured static Model IDs.
@@ -23,6 +28,8 @@ type StaticModels map[string][]string
 type Catalog struct {
 	registry *provider.Registry
 	static   StaticModels
+	filter   ReachabilityFilter
+	hide     bool
 }
 
 // New creates a Catalog. static may be nil.
@@ -31,6 +38,13 @@ func New(registry *provider.Registry, static StaticModels) *Catalog {
 		static = StaticModels{}
 	}
 	return &Catalog{registry: registry, static: static}
+}
+
+// SetReachabilityFilter configures optional auto-hide of unreachable models.
+// When hide is false, List returns the full catalog regardless of filter.
+func (c *Catalog) SetReachabilityFilter(filter ReachabilityFilter, hide bool) {
+	c.filter = filter
+	c.hide = hide
 }
 
 // StaticFromConfig builds StaticModels from provider config.
@@ -61,7 +75,28 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 // List returns the merged Model Catalog from all providers.
 // Every Model ID is provider-prefixed (e.g. nvidia_nim/deepseek-ai/deepseek-v4-flash)
 // so clients can send the listed ID directly to /v1/chat/completions.
+// When a reachability filter is configured with hide enabled, unreachable models
+// are omitted.
 func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
+	entries, err := c.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if c.filter == nil || !c.hide {
+		return entries, nil
+	}
+	filtered := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if c.filter.ShouldAdvertise(e.ModelID) {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered, nil
+}
+
+// ListAll returns the full merged catalog without reachability filtering.
+// Used by the model prober so it can still check models that are currently hidden.
+func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
 	var entries []Entry
 
 	for _, p := range c.registry.All() {

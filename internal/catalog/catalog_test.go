@@ -122,6 +122,49 @@ func TestCatalogUsesStaticModelsWhenListFails(t *testing.T) {
 	}
 }
 
+func TestCatalogHidesUnreachableWhenFilterEnabled(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "nvidia_nim",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "good", ModelID: "good"},
+			{ProviderModelID: "bad", ModelID: "bad"},
+		},
+	})
+
+	store := &stubFilter{hide: map[string]bool{"nvidia_nim/bad": true}}
+	c := catalog.New(reg, nil)
+	c.SetReachabilityFilter(store, true)
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := modelIDs(entries)
+	assertContains(t, ids, "nvidia_nim/good")
+	for _, id := range ids {
+		if id == "nvidia_nim/bad" {
+			t.Fatalf("bad model should be hidden: %v", ids)
+		}
+	}
+
+	all, err := c.ListAll(context.Background())
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("ListAll = %d, want 2", len(all))
+	}
+}
+
+type stubFilter struct {
+	hide map[string]bool
+}
+
+func (s *stubFilter) ShouldAdvertise(modelID string) bool {
+	return !s.hide[modelID]
+}
+
 func modelIDs(entries []catalog.Entry) []string {
 	ids := make([]string, len(entries))
 	for i, e := range entries {

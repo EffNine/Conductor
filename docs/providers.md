@@ -16,7 +16,7 @@ Novexa Gateway has provider adapters for 9 upstream services. The following tabl
 | LM Studio | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | Generic | ❌ Planned | ❌ | ❌ | ❌ | ❌ | Stub registered when enabled |
 | OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Zen base `https://opencode.ai/zen/v1`; chat/completions models only |
-| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Hosted `integrate.api.nvidia.com` or self-hosted |
+| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Hosted `integrate.api.nvidia.com` or self-hosted; see [Model Reachability](#model-reachability-nvidia-nim) |
 | Nous Portal | ✅ | ✅ | ✅ | ✅ | ✅ (empty map) | Subscription service; configure cost.rates |
 
 A stub provider is present in the registry and will appear in health checks and the model catalog if you configure a **static model list** for it. You can also define routes and aliases pointing to stub providers; chat/embeddings requests to them will return errors until the adapter is implemented.
@@ -123,7 +123,7 @@ fallbacks:
 
 ## Provider Health Monitoring
 
-`/api/health` calls `HealthCheck` on each registered provider. For OpenAI this is a live check; stubs return `not implemented`.
+`/api/health` calls `HealthCheck` on each registered provider (provider-level liveness, typically `GET /models`). This does **not** prove that every listed model accepts chat completions.
 
 ```bash
 curl http://localhost:8080/api/health \
@@ -146,6 +146,57 @@ Example response:
 }
 ```
 
+## Model Reachability (NVIDIA NIM)
+
+NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
+
+Novexa probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) and can auto-hide failures from `/v1/models`.
+
+### Defaults
+
+- Enabled for **`nvidia_nim` only** (other providers are not probed unless you add them)
+- `hide_unreachable: true` — omit dead models from `/v1/models`
+- `unknown_as_reachable: true` — keep unprobed models visible until the first probe finishes
+- Interval `5m`, concurrency `3` (stay under NIM free-tier rate limits)
+
+### Configuration
+
+```yaml
+health:
+  models:
+    enabled: true
+    hide_unreachable: true
+    check_interval: 5m
+    timeout: 15s
+    concurrency: 3
+    unhealthy_threshold: 2
+    providers:
+      - nvidia_nim
+    unknown_as_reachable: true
+```
+
+Disable entirely with `health.models.enabled: false`. Probe additional providers by adding names to `providers` (empty list = all registered providers).
+
+### Inspect status
+
+```bash
+# Catalog with reachability fields
+curl http://localhost:8080/api/models \
+  -H "Authorization: Bearer your-key"
+
+# Models hidden from /v1/models
+curl "http://localhost:8080/api/models?include_unreachable=true" \
+  -H "Authorization: Bearer your-key"
+
+# Probe cache only
+curl http://localhost:8080/api/models/status \
+  -H "Authorization: Bearer your-key"
+```
+
+Rate limits (`429`) and auth errors do not mark a model offline. Live chat successes/failures also update the cache, so a model can be hidden (or restored) without waiting for the next probe cycle.
+
+See [Configuration — Model reachability](configuration.md#model-reachability) and [API — Model Reachability](api.md#model-reachability).
+
 ## Troubleshooting
 
 ### Provider Returns 401 Unauthorized
@@ -158,6 +209,7 @@ Example response:
 
 - You've hit the provider's rate limit
 - Wait and retry, or configure a fallback chain
+- For NIM model probes, lower `health.models.concurrency` or raise `check_interval`
 
 ### Local Provider (Ollama/LM Studio) Not Responding
 
@@ -170,3 +222,4 @@ Example response:
 - Add the provider's model list if the adapter is a stub
 - Check the route uses the bare Model ID, not a provider prefix
 - Aliases are intentionally excluded from the model list
+- For NVIDIA NIM: the model may have failed reachability probes — check `/api/models?include_unreachable=true` or `/api/models/status`

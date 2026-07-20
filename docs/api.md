@@ -107,7 +107,7 @@ data: [DONE]
 
 **Endpoint**: `GET /v1/models`
 
-Lists all available models from configured providers.
+Lists available models from configured providers. When model reachability probing is enabled (`health.models`), models that fail consecutive probes are omitted (see [Model Reachability](#model-reachability)).
 
 #### Response
 
@@ -116,22 +116,26 @@ Lists all available models from configured providers.
   "object": "list",
   "data": [
     {
-      "id": "gpt-4o",
+      "id": "openai/gpt-4o",
       "object": "model",
       "created": 1677652288,
       "owned_by": "openai"
     },
     {
-      "id": "openai/llama3-8b",
+      "id": "nvidia_nim/meta/llama-3.1-8b-instruct",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "openai"
+      "owned_by": "meta"
     }
   ]
 }
 ```
 
-**Note**: `owned_by` reflects the provider or the upstream owner when reported. Duplicate base model IDs across providers are qualified with a provider prefix.
+**Notes**:
+- Every Model ID is provider-prefixed (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) so clients can send the listed ID directly to `/v1/chat/completions`.
+- `owned_by` reflects the provider or the upstream owner when reported.
+- Aliases are never listed.
+- Unreachable models (when probing + `hide_unreachable` are on) are not listed; use `GET /api/models?include_unreachable=true` to inspect them.
 
 ---
 
@@ -184,7 +188,13 @@ All dashboard endpoints require the gateway API key.
 
 **Endpoint**: `GET /api/models`
 
-Returns the merged model catalog from all configured providers.
+Returns the merged model catalog from all configured providers, including reachability fields when probing is enabled.
+
+#### Query Parameters
+
+| Parameter | Description |
+|-----------|-------------|
+| `include_unreachable` | If `true` or `1`, return the full catalog including models hidden from `/v1/models` |
 
 #### Response
 
@@ -192,20 +202,90 @@ Returns the merged model catalog from all configured providers.
 {
   "models": [
     {
+      "model_id": "openai/gpt-4o",
       "provider": "openai",
-      "model_id": "gpt-4o",
       "provider_model_id": "gpt-4o",
-      "owned_by": "openai"
+      "owned_by": "openai",
+      "reachable": true,
+      "latency_ms": 312,
+      "checked_at": "2026-07-20T10:30:00Z"
     },
     {
-      "provider": "groq",
-      "model_id": "groq/llama3-8b",
-      "provider_model_id": "llama3-8b",
-      "owned_by": "meta"
+      "model_id": "nvidia_nim/meta/llama-3.1-8b-instruct",
+      "provider": "nvidia_nim",
+      "provider_model_id": "meta/llama-3.1-8b-instruct",
+      "owned_by": "meta",
+      "reachable": false,
+      "latency_ms": 0,
+      "last_error": "model not found",
+      "checked_at": "2026-07-20T10:30:05Z"
     }
   ]
 }
 ```
+
+Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe.
+
+---
+
+### Model Online Status
+
+**Endpoint**: `GET /api/models/status`
+
+Returns the cached per-model reachability probe results only (models that have been probed or updated from live traffic).
+
+#### Response
+
+```json
+{
+  "models": [
+    {
+      "model_id": "nvidia_nim/good/model",
+      "provider": "nvidia_nim",
+      "provider_model_id": "good/model",
+      "reachable": true,
+      "latency_ms": 420,
+      "checked_at": "2026-07-20T10:30:00Z",
+      "consecutive_fails": 0
+    },
+    {
+      "model_id": "nvidia_nim/bad/model",
+      "provider": "nvidia_nim",
+      "provider_model_id": "bad/model",
+      "reachable": false,
+      "latency_ms": 0,
+      "last_error": "model not found",
+      "checked_at": "2026-07-20T10:30:01Z",
+      "consecutive_fails": 2
+    }
+  ]
+}
+```
+
+---
+
+### Model Reachability
+
+NVIDIA NIM (and similar catalogs) often list models that are not currently callable — retired free endpoints, capacity-limited models, or non-chat entries. There is no reliable “available” flag on `GET /models`.
+
+Novexa optionally probes configured providers with a minimal chat completion (`max_tokens: 1`) and:
+
+1. Caches online/offline status (also updated from live chat successes/failures)
+2. Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true
+3. Exposes status on `GET /api/models` and `GET /api/models/status`
+
+**Defaults** (see [Configuration](configuration.md#model-reachability)):
+
+| Setting | Default |
+|---------|---------|
+| Enabled | `true` |
+| Providers probed | `nvidia_nim` only |
+| Hide unreachable from `/v1/models` | `true` |
+| Check interval | `5m` |
+| Unhealthy threshold | `2` consecutive failures |
+| Unprobed models visible | `true` (`unknown_as_reachable`) |
+
+Rate limits (`429`) and auth errors (`401`/`403`) do **not** mark a model offline.
 
 ---
 
@@ -522,6 +602,21 @@ curl http://localhost:8080/v1/embeddings \
 
 ```bash
 curl http://localhost:8080/api/health \
+  -H "Authorization: Bearer your-api-key"
+```
+
+### Dashboard: Model Catalog + Reachability
+
+```bash
+curl http://localhost:8080/api/models \
+  -H "Authorization: Bearer your-api-key"
+
+# Include models hidden from /v1/models
+curl "http://localhost:8080/api/models?include_unreachable=true" \
+  -H "Authorization: Bearer your-api-key"
+
+# Probe cache only
+curl http://localhost:8080/api/models/status \
   -H "Authorization: Bearer your-api-key"
 ```
 

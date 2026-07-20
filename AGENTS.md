@@ -32,6 +32,12 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   `meta/llama-3.1-8b-instruct`). Such a route silently won't resolve. Use the provider-prefixed
   Model ID from `/v1/models` instead (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`), which the
   router strips and dispatches without needing a matching route entry.
+- **Model reachability probes (esp. NVIDIA NIM).** `/models` catalogs can list free and
+  unreachable endpoints with no availability flag. By default the gateway probes `nvidia_nim`
+  models with a minimal chat completion and hides failures from `/v1/models`. Status:
+  `GET /api/models`, `GET /api/models/status`, `GET /api/models?include_unreachable=true`.
+  Config under `health.models` (see `docs/configuration.md`). Disable with
+  `health.models.enabled: false`.
 
 ### Local end-to-end testing without real provider keys
 
@@ -40,4 +46,6 @@ There are no real upstream credentials in this environment. To exercise the full
 provider `base_url` at a local OpenAI-compatible mock and add a matching route in
 `config.yaml`, then drive it with `curl` against `http://127.0.0.1:8080` using the
 `Authorization: Bearer <NOVEXA_API_KEY>` header. Key endpoints: `GET /health`,
-`GET /v1/models`, `POST /v1/chat/completions`, `GET /api/usage`, `GET /api/usage/costs`.
+`GET /v1/models`, `POST /v1/chat/completions`, `GET /api/models`, `GET /api/models/status`,
+`GET /api/usage`, `GET /api/usage/costs`. To test auto-hide, have the mock return 404 for one
+model's chat completions and confirm it disappears from `/v1/models` after a probe pass.

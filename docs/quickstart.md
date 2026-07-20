@@ -180,6 +180,22 @@ curl http://localhost:8080/api/models \
   -H "Authorization: Bearer your-secret-gateway-key"
 ```
 
+### Model Online Status
+
+When NVIDIA NIM (or other probed providers) is enabled, the gateway probes models and can hide unreachable ones from `/v1/models`:
+
+```bash
+# Probe cache
+curl http://localhost:8080/api/models/status \
+  -H "Authorization: Bearer your-secret-gateway-key"
+
+# Include models hidden from /v1/models
+curl "http://localhost:8080/api/models?include_unreachable=true" \
+  -H "Authorization: Bearer your-secret-gateway-key"
+```
+
+See [Configuration — Model reachability](configuration.md#model-reachability) and [Providers — Model Reachability](providers.md#model-reachability-nvidia-nim).
+
 ### Usage Statistics
 
 ```bash
@@ -230,6 +246,7 @@ Only the OpenAI adapter is fully implemented. Other providers are stubs and will
 - Configure a `routes` entry for the Model ID
 - For stub providers, configure a static `models` list
 - Aliases do not appear in `/v1/models`
+- For NVIDIA NIM: the model may have failed online-status probes — check `/api/models/status` or `/api/models?include_unreachable=true`
 
 ### Streaming not working
 

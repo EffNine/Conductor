@@ -17,7 +17,11 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 │       → Provider Adapter → Normalize → Response     │
 │                                                     │
 │  Catalog: merges provider model lists, qualifies    │
-│           duplicates with provider prefixes         │
+│           duplicates with provider prefixes,        │
+│           optionally filters by model reachability  │
+│                                                     │
+│  Model Prober: minimal chat probes (esp. NIM) to    │
+│                hide unreachable catalog entries     │
 │                                                     │
 │  Usage Tracker: records tokens, counters, latency,  │
 │                 cost source to SQLite               │
@@ -52,6 +56,15 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 - Duplicate base Model IDs are qualified with `provider/model-id`
 - Providers without dynamic listing use the static `models` list from config
 - Aliases are never advertised in the catalog
+- When model reachability probing is enabled, unreachable models are omitted from `/v1/models` (full list via `/api/models?include_unreachable=true`)
+
+### Model Reachability
+
+- Provider-level `HealthCheck` only proves the upstream API is up, not that each listed model accepts inference
+- Especially important for **NVIDIA NIM**: `/models` lists free and unreachable endpoints with no availability flag
+- Optional background prober sends `max_tokens: 1` chat completions for configured providers (default: `nvidia_nim`)
+- Results are cached and also updated from live chat traffic; rate limits / auth errors are ignored
+- Dashboard: `/api/models`, `/api/models/status`
 
 ### Usage and Cost
 

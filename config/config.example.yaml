@@ -181,6 +181,20 @@ health:
   check_interval: 60s
   timeout: 10s
   unhealthy_threshold: 3
+  # Per-model reachability probes (useful for NVIDIA NIM: /models lists free
+  # and unreachable endpoints without distinguishing them).
+  models:
+    enabled: true
+    hide_unreachable: true
+    check_interval: 5m
+    timeout: 15s
+    concurrency: 3
+    unhealthy_threshold: 2
+    # Empty providers list = probe all; default is nvidia_nim only.
+    providers:
+      - nvidia_nim
+    # Keep unprobed models visible until the first probe finishes.
+    unknown_as_reachable: true
 
 # Usage tracking
 usage:
