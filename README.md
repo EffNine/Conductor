@@ -186,6 +186,8 @@ curl http://localhost:8080/api/logs \
   -H "Authorization: Bearer your-key"
 ```
 
+Model online status (especially for NVIDIA NIM free vs unreachable endpoints) is documented in [Configuration](docs/configuration.md#model-reachability), [API](docs/api.md#model-reachability), and [Providers](docs/providers.md#model-reachability-nvidia-nim).
+
 ## Development
 
 ```bash
