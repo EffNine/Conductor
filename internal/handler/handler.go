@@ -355,6 +355,7 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 			Object:  "model",
 			Created: h.startTime.Unix(),
 			OwnedBy: ownedBy,
+			Name:    e.DisplayName(),
 		})
 	}
 
@@ -389,6 +390,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 
 	type modelRow struct {
 		ModelID         string  `json:"model_id"`
+		Name            string  `json:"name,omitempty"`
 		Provider        string  `json:"provider"`
 		ProviderModelID string  `json:"provider_model_id"`
 		OwnedBy         string  `json:"owned_by,omitempty"`
@@ -402,6 +404,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	for _, e := range entries {
 		row := modelRow{
 			ModelID:         e.ModelID,
+			Name:            e.DisplayName(),
 			Provider:        e.Provider,
 			ProviderModelID: e.ProviderModelID,
 			OwnedBy:         e.OwnedBy,
