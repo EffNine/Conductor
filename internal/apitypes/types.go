@@ -245,6 +245,9 @@ type ModelInfo struct {
 	Object  string `json:"object"`
 	Created int64  `json:"created"`
 	OwnedBy string `json:"owned_by"`
+	// Name is an optional short display label for model pickers. Clients that
+	// only show id are unchanged; chat requests must still use id.
+	Name string `json:"name,omitempty"`
 }
 
 // ModelList represents a list of models

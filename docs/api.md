@@ -121,13 +121,15 @@ Lists available models from configured providers. With `catalog.curated_only`, o
       "id": "openai/gpt-4o",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "openai"
+      "owned_by": "openai",
+      "name": "gpt-4o"
     },
     {
       "id": "nvidia_nim/meta/llama-3.1-8b-instruct",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "meta"
+      "owned_by": "meta",
+      "name": "meta/llama-3.1-8b-instruct"
     }
   ]
 }
@@ -135,6 +137,7 @@ Lists available models from configured providers. With `catalog.curated_only`, o
 
 **Notes**:
 - Every Model ID is provider-prefixed (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) so clients can send the listed ID directly to `/v1/chat/completions`.
+- `name` is a shorter display label (the upstream Provider Model ID without the gateway provider prefix), e.g. `meta/llama-3.1-8b-instruct`. Pickers that support `name` can show it; chat requests must still use `id`.
 - `owned_by` reflects the provider or the upstream owner when reported.
 - Aliases are never listed.
 - With `catalog.curated_only: true`, only `providers.*.models` entries appear.
@@ -206,6 +209,7 @@ Returns the merged model catalog from all configured providers, including reacha
   "models": [
     {
       "model_id": "openai/gpt-4o",
+      "name": "gpt-4o",
       "provider": "openai",
       "provider_model_id": "gpt-4o",
       "owned_by": "openai",
@@ -215,6 +219,7 @@ Returns the merged model catalog from all configured providers, including reacha
     },
     {
       "model_id": "nvidia_nim/meta/llama-3.1-8b-instruct",
+      "name": "meta/llama-3.1-8b-instruct",
       "provider": "nvidia_nim",
       "provider_model_id": "meta/llama-3.1-8b-instruct",
       "owned_by": "meta",
