@@ -76,7 +76,7 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 | `NOVEXA_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
 | `NOVEXA_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
 | `NOVEXA_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `12h` |
-| `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `15s` |
+| `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `60s` |
 | `NOVEXA_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
 | `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
 | `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible after first pass | `false` |
@@ -241,7 +241,7 @@ health:
     enabled: true
     hide_unreachable: true
     check_interval: 12h
-    timeout: 15s
+    timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
@@ -296,7 +296,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 | `enabled` | Run background per-model probes | `true` |
 | `hide_unreachable` | Omit unreachable / unpassed models from `/v1/models` and default `/api/models` | `true` |
 | `check_interval` | Time between full probe passes (after the startup pass) | `12h` |
-| `timeout` | Timeout per individual model probe | `15s` |
+| `timeout` | Timeout per individual model probe | `60s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
 | `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
 | `providers` | Provider names to probe; empty = all registered | `[]` (all) |

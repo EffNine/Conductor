@@ -40,7 +40,7 @@ func NewModelProber(
 		cfg.CheckInterval = 12 * time.Hour
 	}
 	if cfg.Timeout <= 0 {
-		cfg.Timeout = 15 * time.Second
+		cfg.Timeout = 60 * time.Second
 	}
 	if cfg.Concurrency <= 0 {
 		cfg.Concurrency = 3
