@@ -157,7 +157,7 @@ type ModelHealthConfig struct {
 	HideUnreachable bool `mapstructure:"hide_unreachable"`
 	// CheckInterval between full probe passes. Default 12h.
 	CheckInterval time.Duration `mapstructure:"check_interval"`
-	// Timeout per individual model probe. Default 15s.
+	// Timeout per individual model probe. Default 60s.
 	Timeout time.Duration `mapstructure:"timeout"`
 	// Concurrency is max parallel probes. Default 3 (stay under NIM free-tier RPM).
 	Concurrency int `mapstructure:"concurrency"`
@@ -343,7 +343,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
 	v.SetDefault("health.models.check_interval", 12*time.Hour)
-	v.SetDefault("health.models.timeout", 30*time.Second)
+	v.SetDefault("health.models.timeout", 60*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 1)
 	// Empty = probe all registered providers.

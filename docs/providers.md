@@ -212,7 +212,7 @@ health:
     enabled: true
     hide_unreachable: true
     check_interval: 12h
-    timeout: 15s
+    timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
