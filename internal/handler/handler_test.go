@@ -58,18 +58,18 @@ func TestListModelsExcludesAliases(t *testing.T) {
 		t.Fatalf("Unmarshal: %v\nbody=%s", err, body)
 	}
 
-	ids := make([]string, len(list.Data))
-	for i, m := range list.Data {
-		ids[i] = m.ID
-	}
-
+	ids := make([]string, 0, len(list.Data))
 	foundGPT := false
-	for _, id := range ids {
-		if id == "fast" {
-			t.Fatalf("alias %q must not appear in /v1/models: %v", id, ids)
+	for _, m := range list.Data {
+		ids = append(ids, m.ID)
+		if m.ID == "fast" {
+			t.Fatalf("alias %q must not appear in /v1/models: %v", m.ID, ids)
 		}
-		if id == "openai/gpt-4o" {
+		if m.ID == "openai/gpt-4o" {
 			foundGPT = true
+			if m.Name != "gpt-4o" {
+				t.Fatalf("name = %q, want gpt-4o (short display without provider prefix)", m.Name)
+			}
 		}
 	}
 	if !foundGPT {

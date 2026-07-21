@@ -37,6 +37,14 @@ func TestCatalogListsModelsFromAllProviders(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
 	}
+	for _, e := range entries {
+		if e.ModelID == "openai/gpt-4o" && e.DisplayName() != "gpt-4o" {
+			t.Fatalf("DisplayName = %q, want gpt-4o", e.DisplayName())
+		}
+		if e.ModelID == "groq/llama3-8b" && e.DisplayName() != "llama3-8b" {
+			t.Fatalf("DisplayName = %q, want llama3-8b", e.DisplayName())
+		}
+	}
 }
 
 func TestCatalogAlwaysPrefixesProvider(t *testing.T) {
