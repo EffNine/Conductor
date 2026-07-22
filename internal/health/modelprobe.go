@@ -133,11 +133,13 @@ func (p *ModelProber) ProbeAll() {
 	sem := make(chan struct{}, p.cfg.Concurrency)
 	var wg sync.WaitGroup
 	probed := 0
+	probedProviders := make(map[string]struct{})
 
 	for _, e := range entries {
 		if !p.shouldProbe(e.Provider) {
 			continue
 		}
+		probedProviders[e.Provider] = struct{}{}
 		probed++
 		entry := e
 		wg.Add(1)
@@ -149,7 +151,13 @@ func (p *ModelProber) ProbeAll() {
 		}()
 	}
 	wg.Wait()
-	p.store.MarkFilterReady()
+	for name := range probedProviders {
+		p.store.MarkProviderFilterReady(name)
+	}
+	if len(p.providerFilter) == 0 {
+		// A pass with no provider filter covered every registered provider.
+		p.store.MarkFilterReady()
+	}
 	p.logger.Info("model probe: pass complete", zap.Int("probed", probed), zap.Int("catalog", len(entries)))
 }
 
