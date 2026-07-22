@@ -25,10 +25,12 @@ type ModelStatusStore struct {
 	statuses           map[string]*ModelStatus
 	unhealthyThreshold int
 	unknownAsReachable bool
-	// filterReady is set after the first full probe pass completes. Until then
-	// ShouldAdvertise keeps every model visible so Fly cold-starts / redeploys
-	// do not briefly return an empty /v1/models list.
-	filterReady bool
+	// allProvidersReady is set after a full probe pass that covered every provider.
+	// readyProviders tracks providers whose first scoped probe pass has completed.
+	// Until a provider is ready, ShouldAdvertise keeps its unprobed models visible
+	// so scoped probes (e.g. only nvidia_nim) do not hide models from other providers.
+	allProvidersReady bool
+	readyProviders    map[string]struct{}
 }
 
 // NewModelStatusStore creates an empty store.
@@ -40,21 +42,45 @@ func NewModelStatusStore(unhealthyThreshold int, unknownAsReachable bool) *Model
 		statuses:           make(map[string]*ModelStatus),
 		unhealthyThreshold: unhealthyThreshold,
 		unknownAsReachable: unknownAsReachable,
+		readyProviders:     make(map[string]struct{}),
 	}
 }
 
-// MarkFilterReady enables reachability-based hiding after the first probe pass.
+// MarkFilterReady enables reachability-based hiding for all providers after a
+// full probe pass.
 func (s *ModelStatusStore) MarkFilterReady() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.filterReady = true
+	s.allProvidersReady = true
 }
 
-// FilterReady reports whether /v1/models may hide unreachable models.
+// MarkProviderFilterReady enables reachability-based hiding for one provider
+// after its first scoped probe pass completes.
+func (s *ModelStatusStore) MarkProviderFilterReady(provider string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if provider != "" {
+		s.readyProviders[provider] = struct{}{}
+	}
+}
+
+// FilterReady reports whether /v1/models may hide unreachable models globally.
 func (s *ModelStatusStore) FilterReady() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.filterReady
+	return s.allProvidersReady
+}
+
+// ProviderFilterReady reports whether a specific provider has finished its
+// first probe pass.
+func (s *ModelStatusStore) ProviderFilterReady(provider string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.allProvidersReady {
+		return true
+	}
+	_, ok := s.readyProviders[provider]
+	return ok
 }
 
 // RecordSuccess marks a model as reachable.
@@ -104,20 +130,44 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 }
 
 // ShouldAdvertise returns true if the model should appear in /v1/models when
-// hideUnreachable is enabled. Before the first probe pass finishes, all models
-// remain advertised (no empty flicker). After that, only reachable models are
-// advertised when unknownAsReachable is false.
-func (s *ModelStatusStore) ShouldAdvertise(modelID string) bool {
+// hideUnreachable is enabled.
+//
+// Rules:
+//   - Confirmed failures (Reachable=false after reaching unhealthyThreshold) are
+//     always hidden, including mid-pass, so the list shrinks toward available
+//     models without waiting for the full pass.
+//   - Sub-threshold failures keep the model visible until unhealthyThreshold is
+//     reached, matching the documented hide-after-N behavior.
+//   - Unprobed models stay visible until their provider's first probe pass
+//     finishes (avoids empty flicker on cold start and on scoped probes), then
+//     follow unknownAsReachable (default false = available-only).
+func (s *ModelStatusStore) ShouldAdvertise(modelID, provider string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if !s.filterReady {
-		return true
-	}
 	st, ok := s.statuses[modelID]
 	if !ok {
+		if !s.providerFilterReadyLocked(provider) {
+			return true
+		}
 		return s.unknownAsReachable
 	}
+	// A model is only confirmed unreachable once it hits the unhealthy threshold.
+	// Before that, keep it visible so sub-threshold blips do not hide it.
+	if st.ConsecutiveFails > 0 && st.ConsecutiveFails < s.unhealthyThreshold {
+		return true
+	}
 	return st.Reachable
+}
+
+func (s *ModelStatusStore) providerFilterReadyLocked(provider string) bool {
+	if s.allProvidersReady {
+		return true
+	}
+	if provider == "" {
+		return false
+	}
+	_, ok := s.readyProviders[provider]
+	return ok
 }
 
 // Get returns a copy of the status for a model, or nil if unknown.
