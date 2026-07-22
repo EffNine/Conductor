@@ -21,11 +21,20 @@ func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, log
 
 	// CORS
 	if cfg.Server.CORS.Enabled {
+		allowOrigins := joinStrings(cfg.Server.CORS.Origins)
+		allowCredentials := true
+		for _, origin := range cfg.Server.CORS.Origins {
+			if origin == "*" {
+				allowCredentials = false
+				logger.Warn("CORS wildcard origin configured; disabling AllowCredentials")
+				break
+			}
+		}
 		app.Use(cors.New(cors.Config{
-			AllowOrigins:     joinStrings(cfg.Server.CORS.Origins),
+			AllowOrigins:     allowOrigins,
 			AllowMethods:     joinStrings(cfg.Server.CORS.Methods),
 			AllowHeaders:     joinStrings(cfg.Server.CORS.Headers),
-			AllowCredentials: true,
+			AllowCredentials: allowCredentials,
 		}))
 	}
 
