@@ -1,19 +1,19 @@
-# fly.toml app configuration file generated for novexa-gateway on 2026-07-20T11:28:26Z
+# fly.toml app configuration file generated for conductor on 2026-07-20T11:28:26Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'novexa-gateway'
+app = 'conductor'
 primary_region = 'sin'
 
 [build]
   dockerfile = 'deployments/Dockerfile'
 
 [env]
-  NOVEXA_SERVER_PORT = '8080'
+  CONDUCTOR_SERVER_PORT = '8080'
 
 [[mounts]]
-  source = 'novexa_data'
+  source = 'conductor_data'
   destination = '/app/data'
 
 [http_service]

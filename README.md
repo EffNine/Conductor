@@ -1,23 +1,23 @@
-# Novexa Gateway
+# Conductor
 
 > One API key. One endpoint. Every model you pay for — routed, metered, and kept honest.
 
-[![CI](https://github.com/EffNine/novexa-gateway/actions/workflows/ci.yaml/badge.svg)](https://github.com/EffNine/novexa-gateway/actions/workflows/ci.yaml)
+[![CI](https://github.com/EffNine/conductor/actions/workflows/ci.yaml/badge.svg)](https://github.com/EffNine/conductor/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## One-Liner
 
 ```bash
 docker run -d -p 8080:8080 \
-  -e NOVEXA_API_KEY=my-key \
+  -e CONDUCTOR_API_KEY=my-key \
   -e OPENAI_API_KEY=sk-... \
-  -v novexa-data:/app/data \
-  novexa/gateway:latest
+  -v conductor-data:/app/data \
+  effnine/conductor:latest
 ```
 
 ## What It Is
 
-Novexa Gateway is a single-operator, self-hosted AI gateway. Drop it between your coding tools and the dozen AI subscriptions you already own. Clients see a tidy, merged model picker. You see unified usage, cost, and health — all behind one gateway key.
+Conductor is a single-operator, self-hosted AI gateway. Drop it between your coding tools and the dozen AI subscriptions you already own. Clients see a tidy, merged model picker. You see unified usage, cost, and health — all behind one gateway key.
 
 Think of it as a tiny traffic controller for your AI spend: route by model, fall back when a provider hiccups, and stop guessing which endpoint is actually online.
 
@@ -45,16 +45,16 @@ Think of it as a tiny traffic controller for your AI spend: route by model, fall
 
 ```bash
 cat > .env << EOF
-NOVEXA_API_KEY=your-secret-gateway-key
+CONDUCTOR_API_KEY=your-secret-gateway-key
 OPENAI_API_KEY=sk-your-openai-key
 EOF
 
 docker run -d \
-  --name novexa-gateway \
+  --name conductor \
   -p 8080:8080 \
   --env-file .env \
-  -v novexa-data:/app/data \
-  novexa/gateway:latest
+  -v conductor-data:/app/data \
+  effnine/conductor:latest
 ```
 
 ### Test It
@@ -82,10 +82,10 @@ Bare IDs like `gpt-4o` only work if you add a matching `routes` entry (or alias)
 
 ### Minimal Setup
 
-Only `NOVEXA_API_KEY` is required to boot. Setting a provider env var auto-enables that provider (no `config.yaml` needed):
+Only `CONDUCTOR_API_KEY` is required to boot. Setting a provider env var auto-enables that provider (no `config.yaml` needed):
 
 ```bash
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 # Also supported: ANTHROPIC_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY,
 # OPENROUTER_API_KEY, GROQ_API_KEY, OPENCODE_API_KEY, NVIDIA_NIM_API_KEY,
@@ -96,7 +96,7 @@ LM Studio is enabled via `config.yaml` (`enabled` / `base_url`). Local Ollama us
 
 ### Advanced Configuration
 
-Copy [`config/config.example.yaml`](config/config.example.yaml) to `config.yaml` (searched in `.`, `./config`, `/etc/novexa`) for routes, aliases, fallbacks, static model lists, auto mode, and cost rates:
+Copy [`config/config.example.yaml`](config/config.example.yaml) to `config.yaml` (searched in `.`, `./config`, `/etc/conductor`) for routes, aliases, fallbacks, static model lists, auto mode, and cost rates:
 
 ```yaml
 routes:
@@ -150,7 +150,7 @@ Client → API Key Check → Rate Limit → Validate → Route → Provider Adap
                                    Alias/Routes   Health/Probes               Usage + Cost → SQLite
 ```
 
-- **Auth** — Single gateway API key via `NOVEXA_API_KEY`.
+- **Auth** — Single gateway API key via `CONDUCTOR_API_KEY`.
 - **Rate Limiter** — Global and per-provider limits.
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks.
 - **Provider Adapters** — Common `Provider` interface; OpenAI-compatible passthrough plus a custom Anthropic Messages adapter.
@@ -231,7 +231,7 @@ Model online status (especially for NVIDIA NIM free vs unreachable endpoints) is
 ### Fly.io (recommended free deploy)
 
 ```bash
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key   # or another provider key
 ./scripts/fly-deploy.sh
 # or: make fly-deploy
@@ -240,7 +240,7 @@ export OPENAI_API_KEY=sk-your-openai-key   # or another provider key
 Canonical config is [`fly.toml`](fly.toml) (`primary_region = "sin"`). Match the volume region when creating one:
 
 ```bash
-REGION=sin APP_NAME=novexa-gateway-you ./scripts/fly-deploy.sh
+REGION=sin APP_NAME=conductor-you ./scripts/fly-deploy.sh
 ```
 
 Gateway URL: `https://<app-name>.fly.dev` (use `/v1` as the OpenAI base URL). Machines may cold-start when `min_machines_running = 0`.
@@ -250,20 +250,20 @@ See [Deployment Guide](docs/deployment.md) for Railway, Render, and other option
 ## Development
 
 ```bash
-git clone https://github.com/EffNine/novexa-gateway.git
-cd novexa-gateway
+git clone https://github.com/EffNine/conductor.git
+cd conductor
 
 # Requires Go 1.21+, gcc, and CGO (do not set CGO_ENABLED=0)
 make build
 make test
 
-export NOVEXA_API_KEY=test-key
+export CONDUCTOR_API_KEY=test-key
 export OPENAI_API_KEY=sk-test
 make run
-# binary: ./bin/novexa-gateway
+# binary: ./bin/conductor
 ```
 
-Useful targets: `make lint`, `make docker-build` (uses context `.`; prefer `docker build -f deployments/Dockerfile -t novexa/gateway:latest .`).
+Useful targets: `make lint`, `make docker-build` (uses context `.`; prefer `docker build -f deployments/Dockerfile -t effnine/conductor:latest .`).
 
 ## Documentation
 

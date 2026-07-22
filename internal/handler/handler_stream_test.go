@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/handler"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/router"
 	"github.com/gofiber/fiber/v2"
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/handler"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/router"
 	"go.uber.org/zap"
 )
 

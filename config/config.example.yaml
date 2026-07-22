@@ -1,4 +1,4 @@
-# Novexa Gateway Configuration Example
+# Conductor Configuration Example
 # Copy this file to config.yaml and fill in your API keys.
 # All values can be overridden with environment variables.
 
@@ -15,8 +15,8 @@ server:
     methods: ["GET", "POST", "OPTIONS"]
     headers: ["Authorization", "Content-Type"]
 
-# Gateway API key (required - set via NOVEXA_API_KEY env var)
-api_key: "${NOVEXA_API_KEY}"
+# Gateway API key (required - set via CONDUCTOR_API_KEY env var)
+api_key: "${CONDUCTOR_API_KEY}"
 
 # Provider configuration
 providers:
@@ -216,7 +216,7 @@ retry:
 # Database configuration
 database:
   driver: "sqlite"
-  dsn: "./data/novexa.db"
+  dsn: "./data/conductor.db"
   max_open_conns: 10
   max_idle_conns: 5
 

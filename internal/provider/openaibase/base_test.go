@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider/openaibase"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider/openaibase"
 )
 
 func TestChatCompletionPromotesReasoningToContent(t *testing.T) {

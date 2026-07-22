@@ -1,7 +1,7 @@
 .PHONY: build test lint clean docker-build docker-run run help
 
 # Binary name
-BINARY_NAME=novexa-gateway
+BINARY_NAME=conductor
 BINARY_PATH=bin/$(BINARY_NAME)
 
 # Go parameters
@@ -12,14 +12,14 @@ GOMOD=$(GOCMD) mod
 GOGET=$(GOCMD) get
 
 # Docker parameters
-DOCKER_IMAGE=novexa/gateway
+DOCKER_IMAGE=effnine/conductor
 DOCKER_TAG=latest
 
 ## build: Build the binary
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p bin
-	$(GOBUILD) -o $(BINARY_PATH) -v ./cmd/gateway
+	$(GOBUILD) -o $(BINARY_PATH) -v ./cmd/conductor
 
 ## test: Run tests
 test:
@@ -79,7 +79,7 @@ docker-build:
 docker-run:
 	@echo "Running Docker container..."
 	docker run -p 8080:8080 \
-		-e NOVEXA_API_KEY=$${NOVEXA_API_KEY:-test-key} \
+		-e CONDUCTOR_API_KEY=$${CONDUCTOR_API_KEY:-test-key} \
 		-e OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
 		$(DOCKER_IMAGE):$(DOCKER_TAG)
 
@@ -88,7 +88,7 @@ docker-push:
 	@echo "Pushing Docker image..."
 	docker push $(DOCKER_IMAGE):$(DOCKER_TAG)
 
-## fly-deploy: One-shot deploy to Fly.io (needs fly auth + NOVEXA_API_KEY)
+## fly-deploy: One-shot deploy to Fly.io (needs fly auth + CONDUCTOR_API_KEY)
 fly-deploy:
 	@chmod +x scripts/fly-deploy.sh
 	@./scripts/fly-deploy.sh
@@ -107,7 +107,7 @@ deps:
 
 ## help: Show this help message
 help:
-	@echo "Novexa Gateway - Makefile Commands"
+	@echo "Conductor - Makefile Commands"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make [target]"

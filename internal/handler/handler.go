@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/database"
-	"github.com/novexa/gateway/internal/health"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/router"
-	"github.com/novexa/gateway/internal/usage"
 	"go.uber.org/zap"
 )
 

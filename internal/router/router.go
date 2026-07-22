@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // AutoSelector resolves the best model for a given provider at request time.

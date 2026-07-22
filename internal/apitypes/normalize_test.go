@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/novexa/gateway/internal/apitypes"
+	"github.com/EffNine/conductor/internal/apitypes"
 )
 
 func TestMessageNormalizePromotesReasoning(t *testing.T) {

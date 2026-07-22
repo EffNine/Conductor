@@ -3,7 +3,7 @@ package generic
 import (
 	"time"
 
-	"github.com/novexa/gateway/internal/provider/openaibase"
+	"github.com/EffNine/conductor/internal/provider/openaibase"
 )
 
 // Provider implements the provider.Provider interface for generic OpenAI-compatible endpoints.

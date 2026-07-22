@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // Entry is one advertised model in the merged catalog.

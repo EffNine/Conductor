@@ -1,6 +1,6 @@
 # API Reference
 
-Novexa Gateway exposes an OpenAI-compatible API plus dashboard endpoints for monitoring.
+Conductor exposes an OpenAI-compatible API plus dashboard endpoints for monitoring.
 
 ## Authentication
 
@@ -10,7 +10,7 @@ All endpoints except `GET /health` require authentication via the `Authorization
 Authorization: Bearer <your-api-key>
 ```
 
-The API key is set via the `NOVEXA_API_KEY` environment variable.
+The API key is set via the `CONDUCTOR_API_KEY` environment variable.
 
 ---
 
@@ -298,7 +298,7 @@ When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/c
 
 NVIDIA NIM (and similar catalogs) often list models that are not currently callable — retired free endpoints, capacity-limited models, or non-chat entries. There is no reliable “available” flag on `GET /models`.
 
-Novexa optionally probes registered providers with a minimal chat completion and:
+Conductor optionally probes registered providers with a minimal chat completion and:
 
 1. Runs a full pass on every startup/redeploy, then again every `check_interval`
 2. Caches online/offline status (also updated from live chat successes/failures)

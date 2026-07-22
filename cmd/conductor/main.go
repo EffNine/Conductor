@@ -7,29 +7,29 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/EffNine/conductor/internal/auth"
+	"github.com/EffNine/conductor/internal/automode"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/handler"
+	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/middleware"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/provider/anthropic"
+	"github.com/EffNine/conductor/internal/provider/deepseek"
+	"github.com/EffNine/conductor/internal/provider/gemini"
+	"github.com/EffNine/conductor/internal/provider/groq"
+	"github.com/EffNine/conductor/internal/provider/lmstudio"
+	"github.com/EffNine/conductor/internal/provider/nousportal"
+	"github.com/EffNine/conductor/internal/provider/nvidianim"
+	"github.com/EffNine/conductor/internal/provider/ollama"
+	"github.com/EffNine/conductor/internal/provider/openai"
+	"github.com/EffNine/conductor/internal/provider/opencode"
+	"github.com/EffNine/conductor/internal/provider/openrouter"
+	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
-	"github.com/novexa/gateway/internal/auth"
-	"github.com/novexa/gateway/internal/automode"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/database"
-	"github.com/novexa/gateway/internal/handler"
-	"github.com/novexa/gateway/internal/health"
-	"github.com/novexa/gateway/internal/middleware"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/provider/anthropic"
-	"github.com/novexa/gateway/internal/provider/deepseek"
-	"github.com/novexa/gateway/internal/provider/gemini"
-	"github.com/novexa/gateway/internal/provider/groq"
-	"github.com/novexa/gateway/internal/provider/lmstudio"
-	"github.com/novexa/gateway/internal/provider/nousportal"
-	"github.com/novexa/gateway/internal/provider/nvidianim"
-	"github.com/novexa/gateway/internal/provider/ollama"
-	"github.com/novexa/gateway/internal/provider/openai"
-	"github.com/novexa/gateway/internal/provider/opencode"
-	"github.com/novexa/gateway/internal/provider/openrouter"
-	"github.com/novexa/gateway/internal/router"
-	"github.com/novexa/gateway/internal/usage"
 	"go.uber.org/zap"
 )
 
@@ -47,7 +47,7 @@ func main() {
 	}
 	defer func() { _ = logger.Sync() }()
 
-	logger.Info("Starting Novexa Gateway",
+	logger.Info("Starting Conductor",
 		zap.Int("port", cfg.Server.Port),
 		zap.String("log_level", cfg.Logging.Level),
 	)

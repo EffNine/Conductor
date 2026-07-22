@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# One-shot Fly.io deploy for Novexa Gateway.
+# One-shot Fly.io deploy for Conductor.
 # Prerequisites: flyctl installed, and either `fly auth login` or FLY_API_TOKEN.
 #
 # Usage:
-#   export NOVEXA_API_KEY=your-secret-gateway-key
+#   export CONDUCTOR_API_KEY=your-secret-gateway-key
 #   export OPENAI_API_KEY=sk-...          # or another implemented provider key
 #   ./scripts/fly-deploy.sh
 #
 # Optional:
-#   APP_NAME=my-novexa REGION=iad ./scripts/fly-deploy.sh
+#   APP_NAME=my-conductor REGION=iad ./scripts/fly-deploy.sh
 
 set -euo pipefail
 
@@ -24,9 +24,9 @@ fi
 
 FLY_BIN="$(command -v fly || command -v flyctl)"
 
-APP_NAME="${APP_NAME:-novexa-gateway}"
+APP_NAME="${APP_NAME:-conductor}"
 REGION="${REGION:-iad}"
-VOLUME_NAME="${VOLUME_NAME:-novexa_data}"
+VOLUME_NAME="${VOLUME_NAME:-conductor_data}"
 
 if ! "$FLY_BIN" auth whoami >/dev/null 2>&1; then
   echo "Not logged in to Fly.io."
@@ -35,8 +35,8 @@ if ! "$FLY_BIN" auth whoami >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ -z "${NOVEXA_API_KEY:-}" ]]; then
-  echo "NOVEXA_API_KEY is required."
+if [[ -z "${CONDUCTOR_API_KEY:-}" ]]; then
+  echo "CONDUCTOR_API_KEY is required."
   exit 1
 fi
 
@@ -55,7 +55,7 @@ if ! "$FLY_BIN" status -a "$APP_NAME" >/dev/null 2>&1; then
   if ! "$FLY_BIN" apps create "$APP_NAME" --org personal 2>/dev/null \
     && ! "$FLY_BIN" apps create "$APP_NAME"; then
     echo "Could not create app '${APP_NAME}' (name may be taken)."
-    echo "Retry with: APP_NAME=novexa-gateway-\$USER ./scripts/fly-deploy.sh"
+    echo "Retry with: APP_NAME=conductor-\$USER ./scripts/fly-deploy.sh"
     exit 1
   fi
 fi
@@ -68,7 +68,7 @@ if ! "$FLY_BIN" volumes list -a "$APP_NAME" --json 2>/dev/null | grep -q "\"name
   fi
 fi
 
-SECRET_ARGS=(NOVEXA_API_KEY="$NOVEXA_API_KEY")
+SECRET_ARGS=(CONDUCTOR_API_KEY="$CONDUCTOR_API_KEY")
 [[ -n "${OPENAI_API_KEY:-}" ]] && SECRET_ARGS+=(OPENAI_API_KEY="$OPENAI_API_KEY")
 [[ -n "${OPENCODE_API_KEY:-}" ]] && SECRET_ARGS+=(OPENCODE_API_KEY="$OPENCODE_API_KEY")
 [[ -n "${DEEPSEEK_API_KEY:-}" ]] && SECRET_ARGS+=(DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY")
@@ -91,4 +91,4 @@ fi
 echo ""
 echo "Health: https://${HOSTNAME}/health"
 echo "API:    https://${HOSTNAME}/v1"
-echo "Auth:   Authorization: Bearer \$NOVEXA_API_KEY"
+echo "Auth:   Authorization: Bearer \$CONDUCTOR_API_KEY"

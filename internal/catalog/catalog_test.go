@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 func TestCatalogListsModelsFromAllProviders(t *testing.T) {
