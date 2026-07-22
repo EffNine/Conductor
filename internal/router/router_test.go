@@ -82,7 +82,7 @@ func TestResolveAutoSelectsWhenWired(t *testing.T) {
 	engine := router.NewEngine(&config.Config{}, reg)
 	engine.SetAutoSelector(&fixedAutoSelector{modelID: "meta/llama-3.1-8b-instruct"})
 
-	resolved, err := engine.Resolve("auto")
+	resolved, err := engine.ResolveWithMessages("auto", []apitypes.Message{{Role: "user", Content: "hello"}})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -113,7 +113,7 @@ type fixedAutoSelector struct {
 	modelID string
 }
 
-func (f *fixedAutoSelector) Select(context.Context, string) (string, error) {
+func (f *fixedAutoSelector) Select(_ context.Context, _ string) (string, error) {
 	return f.modelID, nil
 }
 

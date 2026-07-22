@@ -89,10 +89,11 @@ type ProviderConfig struct {
 // Currently used for NVIDIA NIM; the struct is provider-scoped so it can be
 // enabled per provider in the future.
 type AutoModeConfig struct {
-	Enabled  bool             `mapstructure:"enabled"`
-	Provider string           `mapstructure:"provider"`
-	Lookback time.Duration    `mapstructure:"lookback"`
-	Weights  AutoModeWeights  `mapstructure:"weights"`
+	Enabled      bool                      `mapstructure:"enabled"`
+	Provider     string                    `mapstructure:"provider"`
+	Lookback     time.Duration             `mapstructure:"lookback"`
+	Weights      AutoModeWeights           `mapstructure:"weights"`
+	TaskProfiles map[string]AutoModeProfile `mapstructure:"task_profiles"`
 }
 
 // AutoModeWeights controls the scoring mix for auto model selection.
@@ -102,6 +103,15 @@ type AutoModeWeights struct {
 	Reachability float64 `mapstructure:"reachability"`
 	Cost         float64 `mapstructure:"cost"`
 	Latency      float64 `mapstructure:"latency"`
+}
+
+// AutoModeProfile is a task-specific model allowlist and weight override.
+// When a task matches a profile, only those models are candidates and the
+// profile weights are used. If no profile matches, the default weights and
+// the full advertised catalog are used.
+type AutoModeProfile struct {
+	Models  []string        `mapstructure:"models"`
+	Weights AutoModeWeights `mapstructure:"weights"`
 }
 
 // RouteConfig holds configuration for a model route

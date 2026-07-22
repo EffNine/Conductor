@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/novexa/gateway/internal/apitypes"
 	"github.com/novexa/gateway/internal/config"
 	"github.com/novexa/gateway/internal/provider"
 )
@@ -13,7 +14,7 @@ import (
 // AutoSelector resolves the best model for a given provider at request time.
 // The automode package implements this interface.
 type AutoSelector interface {
-	Select(ctx context.Context, providerName string) (providerModelID string, err error)
+	Select(ctx context.Context, task string) (string, error)
 }
 
 // Engine handles model routing, aliases, and fallbacks
@@ -91,12 +92,18 @@ func (e *Engine) HasAutoSelector() bool {
 
 // Resolve resolves a model ID to a provider and (possibly overridden) model name
 func (e *Engine) Resolve(modelID string) (*ResolvedRoute, error) {
-	return e.ResolveWithContext(context.Background(), modelID)
+	return e.ResolveWithContext(context.Background(), modelID, nil)
+}
+
+// ResolveWithMessages resolves a model ID with request messages so auto mode can
+// classify the task.
+func (e *Engine) ResolveWithMessages(modelID string, messages []apitypes.Message) (*ResolvedRoute, error) {
+	return e.ResolveWithContext(context.Background(), modelID, messages)
 }
 
 // ResolveWithContext resolves a model ID using request context when auto mode
 // needs to perform catalog/cost lookups.
-func (e *Engine) ResolveWithContext(ctx context.Context, modelID string) (*ResolvedRoute, error) {
+func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, messages []apitypes.Message) (*ResolvedRoute, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -115,7 +122,8 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string) (*Resol
 		if !found {
 			return nil, fmt.Errorf("auto mode is unavailable: provider '%s' is not registered", providerName)
 		}
-		selected, err := e.autoSelector.Select(ctx, providerName)
+		taskText := joinMessages(messages)
+		selected, err := e.autoSelector.Select(ctx, taskText)
 		if err != nil {
 			return nil, fmt.Errorf("auto mode failed: %w", err)
 		}
@@ -170,6 +178,20 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string) (*Resol
 	return nil, fmt.Errorf("model '%s' not found; add a route or use a provider-prefixed ID", modelID)
 }
 
+// joinMessages concatenates message contents for task classification.
+func joinMessages(messages []apitypes.Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(messages))
+	for _, m := range messages {
+		if m.Content != "" {
+			parts = append(parts, m.Content)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
 // splitProviderPrefix returns (provider, baseModelID) when modelID starts with a
 // registered provider name followed by "/". Otherwise returns ("", modelID).
 func (e *Engine) splitProviderPrefix(modelID string) (string, string) {
@@ -185,12 +207,17 @@ func (e *Engine) splitProviderPrefix(modelID string) (string, string) {
 
 // ResolveWithFallback resolves a model and returns the route plus fallback chain
 func (e *Engine) ResolveWithFallback(modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
-	return e.ResolveWithFallbackAndContext(context.Background(), modelID)
+	return e.ResolveWithFallbackAndMessages(modelID, nil)
+}
+
+// ResolveWithFallbackAndMessages is the task-aware variant used by HTTP handlers.
+func (e *Engine) ResolveWithFallbackAndMessages(modelID string, messages []apitypes.Message) (*ResolvedRoute, []ResolvedRoute, error) {
+	return e.ResolveWithFallbackAndContext(context.Background(), modelID, messages)
 }
 
 // ResolveWithFallbackAndContext is the context-aware variant used by HTTP handlers.
-func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
-	primary, err := e.ResolveWithContext(ctx, modelID)
+func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID string, messages []apitypes.Message) (*ResolvedRoute, []ResolvedRoute, error) {
+	primary, err := e.ResolveWithContext(ctx, modelID, messages)
 	if err != nil {
 		return nil, nil, err
 	}

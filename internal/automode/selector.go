@@ -102,9 +102,16 @@ type ScoreResult struct {
 	WeightedScore  float64       `json:"weighted_score"`
 }
 
-// Select returns the best model entry for the configured provider.
-// If cfg is nil or auto mode is disabled, it returns an error.
+// Select returns the best model entry for the configured provider using the
+// default task profile.
 func (s *Selector) Select(ctx context.Context, cfg *config.AutoModeConfig) (ScoreResult, error) {
+	return s.SelectWithTask(ctx, cfg, "")
+}
+
+// SelectWithTask classifies the request text, picks a matching task profile,
+// and returns the best model entry for the configured provider.
+// If cfg is nil or auto mode is disabled, it returns an error.
+func (s *Selector) SelectWithTask(ctx context.Context, cfg *config.AutoModeConfig, taskText string) (ScoreResult, error) {
 	if cfg == nil || !cfg.Enabled {
 		return ScoreResult{}, errors.New("auto mode is not enabled")
 	}
@@ -135,13 +142,43 @@ func (s *Selector) Select(ctx context.Context, cfg *config.AutoModeConfig) (Scor
 		return ScoreResult{}, fmt.Errorf("no models found for provider '%s'", providerName)
 	}
 
+	profiles := mergeProfiles(cfg.TaskProfiles)
+	taskProfile := ClassifyTask(taskText)
+	profile, ok := profiles[taskProfile]
+	if !ok {
+		profile, ok = profiles[string(TaskDefault)]
+		if !ok {
+			profile = config.AutoModeProfile{Weights: config.AutoModeWeights{
+				Reachability: 10.0,
+				Cost:         3.0,
+				Latency:      2.0,
+			}}
+		}
+	}
+
+	if len(profile.Models) > 0 {
+		allowed := make(map[string]struct{}, len(profile.Models))
+		for _, m := range profile.Models {
+			allowed[m] = struct{}{}
+		}
+		filtered := make([]catalog.Entry, 0, len(candidates))
+		for _, e := range candidates {
+			if _, ok := allowed[e.ProviderModelID]; ok {
+				filtered = append(filtered, e)
+			}
+		}
+		if len(filtered) > 0 {
+			candidates = filtered
+		}
+	}
+
 	lookback := cfg.Lookback
 	if lookback <= 0 {
 		lookback = 24 * time.Hour
 	}
 	since := time.Now().UTC().Add(-lookback)
 
-	weights := cfg.Weights
+	weights := profile.Weights
 	if weights.Reachability == 0 && weights.Cost == 0 && weights.Latency == 0 {
 		weights = config.AutoModeWeights{
 			Reachability: 10.0,
@@ -202,9 +239,10 @@ func NewRouterAdapter(selector *Selector, cfg *config.AutoModeConfig) *RouterAda
 }
 
 // Select implements router.AutoSelector. providerName is ignored because the
-// config already scopes the selection.
-func (a *RouterAdapter) Select(ctx context.Context, _ string) (string, error) {
-	res, err := a.selector.Select(ctx, a.cfg)
+// config already scopes the selection. The task string is the joined request
+// messages used for task classification.
+func (a *RouterAdapter) Select(ctx context.Context, task string) (string, error) {
+	res, err := a.selector.SelectWithTask(ctx, a.cfg, task)
 	if err != nil {
 		return "", err
 	}

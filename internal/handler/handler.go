@@ -130,8 +130,8 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		})
 	}
 
-	// Resolve route (context-aware so auto mode can query the catalog/cost store)
-	resolved, fallbacks, err := h.router.ResolveWithFallbackAndContext(c.Context(), req.Model)
+	// Resolve route (context-aware and task-aware for auto mode)
+	resolved, fallbacks, err := h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{

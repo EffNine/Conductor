@@ -286,11 +286,11 @@ Reports whether runtime automatic model selection is enabled and the provider it
 {
   "enabled": true,
   "provider": "nvidia_nim",
-  "note": "auto mode currently selects from NVIDIA NIM catalog using health, cost, and latency"
+  "note": "auto mode selects from NVIDIA NIM catalog using task, health, cost, and latency"
 }
 ```
 
-When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/completions` (and `POST /v1/embeddings`) and the gateway will pick the best available model from the configured provider's catalog at request time.
+When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/completions` (and `POST /v1/embeddings`). The gateway classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), picks the matching `task_profile` (or the built-in NIM defaults), and then scores candidate models by reachability, historical cost, and probe latency to choose the upstream model at request time.
 
 ---
 

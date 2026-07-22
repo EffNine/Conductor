@@ -136,3 +136,60 @@ func TestSelectPrefersHistoryForCost(t *testing.T) {
 		t.Fatalf("selected %q, want b (cheaper)", res.Entry.ProviderModelID)
 	}
 }
+
+func TestSelectWithTaskRestrictsToProfileModels(t *testing.T) {
+	entries := []catalog.Entry{
+		{ModelID: "nvidia_nim/elite", Provider: "nvidia_nim", ProviderModelID: "elite"},
+		{ModelID: "nvidia_nim/fast", Provider: "nvidia_nim", ProviderModelID: "fast"},
+	}
+	status := &fakeStatus{
+		reachable: map[string]bool{"nvidia_nim/elite": true, "nvidia_nim/fast": true},
+		latencies: map[string]int64{"nvidia_nim/elite": 500, "nvidia_nim/fast": 100},
+	}
+	profiles := map[string]config.AutoModeProfile{
+		"elite": {
+			Models: []string{"elite"},
+			Weights: config.AutoModeWeights{Reachability: 1.0, Cost: 0.0, Latency: 0.0},
+		},
+	}
+
+	s := NewSelector(&fakeCatalog{entries: entries}, status, &fakeHistory{}, nil)
+	cfg := &config.AutoModeConfig{
+		Enabled:      true,
+		Provider:     "nvidia_nim",
+		TaskProfiles: profiles,
+	}
+
+	res, err := s.SelectWithTask(context.Background(), cfg, "architect and implement a complex end-to-end distributed system with reasoning")
+	if err != nil {
+		t.Fatalf("SelectWithTask: %v", err)
+	}
+	if res.Entry.ProviderModelID != "elite" {
+		t.Fatalf("selected %q, want elite (task profile restricts candidates)", res.Entry.ProviderModelID)
+	}
+}
+
+func TestSelectWithTaskFallsBackToDefault(t *testing.T) {
+	entries := []catalog.Entry{
+		{ModelID: "nvidia_nim/fast", Provider: "nvidia_nim", ProviderModelID: "fast"},
+	}
+	status := &fakeStatus{
+		reachable: map[string]bool{"nvidia_nim/fast": true},
+		latencies: map[string]int64{"nvidia_nim/fast": 100},
+	}
+
+	s := NewSelector(&fakeCatalog{entries: entries}, status, &fakeHistory{}, nil)
+	cfg := &config.AutoModeConfig{
+		Enabled:  true,
+		Provider: "nvidia_nim",
+		Weights:  config.AutoModeWeights{Reachability: 1.0, Cost: 0.0, Latency: 0.0},
+	}
+
+	res, err := s.SelectWithTask(context.Background(), cfg, "hi there")
+	if err != nil {
+		t.Fatalf("SelectWithTask: %v", err)
+	}
+	if res.Entry.ProviderModelID != "fast" {
+		t.Fatalf("selected %q, want fast (default profile)", res.Entry.ProviderModelID)
+	}
+}
