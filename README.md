@@ -1,6 +1,6 @@
 # Novexa Gateway
 
-> A single-operator, self-hosted AI gateway that exposes one OpenAI-compatible API key and routes requests across multiple upstream AI provider subscriptions.
+> One API key. One endpoint. Every model you pay for — routed, metered, and kept honest.
 
 [![CI](https://github.com/EffNine/novexa-gateway/actions/workflows/ci.yaml/badge.svg)](https://github.com/EffNine/novexa-gateway/actions/workflows/ci.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -15,16 +15,24 @@ docker run -d -p 8080:8080 \
   novexa/gateway:latest
 ```
 
+## What It Is
+
+Novexa Gateway is a single-operator, self-hosted AI gateway. Drop it between your coding tools and the dozen AI subscriptions you already own. Clients see a tidy, merged model picker. You see unified usage, cost, and health — all behind one gateway key.
+
+Think of it as a tiny traffic controller for your AI spend: route by model, fall back when a provider hiccups, and stop guessing which endpoint is actually online.
+
 ## Features
 
-- **Single API Key** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, custom apps) at one endpoint with one key
-- **Merged Model Picker** — `/v1/models` aggregates catalogs from all configured providers; every Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/deepseek-ai/deepseek-v4-flash`) so the listed ID routes when selected
-- **Curated Models Only** — Optional `catalog.curated_only` advertises only the Static Model List under `providers.*.models` (shrink large catalogs such as NVIDIA NIM)
-- **Model Online Status** — Probes all providers on startup; keeps the full list during the pass (no flicker), then `/v1/models` shows only models that passed. Status on `/api/models` and `/api/models/status`
-- **Explicit Model Routing** — Optional `routes` and `aliases` for bare Model IDs; provider-prefixed catalog IDs need no route entry- **Fallback Chains** — Try backup providers when the primary fails
-- **Usage & Cost Tracking** — Per-request records with tokens, latency, and USD cost (provider per-request → `GetPricing` → manual `cost.rates` → unknown)
-- **Dashboard API** — Models, model status, usage, costs, health, providers, and logs behind the same gateway key
-- **Docker & Fly.io** — Single container with SQLite; one-shot deploy via `./scripts/fly-deploy.sh`
+- **One Key to Rule Them All** — Point OpenAI-compatible clients (Continue, Aider, Open WebUI, Claude Code, custom apps) at a single endpoint with one key.
+- **Merged Model Picker** — `GET /v1/models` aggregates every configured provider. Each Model ID is provider-prefixed (e.g. `openai/gpt-4o`, `nvidia_nim/meta/llama-3.1-8b-instruct`) so the listed ID routes directly.
+- **Curated Catalog Mode** — Set `catalog.curated_only: true` and advertise only the Static Model List under each provider. Perfect for shrinking giant catalogs like NVIDIA NIM down to the models you actually use.
+- **Model Online Status** — Background reachability probes run on startup and on interval, hide models that fail, and expose status on `/api/models` and `/api/models/status`. No more picking a model only to discover it is retired.
+- **Explicit Routing + Aliases** — `routes` and `aliases` map bare Model IDs to providers and upstream slugs. Provider-prefixed catalog IDs need no route entry.
+- **Fallback Chains** — Try backup providers when the primary fails, without the client lifting a finger.
+- **Usage & Cost Tracking** — Per-request records with tokens, latency, extra counters (duration, characters), and USD cost. Aggregates totals plus per-provider and per-model breakdowns in SQLite.
+- **Auto Model Selection** — Send `"model": "auto"` and let the gateway pick the best available model from a configured provider using task classification, reachability, cost, and probe latency.
+- **Dashboard API** — Models, model status, usage, costs, provider health, and request logs — all behind the same gateway key.
+- **Docker & Fly.io** — Single container with embedded SQLite; one-shot deploy via `./scripts/fly-deploy.sh`.
 
 ## Quick Start
 
@@ -88,7 +96,7 @@ LM Studio is enabled via `config.yaml` (`enabled` / `base_url`). Local Ollama us
 
 ### Advanced Configuration
 
-Copy [`config/config.example.yaml`](config/config.example.yaml) to `config.yaml` (searched in `.`, `./config`, `/etc/novexa`) for routes, aliases, fallbacks, static model lists, and cost rates:
+Copy [`config/config.example.yaml`](config/config.example.yaml) to `config.yaml` (searched in `.`, `./config`, `/etc/novexa`) for routes, aliases, fallbacks, static model lists, auto mode, and cost rates:
 
 ```yaml
 routes:
@@ -108,6 +116,18 @@ fallbacks:
     - provider: openrouter
       model_id: "deepseek/deepseek-chat"
 
+catalog:
+  curated_only: false
+
+health:
+  models:
+    enabled: true
+    providers: []
+    check_interval: 12h
+    hide_unreachable: true
+    unknown_as_reachable: false
+    unhealthy_threshold: 1
+
 cost:
   rates:
     - provider: openai
@@ -126,34 +146,39 @@ See [Configuration Reference](docs/configuration.md) for full details.
 
 ```
 Client → API Key Check → Rate Limit → Validate → Route → Provider Adapter → Normalize → Response
+                                       ↓              ↓                              ↓
+                                   Alias/Routes   Health/Probes               Usage + Cost → SQLite
 ```
 
-- **Auth** — Single gateway API key via `NOVEXA_API_KEY`
-- **Rate Limiter** — Global and per-provider limits
-- **Router** — Alias → route → provider-prefix dispatch → fallbacks
-- **Provider Adapters** — Common `Provider` interface
-- **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback; optional curated-only allowlist and reachability filter
-- **Model Prober** — Probes all providers on startup/redeploy (then every `12h`); advertises only probe-passed models after the first pass completes
-- **Usage Tracker** — Persists usage and estimated cost to SQLite
+- **Auth** — Single gateway API key via `NOVEXA_API_KEY`.
+- **Rate Limiter** — Global and per-provider limits.
+- **Router** — Alias → route → provider-prefix dispatch → fallbacks.
+- **Provider Adapters** — Common `Provider` interface; OpenAI-compatible passthrough plus a custom Anthropic Messages adapter.
+- **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback; optional curated-only allowlist and reachability filter.
+- **Model Prober** — Probes providers on startup/redeploy and on interval; advertises only probe-passed models after the first pass.
+- **Auto Selector** — Classifies requests by task and scores candidates by health, cost, and latency for `"model": "auto"`.
+- **Usage Tracker** — Persists usage and estimated cost to SQLite.
+
 See [Architecture](docs/architecture.md) for details.
 
 ## Supported Providers
 
 | Provider | Chat | Embeddings | Streaming | List Models | Pricing |
 |----------|------|------------|-----------|-------------|---------|
-| OpenAI | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| Anthropic | ✅ | ❌ | ✅ | ✅ (static) | ✅ (static map) |
-| Gemini | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| DeepSeek | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| OpenRouter | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| Groq | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ (static map) |
-| Nous Portal | ✅ | ✅ | ✅ | ✅ | ✅ (empty map; use `cost.rates`) |
-| Ollama | ✅ | ✅ | ✅ | ✅ | — (use `cost.rates`) |
-| LM Studio | ✅ | ✅ | ✅ | ✅ | — (use `cost.rates`) |
+| OpenAI | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Anthropic | ✅ | ❌ | ✅ | ✅ (static) | ✅ |
+| Gemini | ✅ | ✅ | ✅ | ✅ | ✅ |
+| DeepSeek | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenRouter | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Groq | ✅ | ✅ | ✅ | ✅ | ✅ |
+| OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ |
+| NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Nous Portal | ✅ | ✅ | ✅ | ✅ | — (subscription; use `cost.rates`) |
+| Ollama | ✅ | ✅ | ✅ | ✅ | — (configure `cost.rates`) |
+| LM Studio | ✅ | ✅ | ✅ | ✅ | — (configure `cost.rates`) |
+| Generic OpenAI-compatible | ✅ | ✅ | ✅ | ✅ | — (configure `cost.rates`) |
 
-Gemini, DeepSeek, OpenRouter, Groq, OpenCode, NVIDIA NIM, Nous Portal, Ollama, and LM Studio use the shared OpenAI-compatible adapter. Anthropic uses the Messages API (embeddings are not supported).
+Most providers use the shared OpenAI-compatible adapter (`internal/provider/openaibase`). Anthropic uses a dedicated Messages API adapter. Embeddings are not supported by Anthropic.
 
 ## Dashboard API
 
@@ -172,25 +197,34 @@ curl http://localhost:8080/api/models/status \
 curl "http://localhost:8080/api/models?include_unreachable=true" \
   -H "Authorization: Bearer your-key"
 
+# Auto mode status
+curl http://localhost:8080/api/auto/status \
+  -H "Authorization: Bearer your-key"
+
+# Provider health
 curl http://localhost:8080/api/health \
   -H "Authorization: Bearer your-key"
 
+# Registered providers
 curl http://localhost:8080/api/providers \
   -H "Authorization: Bearer your-key"
 
+# Usage totals and breakdowns
 curl http://localhost:8080/api/usage \
   -H "Authorization: Bearer your-key"
 
+# Cost summary (stub; full breakdown coming soon)
 curl http://localhost:8080/api/usage/costs \
   -H "Authorization: Bearer your-key"
 
+# Recent request logs
 curl http://localhost:8080/api/logs \
   -H "Authorization: Bearer your-key"
 ```
 
 Model online status (especially for NVIDIA NIM free vs unreachable endpoints) is documented in [Configuration](docs/configuration.md#model-reachability), [API](docs/api.md#model-reachability), and [Providers](docs/providers.md#model-reachability-nvidia-nim).
 
-`GET /api/config` and `PUT /api/config/reload` exist; config JSON is still a stub (`coming soon`). Reload works when a reload callback is wired at startup.
+`GET /api/config` and `PUT /api/config/reload` are currently stubs; a restart is required for config changes.
 
 ## Deploy
 
@@ -237,6 +271,7 @@ Useful targets: `make lint`, `make docker-build` (uses context `.`; prefer `dock
 - [Configuration Reference](docs/configuration.md)
 - [Provider Setup](docs/providers.md)
 - [API Reference](docs/api.md)
+- [Architecture](docs/architecture.md)
 - [Deployment Guide](docs/deployment.md)
 - [Contributing](docs/contributing.md)
 
