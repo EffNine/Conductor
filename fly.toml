@@ -1,9 +1,9 @@
-# fly.toml app configuration file generated for conductor on 2026-07-20T11:28:26Z
+# fly.toml app configuration file generated for conductor-yknfkg on 2026-07-22T14:24:51Z
 #
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'conductor'
+app = 'conductor-yknfkg'
 primary_region = 'sin'
 
 [build]
