@@ -89,10 +89,10 @@ type ProviderConfig struct {
 // Currently used for NVIDIA NIM; the struct is provider-scoped so it can be
 // enabled per provider in the future.
 type AutoModeConfig struct {
-	Enabled      bool                      `mapstructure:"enabled"`
-	Provider     string                    `mapstructure:"provider"`
-	Lookback     time.Duration             `mapstructure:"lookback"`
-	Weights      AutoModeWeights           `mapstructure:"weights"`
+	Enabled      bool                       `mapstructure:"enabled"`
+	Provider     string                     `mapstructure:"provider"`
+	Lookback     time.Duration              `mapstructure:"lookback"`
+	Weights      AutoModeWeights            `mapstructure:"weights"`
 	TaskProfiles map[string]AutoModeProfile `mapstructure:"task_profiles"`
 }
 

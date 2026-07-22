@@ -57,8 +57,8 @@ func TestSelectReturnsBestReachableModel(t *testing.T) {
 		latencies: map[string]int64{"nvidia_nim/cheap": 1000, "nvidia_nim/fast": 200},
 	}
 	history := &fakeHistory{costs: map[string]float64{
-		"nvidia_nim/cheap": 0.0005,
-		"nvidia_nim/fast":  0.0005,
+		"cheap": 0.0005,
+		"fast":  0.0005,
 	}}
 
 	s := NewSelector(&fakeCatalog{entries: entries}, status, history, nil)
@@ -117,8 +117,8 @@ func TestSelectPrefersHistoryForCost(t *testing.T) {
 		latencies: map[string]int64{"nvidia_nim/a": 100, "nvidia_nim/b": 100},
 	}
 	history := &fakeHistory{costs: map[string]float64{
-		"nvidia_nim/a": 0.001,
-		"nvidia_nim/b": 0.0001,
+		"a": 0.001,
+		"b": 0.0001,
 	}}
 
 	s := NewSelector(&fakeCatalog{entries: entries}, status, history, nil)
@@ -148,7 +148,7 @@ func TestSelectWithTaskRestrictsToProfileModels(t *testing.T) {
 	}
 	profiles := map[string]config.AutoModeProfile{
 		"elite": {
-			Models: []string{"elite"},
+			Models:  []string{"elite"},
 			Weights: config.AutoModeWeights{Reachability: 1.0, Cost: 0.0, Latency: 0.0},
 		},
 	}

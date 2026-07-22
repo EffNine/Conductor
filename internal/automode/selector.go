@@ -75,9 +75,9 @@ func (q *DBHistoryQuerier) AverageCostPerToken(ctx context.Context, modelID stri
 
 // Selector picks the best model for a provider at runtime.
 type Selector struct {
-	catalog CatalogLister
-	status  StatusStore
-	history HistoryQuerier
+	catalog  CatalogLister
+	status   StatusStore
+	history  HistoryQuerier
 	registry *provider.Registry
 }
 
@@ -93,13 +93,13 @@ func NewSelector(cat CatalogLister, status StatusStore, history HistoryQuerier, 
 
 // ScoreResult carries the chosen entry plus scoring details for observability.
 type ScoreResult struct {
-	Entry          catalog.Entry `json:"entry"`
-	Reachability   float64       `json:"reachability"`
-	CostPerToken   float64       `json:"cost_per_token"`
-	CostScore      float64       `json:"cost_score"`
-	LatencyMs      int64         `json:"latency_ms"`
-	LatencyScore   float64       `json:"latency_score"`
-	WeightedScore  float64       `json:"weighted_score"`
+	Entry         catalog.Entry `json:"entry"`
+	Reachability  float64       `json:"reachability"`
+	CostPerToken  float64       `json:"cost_per_token"`
+	CostScore     float64       `json:"cost_score"`
+	LatencyMs     int64         `json:"latency_ms"`
+	LatencyScore  float64       `json:"latency_score"`
+	WeightedScore float64       `json:"weighted_score"`
 }
 
 // Select returns the best model entry for the configured provider using the
@@ -180,6 +180,9 @@ func (s *Selector) SelectWithTask(ctx context.Context, cfg *config.AutoModeConfi
 
 	weights := profile.Weights
 	if weights.Reachability == 0 && weights.Cost == 0 && weights.Latency == 0 {
+		weights = cfg.Weights
+	}
+	if weights.Reachability == 0 && weights.Cost == 0 && weights.Latency == 0 {
 		weights = config.AutoModeWeights{
 			Reachability: 10.0,
 			Cost:         3.0,
@@ -198,11 +201,14 @@ func (s *Selector) SelectWithTask(ctx context.Context, cfg *config.AutoModeConfi
 			continue
 		}
 
-		cost := costs[e.ModelID]
-		lat := latencies[e.ModelID]
-
+		cost := costs[e.ProviderModelID]
 		costScore := normalizeInverse(costs, cost)
-		latencyScore := normalizeInverseInt64(latencies, lat)
+
+		lat, latKnown := latencies[e.ModelID]
+		latencyScore := 1.0
+		if latKnown {
+			latencyScore = normalizeInverseInt64(latencies, lat)
+		}
 
 		score := (weights.Reachability*1.0 + weights.Cost*costScore + weights.Latency*latencyScore) / wSum
 		if score > bestScore {
@@ -254,9 +260,9 @@ func gatherCostLatency(ctx context.Context, s *Selector, candidates []catalog.En
 	latencies := make(map[string]int64, len(candidates))
 	for _, e := range candidates {
 		if s.history != nil {
-			c, err := s.history.AverageCostPerToken(ctx, e.ModelID, since)
+			c, err := s.history.AverageCostPerToken(ctx, e.ProviderModelID, since)
 			if err == nil {
-				costs[e.ModelID] = c
+				costs[e.ProviderModelID] = c
 			}
 		}
 		if st := s.status.Get(e.ModelID); st != nil && st.Reachable {
