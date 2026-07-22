@@ -1,6 +1,7 @@
 package router
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -9,13 +10,20 @@ import (
 	"github.com/novexa/gateway/internal/provider"
 )
 
+// AutoSelector resolves the best model for a given provider at request time.
+// The automode package implements this interface.
+type AutoSelector interface {
+	Select(ctx context.Context, providerName string) (providerModelID string, err error)
+}
+
 // Engine handles model routing, aliases, and fallbacks
 type Engine struct {
-	mu        sync.RWMutex
-	routes    map[string]Route
-	aliases   map[string]string
-	fallbacks map[string][]Fallback
-	registry  *provider.Registry
+	mu           sync.RWMutex
+	routes       map[string]Route
+	aliases      map[string]string
+	fallbacks    map[string][]Fallback
+	registry     *provider.Registry
+	autoSelector AutoSelector
 }
 
 // Route represents a model-to-provider route
@@ -67,8 +75,28 @@ func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
 	return engine
 }
 
+// SetAutoSelector wires runtime automatic model selection.
+func (e *Engine) SetAutoSelector(s AutoSelector) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.autoSelector = s
+}
+
+// HasAutoSelector reports whether an auto selector is currently wired.
+func (e *Engine) HasAutoSelector() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.autoSelector != nil
+}
+
 // Resolve resolves a model ID to a provider and (possibly overridden) model name
 func (e *Engine) Resolve(modelID string) (*ResolvedRoute, error) {
+	return e.ResolveWithContext(context.Background(), modelID)
+}
+
+// ResolveWithContext resolves a model ID using request context when auto mode
+// needs to perform catalog/cost lookups.
+func (e *Engine) ResolveWithContext(ctx context.Context, modelID string) (*ResolvedRoute, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
@@ -77,6 +105,26 @@ func (e *Engine) Resolve(modelID string) (*ResolvedRoute, error) {
 	// Check if it's an alias
 	if resolvedAlias, ok := e.aliases[baseID]; ok {
 		baseID = resolvedAlias
+	}
+
+	// Runtime auto mode: if baseID is "auto" and the user did not supply a
+	// provider prefix, let the configured auto selector pick the upstream model.
+	if baseID == "auto" && providerHint == "" && e.autoSelector != nil {
+		providerName := "nvidia_nim" // default scope for this iteration
+		p, found := e.registry.Get(providerName)
+		if !found {
+			return nil, fmt.Errorf("auto mode is unavailable: provider '%s' is not registered", providerName)
+		}
+		selected, err := e.autoSelector.Select(ctx, providerName)
+		if err != nil {
+			return nil, fmt.Errorf("auto mode failed: %w", err)
+		}
+		return &ResolvedRoute{
+			Provider:        p,
+			ProviderName:    providerName,
+			ProviderModelID: selected,
+			ModelID:         "auto",
+		}, nil
 	}
 
 	// Check if it's a configured route
@@ -137,7 +185,12 @@ func (e *Engine) splitProviderPrefix(modelID string) (string, string) {
 
 // ResolveWithFallback resolves a model and returns the route plus fallback chain
 func (e *Engine) ResolveWithFallback(modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
-	primary, err := e.Resolve(modelID)
+	return e.ResolveWithFallbackAndContext(context.Background(), modelID)
+}
+
+// ResolveWithFallbackAndContext is the context-aware variant used by HTTP handlers.
+func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
+	primary, err := e.ResolveWithContext(ctx, modelID)
 	if err != nil {
 		return nil, nil, err
 	}

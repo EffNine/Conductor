@@ -105,6 +105,17 @@ providers:
     models:
       - "deepseek-ai/deepseek-v4-flash"
       - "meta/llama-3.1-8b-instruct"
+    # Auto mode: when the client sends model: "auto", pick the best NIM model
+    # at runtime from the advertised catalog using health, cost, and latency.
+    # Currently NIM-only; weights are normalized automatically.
+    auto:
+      enabled: false
+      provider: "nvidia_nim"
+      lookback: 24h
+      weights:
+        reachability: 10.0
+        cost: 3.0
+        latency: 2.0
 
   # Nous Portal subscription gateway
   nous_portal:
