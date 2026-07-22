@@ -75,6 +75,48 @@ func TestResolveBareModelIDUsesRoute(t *testing.T) {
 	}
 }
 
+func TestResolveAutoSelectsWhenWired(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "nvidia_nim"})
+
+	engine := router.NewEngine(&config.Config{}, reg)
+	engine.SetAutoSelector(&fixedAutoSelector{modelID: "meta/llama-3.1-8b-instruct"})
+
+	resolved, err := engine.ResolveWithMessages("auto", []apitypes.Message{{Role: "user", Content: "hello"}})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if resolved.ProviderName != "nvidia_nim" {
+		t.Fatalf("ProviderName = %q, want nvidia_nim", resolved.ProviderName)
+	}
+	if resolved.ProviderModelID != "meta/llama-3.1-8b-instruct" {
+		t.Fatalf("ProviderModelID = %q, want meta/llama-3.1-8b-instruct", resolved.ProviderModelID)
+	}
+	if resolved.ModelID != "auto" {
+		t.Fatalf("ModelID = %q, want auto", resolved.ModelID)
+	}
+}
+
+func TestResolveAutoReturnsErrorWhenNotWired(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "nvidia_nim"})
+
+	engine := router.NewEngine(&config.Config{}, reg)
+
+	_, err := engine.Resolve("auto")
+	if err == nil {
+		t.Fatal("expected error when auto selector is not wired")
+	}
+}
+
+type fixedAutoSelector struct {
+	modelID string
+}
+
+func (f *fixedAutoSelector) Select(_ context.Context, _ string) (string, error) {
+	return f.modelID, nil
+}
+
 type stubProvider struct {
 	name string
 }

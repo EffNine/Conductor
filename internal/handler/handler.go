@@ -57,6 +57,11 @@ func (h *Handler) SetModelStatus(store *health.ModelStatusStore, prober *health.
 	h.modelProber = prober
 }
 
+// SetAutoSelector wires runtime automatic model selection into the router.
+func (h *Handler) SetAutoSelector(s router.AutoSelector) {
+	h.router.SetAutoSelector(s)
+}
+
 // Register registers all HTTP routes
 func (h *Handler) Register(app *fiber.App) {
 	// OpenAI-compatible endpoints
@@ -70,6 +75,7 @@ func (h *Handler) Register(app *fiber.App) {
 	// Dashboard endpoints
 	app.Get("/api/models", h.HandleDashboardModels)
 	app.Get("/api/models/status", h.HandleModelStatus)
+	app.Get("/api/auto/status", h.HandleAutoStatus)
 	app.Get("/api/health", h.HandleProviderHealth)
 	app.Get("/api/providers", h.HandleListProviders)
 	app.Get("/api/usage", h.HandleUsage)
@@ -77,6 +83,15 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/api/logs", h.HandleLogs)
 	app.Get("/api/config", h.HandleConfig)
 	app.Put("/api/config/reload", h.HandleReloadConfig)
+}
+
+// HandleAutoStatus reports the runtime auto model selection status.
+func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"enabled":  h.router.HasAutoSelector(),
+		"provider": "nvidia_nim",
+		"note":     "auto mode currently selects from NVIDIA NIM catalog using health, cost, and latency",
+	})
 }
 
 // HandleChatCompletion handles POST /v1/chat/completions
@@ -115,8 +130,8 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		})
 	}
 
-	// Resolve route
-	resolved, fallbacks, err := h.router.ResolveWithFallback(req.Model)
+	// Resolve route (context-aware and task-aware for auto mode)
+	resolved, fallbacks, err := h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{

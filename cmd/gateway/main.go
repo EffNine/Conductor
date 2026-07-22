@@ -9,6 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/novexa/gateway/internal/auth"
+	"github.com/novexa/gateway/internal/automode"
 	"github.com/novexa/gateway/internal/catalog"
 	"github.com/novexa/gateway/internal/config"
 	"github.com/novexa/gateway/internal/database"
@@ -99,6 +100,15 @@ func main() {
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
 	modelProber.Start()
 	defer modelProber.Stop()
+
+	// Runtime auto model selection (currently NVIDIA NIM only)
+	if cfg.Providers.NvidiaNim.Enabled && cfg.Providers.NvidiaNim.AutoMode != nil && cfg.Providers.NvidiaNim.AutoMode.Enabled {
+		history := automode.NewDBHistoryQuerier(db)
+		selector := automode.NewSelector(modelCatalog, modelStatus, history, registry)
+		autoSelector := automode.NewRouterAdapter(selector, cfg.Providers.NvidiaNim.AutoMode)
+		routerEngine.SetAutoSelector(autoSelector)
+		logger.Info("auto mode enabled for provider", zap.String("provider", "nvidia_nim"))
+	}
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
