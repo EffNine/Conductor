@@ -132,6 +132,69 @@ func TestModelProberSkipsNonConfiguredProviders(t *testing.T) {
 	}
 }
 
+func TestModelProberScopedProbeDoesNotHideOtherProviders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "scoped-model", Object: "model"}},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID:      "1",
+			Object:  "chat.completion",
+			Choices: []apitypes.Choice{{Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}}},
+		})
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	reg.Register(&staticOnlyProvider{name: "openai"})
+
+	store := health.NewModelStatusStore(1, false) // unknown_as_reachable=false
+	cat := catalog.New(reg, catalog.StaticModels{
+		"openai": {"gpt-4o"},
+	})
+	cat.SetReachabilityFilter(store, true)
+
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            time.Second,
+		Concurrency:        2,
+		UnhealthyThreshold: 1,
+		Providers:          []string{"nvidia_nim"},
+		UnknownAsReachable: false,
+	})
+	prober.ProbeAll()
+
+	entries, err := cat.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := map[string]bool{}
+	for _, e := range entries {
+		ids[e.ModelID] = true
+	}
+	if !ids["nvidia_nim/scoped-model"] {
+		t.Fatalf("nvidia_nim/scoped-model should be advertised: %v", ids)
+	}
+	if !ids["openai/gpt-4o"] {
+		t.Fatalf("openai/gpt-4o should remain visible when openai was not probed: %v", ids)
+	}
+	if store.FilterReady() {
+		t.Fatal("global FilterReady should remain false during scoped probing")
+	}
+	if !store.ProviderFilterReady("nvidia_nim") {
+		t.Fatal("nvidia_nim should be provider-ready")
+	}
+	if store.ProviderFilterReady("openai") {
+		t.Fatal("openai should not be provider-ready")
+	}
+}
+
 func TestModelProberEmptyProvidersProbesAll(t *testing.T) {
 	var chatHits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +310,39 @@ func (p *probeTestProvider) HealthCheck(context.Context) (*provider.HealthStatus
 }
 
 func (p *probeTestProvider) SupportsModel(string) bool { return true }
+
+// staticOnlyProvider is a provider whose catalog is built exclusively from the
+// configured static model list. ListModels always returns an error so the
+// catalog falls back to static models.
+type staticOnlyProvider struct{ name string }
+
+func (p *staticOnlyProvider) Name() string { return p.name }
+
+func (p *staticOnlyProvider) ChatCompletion(context.Context, *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
+	return nil, provider.ErrNotImplemented
+}
+
+func (p *staticOnlyProvider) ChatCompletionStream(context.Context, *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
+	return nil, provider.ErrNotImplemented
+}
+
+func (p *staticOnlyProvider) Embeddings(context.Context, *apitypes.EmbeddingRequest) (*apitypes.EmbeddingResponse, error) {
+	return nil, provider.ErrNotImplemented
+}
+
+func (p *staticOnlyProvider) ListModels(context.Context) ([]provider.ModelInfo, error) {
+	return nil, provider.ErrNotImplemented
+}
+
+func (p *staticOnlyProvider) GetPricing(context.Context) (map[string]provider.PricingInfo, error) {
+	return nil, provider.ErrNotImplemented
+}
+
+func (p *staticOnlyProvider) HealthCheck(context.Context) (*provider.HealthStatus, error) {
+	return &provider.HealthStatus{Provider: p.name, IsHealthy: true}, nil
+}
+
+func (p *staticOnlyProvider) SupportsModel(string) bool { return true }
 
 func TestModelProberUsesThinkingBudgetZero(t *testing.T) {
 	var gotBody map[string]any
