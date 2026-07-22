@@ -16,6 +16,7 @@ import (
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/provider/agnesai"
 	"github.com/EffNine/conductor/internal/provider/anthropic"
 	"github.com/EffNine/conductor/internal/provider/deepseek"
 	"github.com/EffNine/conductor/internal/provider/gemini"
@@ -27,6 +28,7 @@ import (
 	"github.com/EffNine/conductor/internal/provider/openai"
 	"github.com/EffNine/conductor/internal/provider/opencode"
 	"github.com/EffNine/conductor/internal/provider/openrouter"
+	"github.com/EffNine/conductor/internal/provider/xai"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
@@ -246,6 +248,20 @@ func registerProviders(cfg *config.Config, registry *provider.Registry, logger *
 	// Nous Portal
 	if cfg.Providers.NousPortal.Enabled {
 		p := nousportal.NewProvider(cfg.Providers.NousPortal.APIKey, cfg.Providers.NousPortal.BaseURL, cfg.Providers.NousPortal.Timeout)
+		registry.Register(p)
+		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+	}
+
+	// xAI
+	if cfg.Providers.XAI.Enabled {
+		p := xai.NewProvider(cfg.Providers.XAI.APIKey, cfg.Providers.XAI.BaseURL, cfg.Providers.XAI.Timeout)
+		registry.Register(p)
+		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+	}
+
+	// Agnes AI
+	if cfg.Providers.AgnesAI.Enabled {
+		p := agnesai.NewProvider(cfg.Providers.AgnesAI.APIKey, cfg.Providers.AgnesAI.BaseURL, cfg.Providers.AgnesAI.Timeout)
 		registry.Register(p)
 		logger.Debug("Registered provider", zap.String("provider", p.Name()))
 	}

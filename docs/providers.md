@@ -1,6 +1,6 @@
 # Provider Setup Guide
 
-Conductor has provider adapters for 9 upstream services. The following table shows what is currently implemented versus stubbed.
+Conductor has provider adapters for 11 upstream services. The following table shows what is currently implemented versus stubbed.
 
 ## Provider Status
 
@@ -18,6 +18,8 @@ Conductor has provider adapters for 9 upstream services. The following table sho
 | OpenCode | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Zen base `https://opencode.ai/zen/v1`; chat/completions models only |
 | NVIDIA NIM | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | Hosted `integrate.api.nvidia.com` or self-hosted; see [Model Reachability](#model-reachability-nvidia-nim) |
 | Nous Portal | ✅ | ✅ | ✅ | ✅ | ✅ (empty map) | Subscription service; configure cost.rates |
+| xAI | ✅ | ✅ | ✅ | ✅ | ✅ (static map) | OpenAI-compatible base `https://api.x.ai/v1` |
+| Agnes AI | ✅ | ✅ | ✅ | ✅ | ✅ (empty map) | OpenAI-compatible base `https://apihub.agnes-ai.com/v1`; configure cost.rates |
 
 A stub provider is present in the registry and will appear in health checks and the model catalog if you configure a **static model list** for it. You can also define routes and aliases pointing to stub providers; chat/embeddings requests to them will return errors until the adapter is implemented.
 

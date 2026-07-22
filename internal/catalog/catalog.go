@@ -100,6 +100,8 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 	add("opencode", cfg.Providers.Opencode)
 	add("nvidia_nim", cfg.Providers.NvidiaNim)
 	add("nous_portal", cfg.Providers.NousPortal)
+	add("xai", cfg.Providers.XAI)
+	add("agnesai", cfg.Providers.AgnesAI)
 	return out
 }
 

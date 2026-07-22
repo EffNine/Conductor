@@ -157,6 +157,22 @@ providers:
     timeout: 60s
     max_retries: 3
 
+  # xAI — OpenAI-compatible API for Grok and other xAI models
+  xai:
+    enabled: false
+    api_key: "${XAI_API_KEY}"
+    base_url: "https://api.x.ai/v1"
+    timeout: 60s
+    max_retries: 3
+
+  # Agnes AI — OpenAI-compatible API
+  agnesai:
+    enabled: false
+    api_key: "${AGNES_API_KEY}"
+    base_url: "https://apihub.agnes-ai.com/v1"
+    timeout: 60s
+    max_retries: 3
+
 # Catalog advertisement
 # curated_only: when true, /v1/models (and model probes) only use the Static
 # Model List under each provider's `models` field — dynamic ListModels catalogs

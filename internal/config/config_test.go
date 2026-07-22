@@ -165,3 +165,31 @@ func TestIsDefaultLocalOllamaBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestAutoEnableProviders_XAI(t *testing.T) {
+	t.Setenv("XAI_API_KEY", "xai-test-key")
+
+	cfg := &Config{}
+	autoEnableProviders(cfg)
+
+	if !cfg.Providers.XAI.Enabled {
+		t.Fatal("expected xai enabled when XAI_API_KEY is set")
+	}
+	if cfg.Providers.XAI.APIKey != "xai-test-key" {
+		t.Fatalf("APIKey = %q, want xai-test-key", cfg.Providers.XAI.APIKey)
+	}
+}
+
+func TestAutoEnableProviders_AgnesAI(t *testing.T) {
+	t.Setenv("AGNES_API_KEY", "agnes-test-key")
+
+	cfg := &Config{}
+	autoEnableProviders(cfg)
+
+	if !cfg.Providers.AgnesAI.Enabled {
+		t.Fatal("expected agnesai enabled when AGNES_API_KEY is set")
+	}
+	if cfg.Providers.AgnesAI.APIKey != "agnes-test-key" {
+		t.Fatalf("APIKey = %q, want agnes-test-key", cfg.Providers.AgnesAI.APIKey)
+	}
+}

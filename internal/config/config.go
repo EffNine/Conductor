@@ -72,6 +72,8 @@ type ProvidersConfig struct {
 	Opencode   ProviderConfig `mapstructure:"opencode"`
 	NvidiaNim  ProviderConfig `mapstructure:"nvidia_nim"`
 	NousPortal ProviderConfig `mapstructure:"nous_portal"`
+	XAI        ProviderConfig `mapstructure:"xai"`
+	AgnesAI    ProviderConfig `mapstructure:"agnesai"`
 }
 
 // ProviderConfig holds configuration for a single provider
@@ -345,6 +347,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.nous_portal.timeout", 60*time.Second)
 	v.SetDefault("providers.nous_portal.max_retries", 3)
 
+	v.SetDefault("providers.xai.enabled", false)
+	v.SetDefault("providers.xai.base_url", "https://api.x.ai/v1")
+	v.SetDefault("providers.xai.timeout", 60*time.Second)
+	v.SetDefault("providers.xai.max_retries", 3)
+
+	v.SetDefault("providers.agnesai.enabled", false)
+	v.SetDefault("providers.agnesai.base_url", "https://apihub.agnes-ai.com/v1")
+	v.SetDefault("providers.agnesai.timeout", 60*time.Second)
+	v.SetDefault("providers.agnesai.max_retries", 3)
+
 	// Retry defaults
 	v.SetDefault("retry.max_retries", 3)
 	v.SetDefault("retry.initial_backoff", 100*time.Millisecond)
@@ -417,6 +429,8 @@ func autoEnableProviders(cfg *Config) {
 	hydrate(&cfg.Providers.Opencode, "OPENCODE_API_KEY")
 	hydrate(&cfg.Providers.NvidiaNim, "NVIDIA_NIM_API_KEY")
 	hydrate(&cfg.Providers.NousPortal, "NOUS_PORTAL_API_KEY")
+	hydrate(&cfg.Providers.XAI, "XAI_API_KEY")
+	hydrate(&cfg.Providers.AgnesAI, "AGNES_API_KEY")
 
 	// Ollama: local by default; OLLAMA_API_KEY enables Ollama Cloud when no host is set.
 	// OLLAMA_BASE_URL only overrides the host (compose always sets a default — do not

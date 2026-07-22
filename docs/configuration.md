@@ -34,6 +34,8 @@ Conductor uses environment variables first, then YAML, then defaults.
 | `OPENCODE_API_KEY` | OpenCode Zen API key |
 | `NVIDIA_NIM_API_KEY` | NVIDIA NIM API key |
 | `NOUS_PORTAL_API_KEY` | Nous Portal API key |
+| `XAI_API_KEY` | xAI API key (auto-enables) |
+| `AGNES_API_KEY` | Agnes AI API key (auto-enables) |
 | `OLLAMA_API_KEY` | Ollama Cloud API key (auto-enables; default base `https://ollama.com/v1`) |
 | `OLLAMA_BASE_URL` | Override Ollama OpenAI-compatible base URL when the provider is enabled (e.g. Docker host) |
 
