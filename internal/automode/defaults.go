@@ -84,10 +84,13 @@ func DefaultNIMProfiles() map[string]config.AutoModeProfile {
 	}
 }
 
-// mergeProfiles returns the user profiles if non-empty, otherwise the defaults.
+// mergeProfiles returns the built-in default profiles overlaid with any user
+// task_profiles. User profiles replace defaults for the same task type, while
+// unspecified task types keep their default allowlists and weights.
 func mergeProfiles(user map[string]config.AutoModeProfile) map[string]config.AutoModeProfile {
-	if len(user) > 0 {
-		return user
+	merged := DefaultNIMProfiles()
+	for task, profile := range user {
+		merged[task] = profile
 	}
-	return DefaultNIMProfiles()
+	return merged
 }

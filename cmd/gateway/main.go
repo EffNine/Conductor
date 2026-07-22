@@ -102,7 +102,7 @@ func main() {
 	defer modelProber.Stop()
 
 	// Runtime auto model selection (currently NVIDIA NIM only)
-	if cfg.Providers.NvidiaNim.AutoMode != nil && cfg.Providers.NvidiaNim.AutoMode.Enabled {
+	if cfg.Providers.NvidiaNim.Enabled && cfg.Providers.NvidiaNim.AutoMode != nil && cfg.Providers.NvidiaNim.AutoMode.Enabled {
 		history := automode.NewDBHistoryQuerier(db)
 		selector := automode.NewSelector(modelCatalog, modelStatus, history, registry)
 		autoSelector := automode.NewRouterAdapter(selector, cfg.Providers.NvidiaNim.AutoMode)
