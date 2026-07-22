@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/novexa/gateway/internal/database"
+	"github.com/EffNine/conductor/internal/database"
 	"go.uber.org/zap"
 )
 

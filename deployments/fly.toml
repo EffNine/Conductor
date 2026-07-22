@@ -8,7 +8,7 @@
 # This file is kept for backwards compatibility with docs that reference
 # deployments/fly.toml. Prefer the root fly.toml.
 
-app = "novexa-gateway"
+app = "conductor"
 primary_region = "sin"
 
 [build]
@@ -17,7 +17,7 @@ primary_region = "sin"
   dockerfile = "deployments/Dockerfile"
 
 [env]
-  NOVEXA_SERVER_PORT = "8080"
+  CONDUCTOR_SERVER_PORT = "8080"
 
 [http_service]
   internal_port = 8080
@@ -35,7 +35,7 @@ primary_region = "sin"
     path = "/health"
 
 [mounts]
-  source = "novexa_data"
+  source = "conductor_data"
   destination = "/app/data"
 
 [[vm]]

@@ -3,8 +3,8 @@ package usage
 import (
 	"context"
 
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // CostSource identifies how a cost was determined.

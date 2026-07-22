@@ -76,12 +76,42 @@ type ProvidersConfig struct {
 
 // ProviderConfig holds configuration for a single provider
 type ProviderConfig struct {
-	Enabled    bool          `mapstructure:"enabled"`
-	APIKey     string        `mapstructure:"api_key"`
-	BaseURL    string        `mapstructure:"base_url"`
-	Timeout    time.Duration `mapstructure:"timeout"`
-	MaxRetries int           `mapstructure:"max_retries"`
-	Models     []string      `mapstructure:"models"` // Static Model List when ListModels is unavailable
+	Enabled    bool            `mapstructure:"enabled"`
+	APIKey     string          `mapstructure:"api_key"`
+	BaseURL    string          `mapstructure:"base_url"`
+	Timeout    time.Duration   `mapstructure:"timeout"`
+	MaxRetries int             `mapstructure:"max_retries"`
+	Models     []string        `mapstructure:"models"` // Static Model List when ListModels is unavailable
+	AutoMode   *AutoModeConfig `mapstructure:"auto"`
+}
+
+// AutoModeConfig controls runtime automatic model selection for a provider.
+// Currently used for NVIDIA NIM; the struct is provider-scoped so it can be
+// enabled per provider in the future.
+type AutoModeConfig struct {
+	Enabled      bool                       `mapstructure:"enabled"`
+	Provider     string                     `mapstructure:"provider"`
+	Lookback     time.Duration              `mapstructure:"lookback"`
+	Weights      AutoModeWeights            `mapstructure:"weights"`
+	TaskProfiles map[string]AutoModeProfile `mapstructure:"task_profiles"`
+}
+
+// AutoModeWeights controls the scoring mix for auto model selection.
+// Higher weight makes that signal more influential. Weights are normalized
+// internally, so absolute scale does not matter.
+type AutoModeWeights struct {
+	Reachability float64 `mapstructure:"reachability"`
+	Cost         float64 `mapstructure:"cost"`
+	Latency      float64 `mapstructure:"latency"`
+}
+
+// AutoModeProfile is a task-specific model allowlist and weight override.
+// When a task matches a profile, only those models are candidates and the
+// profile weights are used. If no profile matches, the default weights and
+// the full advertised catalog are used.
+type AutoModeProfile struct {
+	Models  []string        `mapstructure:"models"`
+	Weights AutoModeWeights `mapstructure:"weights"`
 }
 
 // RouteConfig holds configuration for a model route
@@ -157,7 +187,7 @@ type ModelHealthConfig struct {
 	HideUnreachable bool `mapstructure:"hide_unreachable"`
 	// CheckInterval between full probe passes. Default 12h.
 	CheckInterval time.Duration `mapstructure:"check_interval"`
-	// Timeout per individual model probe. Default 15s.
+	// Timeout per individual model probe. Default 60s.
 	Timeout time.Duration `mapstructure:"timeout"`
 	// Concurrency is max parallel probes. Default 3 (stay under NIM free-tier RPM).
 	Concurrency int `mapstructure:"concurrency"`
@@ -209,11 +239,11 @@ func Load() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
-	v.AddConfigPath("/etc/novexa")
+	v.AddConfigPath("/etc/conductor")
 
 	// Environment variables
 	v.AutomaticEnv()
-	v.SetEnvPrefix("NOVEXA")
+	v.SetEnvPrefix("CONDUCTOR")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file (optional)
@@ -303,6 +333,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.nvidia_nim.base_url", "https://integrate.api.nvidia.com/v1")
 	v.SetDefault("providers.nvidia_nim.timeout", 180*time.Second)
 	v.SetDefault("providers.nvidia_nim.max_retries", 3)
+	v.SetDefault("providers.nvidia_nim.auto.enabled", false)
+	v.SetDefault("providers.nvidia_nim.auto.provider", "nvidia_nim")
+	v.SetDefault("providers.nvidia_nim.auto.lookback", 24*time.Hour)
+	v.SetDefault("providers.nvidia_nim.auto.weights.reachability", 10.0)
+	v.SetDefault("providers.nvidia_nim.auto.weights.cost", 3.0)
+	v.SetDefault("providers.nvidia_nim.auto.weights.latency", 1.0)
 
 	v.SetDefault("providers.nous_portal.enabled", false)
 	v.SetDefault("providers.nous_portal.base_url", "https://inference-api.nousresearch.com/v1")
@@ -318,7 +354,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Database defaults
 	v.SetDefault("database.driver", "sqlite")
-	v.SetDefault("database.dsn", "./data/novexa.db")
+	v.SetDefault("database.dsn", "./data/conductor.db")
 	v.SetDefault("database.max_open_conns", 10)
 	v.SetDefault("database.max_idle_conns", 5)
 
@@ -343,7 +379,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
 	v.SetDefault("health.models.check_interval", 12*time.Hour)
-	v.SetDefault("health.models.timeout", 30*time.Second)
+	v.SetDefault("health.models.timeout", 60*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 1)
 	// Empty = probe all registered providers.
@@ -360,7 +396,7 @@ func setDefaults(v *viper.Viper) {
 }
 
 // autoEnableProviders enables providers and fills API keys from well-known env vars.
-// Viper's NOVEXA_ prefix does not map OPENAI_API_KEY / NVIDIA_NIM_API_KEY / etc.,
+// Viper's CONDUCTOR_ prefix does not map OPENAI_API_KEY / NVIDIA_NIM_API_KEY / etc.,
 // so we hydrate those explicitly when the config field is empty.
 func autoEnableProviders(cfg *Config) {
 	hydrate := func(p *ProviderConfig, envKey string) {
@@ -413,10 +449,10 @@ func isDefaultLocalOllamaBaseURL(u string) bool {
 func validate(cfg *Config) error {
 	// API key is required
 	if cfg.APIKey == "" {
-		cfg.APIKey = os.Getenv("NOVEXA_API_KEY")
+		cfg.APIKey = os.Getenv("CONDUCTOR_API_KEY")
 	}
 	if cfg.APIKey == "" {
-		return fmt.Errorf("api_key is required (set NOVEXA_API_KEY environment variable)")
+		return fmt.Errorf("api_key is required (set CONDUCTOR_API_KEY environment variable)")
 	}
 
 	// Validate server config

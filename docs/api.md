@@ -1,6 +1,6 @@
 # API Reference
 
-Novexa Gateway exposes an OpenAI-compatible API plus dashboard endpoints for monitoring.
+Conductor exposes an OpenAI-compatible API plus dashboard endpoints for monitoring.
 
 ## Authentication
 
@@ -10,7 +10,7 @@ All endpoints except `GET /health` require authentication via the `Authorization
 Authorization: Bearer <your-api-key>
 ```
 
-The API key is set via the `NOVEXA_API_KEY` environment variable.
+The API key is set via the `CONDUCTOR_API_KEY` environment variable.
 
 ---
 
@@ -38,8 +38,10 @@ Creates a model response for the given chat conversation.
 ```
 
 **Required Fields**:
-- `model` (string): Model ID or alias to use
+- `model` (string): Model ID, alias, or `auto` when auto model selection is enabled
 - `messages` (array): Array of message objects
+
+When `model: "auto"` is sent and `providers.nvidia_nim.auto.enabled` is `true`, the gateway selects the best available NVIDIA NIM model at runtime using reachability, historical cost, and probe latency scores. The upstream request is rewritten to use the chosen model ID.
 
 **Optional Fields**:
 - `temperature` (number): Sampling temperature (0-2). Default: 1.0
@@ -60,6 +62,8 @@ Creates a model response for the given chat conversation.
 - `include_reasoning` (boolean): Legacy OpenRouter flag to include reasoning in the response
 
 When the upstream model returns reasoning (`message.reasoning` or `message.reasoning_content`) with empty `content`, the gateway copies reasoning into `content` so chat apps still show a reply. `usage.completion_tokens_details.reasoning_tokens` is preserved when the provider reports it.
+
+Streaming responses omit empty `delta.role` / `delta.content` and drop zero-value `data: {}` frames. That keeps OpenCode (and similar custom OpenAI clients) from rejecting the stream or wiping `model`/`content` when aggregating.
 
 #### Non-Streaming Response
 
@@ -119,13 +123,15 @@ Lists available models from configured providers. With `catalog.curated_only`, o
       "id": "openai/gpt-4o",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "openai"
+      "owned_by": "openai",
+      "name": "gpt-4o"
     },
     {
       "id": "nvidia_nim/meta/llama-3.1-8b-instruct",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "meta"
+      "owned_by": "meta",
+      "name": "meta/llama-3.1-8b-instruct"
     }
   ]
 }
@@ -133,6 +139,7 @@ Lists available models from configured providers. With `catalog.curated_only`, o
 
 **Notes**:
 - Every Model ID is provider-prefixed (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) so clients can send the listed ID directly to `/v1/chat/completions`.
+- `name` is a shorter display label (the upstream Provider Model ID without the gateway provider prefix), e.g. `meta/llama-3.1-8b-instruct`. Pickers that support `name` can show it; chat requests must still use `id`.
 - `owned_by` reflects the provider or the upstream owner when reported.
 - Aliases are never listed.
 - With `catalog.curated_only: true`, only `providers.*.models` entries appear.
@@ -204,6 +211,7 @@ Returns the merged model catalog from all configured providers, including reacha
   "models": [
     {
       "model_id": "openai/gpt-4o",
+      "name": "gpt-4o",
       "provider": "openai",
       "provider_model_id": "gpt-4o",
       "owned_by": "openai",
@@ -213,6 +221,7 @@ Returns the merged model catalog from all configured providers, including reacha
     },
     {
       "model_id": "nvidia_nim/meta/llama-3.1-8b-instruct",
+      "name": "meta/llama-3.1-8b-instruct",
       "provider": "nvidia_nim",
       "provider_model_id": "meta/llama-3.1-8b-instruct",
       "owned_by": "meta",
@@ -265,11 +274,31 @@ Returns the cached per-model reachability probe results only (models that have b
 
 ---
 
+### Auto Mode Status
+
+**Endpoint**: `GET /api/auto/status`
+
+Reports whether runtime automatic model selection is enabled and the provider it targets.
+
+#### Response
+
+```json
+{
+  "enabled": true,
+  "provider": "nvidia_nim",
+  "note": "auto mode selects from NVIDIA NIM catalog using task, health, cost, and latency"
+}
+```
+
+When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/completions` (and `POST /v1/embeddings`). The gateway classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), picks the matching `task_profile` (or the built-in NIM defaults), and then scores candidate models by reachability, historical cost, and probe latency to choose the upstream model at request time.
+
+---
+
 ### Model Reachability
 
 NVIDIA NIM (and similar catalogs) often list models that are not currently callable — retired free endpoints, capacity-limited models, or non-chat entries. There is no reliable “available” flag on `GET /models`.
 
-Novexa optionally probes registered providers with a minimal chat completion and:
+Conductor optionally probes registered providers with a minimal chat completion and:
 
 1. Runs a full pass on every startup/redeploy, then again every `check_interval`
 2. Caches online/offline status (also updated from live chat successes/failures)

@@ -1,4 +1,4 @@
-module github.com/novexa/gateway
+module github.com/EffNine/conductor
 
 go 1.21
 

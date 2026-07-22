@@ -3,11 +3,11 @@ package middleware
 import (
 	"time"
 
+	"github.com/EffNine/conductor/internal/auth"
+	"github.com/EffNine/conductor/internal/config"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
-	"github.com/novexa/gateway/internal/auth"
-	"github.com/novexa/gateway/internal/config"
 	"go.uber.org/zap"
 )
 

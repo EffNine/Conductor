@@ -1,8 +1,8 @@
-# Novexa Gateway Architecture
+# Conductor Architecture
 
 ## Overview
 
-Novexa Gateway is a single-operator, self-hosted AI gateway. It exposes an OpenAI-compatible API and routes requests to one or more configured upstream providers using explicit routes.
+Conductor is a single-operator, self-hosted AI gateway. It exposes an OpenAI-compatible API and routes requests to one or more configured upstream providers using explicit routes.
 
 ## System Architecture
 
@@ -11,7 +11,7 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
     │
     ▼
 ┌─────────────────────────────────────────────────────┐
-│                Novexa Gateway (Go/Fiber)              │
+│                Conductor (Go/Fiber)              │
 │                                                     │
 │  API Key Check → Rate Limit → Validate → Route      │
 │       → Provider Adapter → Normalize → Response     │
@@ -34,7 +34,7 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 
 ### Single-Operator Model
 
-- One gateway API key via `NOVEXA_API_KEY`
+- One gateway API key via `CONDUCTOR_API_KEY`
 - No user management
 - Operator owns all upstream provider keys
 
@@ -88,7 +88,7 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 ## Request Lifecycle
 
 1. Client sends `POST /v1/chat/completions` with `Authorization: Bearer <key>`
-2. API key middleware validates against `NOVEXA_API_KEY`
+2. API key middleware validates against `CONDUCTOR_API_KEY`
 3. Rate limiter checks global and per-provider limits
 4. Request validator checks payload structure
 5. Router resolves `model`:
@@ -120,7 +120,7 @@ Same as above through route resolution, then:
 ## Deployment Model
 
 - Single binary, single process
-- SQLite database file (default: `./data/novexa.db`)
+- SQLite database file (default: `./data/conductor.db`)
 - No external dependencies required
 - Docker image available
 - Deployable on Railway, Fly.io, Render, or locally

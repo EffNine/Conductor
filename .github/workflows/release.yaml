@@ -7,7 +7,7 @@ on:
 
 env:
   GO_VERSION: '1.21'
-  DOCKER_IMAGE: novexa/gateway
+  DOCKER_IMAGE: effnine/conductor
 
 jobs:
   goreleaser:

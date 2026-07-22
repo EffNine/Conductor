@@ -4,10 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/database"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/usage"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/usage"
 	"go.uber.org/zap"
 )
 

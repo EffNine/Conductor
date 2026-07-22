@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/pkg/sse"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/pkg/sse"
 )
 
 // Base implements provider.Provider for OpenAI-compatible upstreams.
@@ -152,6 +152,12 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 			if err := json.Unmarshal([]byte(event.Data), &chunk); err != nil {
 				ch <- apitypes.StreamChunk{Error: fmt.Errorf("failed to parse stream chunk: %w", err)}
 				return
+			}
+			// Skip data: {} / zero-value chunks. Re-emitting them as
+			// {"id":"","model":"","choices":null} makes OpenCode and similar
+			// aggregators drop the reply (empty content, empty model).
+			if chunk.IsEmpty() {
+				continue
 			}
 			// Do not promote reasoning→content on stream deltas: models like
 			// Nemotron emit reasoning chunks before content, and promoting

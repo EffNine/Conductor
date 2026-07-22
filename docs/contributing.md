@@ -1,6 +1,6 @@
-# Contributing to Novexa Gateway
+# Contributing to Conductor
 
-Thank you for your interest in contributing to Novexa Gateway! This document provides guidelines and information for contributors.
+Thank you for your interest in contributing to Conductor! This document provides guidelines and information for contributors.
 
 ## Code of Conduct
 
@@ -121,7 +121,7 @@ mkdir -p internal/provider/yourprovider
 // internal/provider/yourprovider/provider.go
 package yourprovider
 
-import "github.com/novexa/gateway/internal/provider"
+import "github.com/EffNine/conductor/internal/provider"
 
 type Provider struct {
     // your fields
@@ -153,8 +153,8 @@ Implement streaming normalization in `streaming.go`.
 5. **Register the provider**
 
 ```go
-// cmd/gateway/main.go
-import "github.com/novexa/gateway/internal/provider/yourprovider"
+// cmd/conductor/main.go
+import "github.com/EffNine/conductor/internal/provider/yourprovider"
 
 // In main()
 if cfg.Providers.YourProvider.Enabled {
@@ -201,7 +201,7 @@ Follow the PR guidelines above.
 
 ```bash
 # Clone and setup
-git clone https://github.com/novexa/gateway.git
+git clone https://github.com/EffNine/conductor.git
 cd gateway
 
 # Install dependencies
@@ -217,7 +217,7 @@ make lint
 make build
 
 # Run locally
-export NOVEXA_API_KEY=test-key
+export CONDUCTOR_API_KEY=test-key
 export OPENAI_API_KEY=sk-test
 ./bin/gateway
 ```
@@ -297,8 +297,8 @@ make docker-test
 ## Project Structure
 
 ```
-novexa-gateway/
-├── cmd/gateway/          # Entry point
+conductor/
+├── cmd/conductor/        # Entry point
 ├── internal/             # Private application code
 │   ├── config/          # Configuration
 │   ├── auth/            # Authentication
@@ -345,4 +345,4 @@ Contributors will be recognized in:
 - Release notes
 - Project documentation
 
-Thank you for contributing to Novexa Gateway! 🚀
+Thank you for contributing to Conductor! 🚀

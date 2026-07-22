@@ -3,9 +3,10 @@ package catalog
 import (
 	"context"
 	"sort"
+	"strings"
 
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // Entry is one advertised model in the merged catalog.
@@ -14,6 +15,22 @@ type Entry struct {
 	Provider        string `json:"provider"`
 	ProviderModelID string `json:"provider_model_id"`
 	OwnedBy         string `json:"owned_by,omitempty"`
+}
+
+// DisplayName returns a short picker label without the gateway provider prefix.
+// Example: ModelID nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b → nvidia/nemotron-3-ultra-550b-a55b.
+// Chat completions must still use ModelID.
+func (e Entry) DisplayName() string {
+	if e.ProviderModelID != "" {
+		return e.ProviderModelID
+	}
+	if e.Provider != "" {
+		prefix := e.Provider + "/"
+		if strings.HasPrefix(e.ModelID, prefix) {
+			return strings.TrimPrefix(e.ModelID, prefix)
+		}
+	}
+	return e.ModelID
 }
 
 // ReachabilityFilter decides whether a catalog entry should be advertised.
