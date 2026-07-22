@@ -1,7 +1,7 @@
 package automode
 
 import (
-	"github.com/novexa/gateway/internal/config"
+	"github.com/EffNine/conductor/internal/config"
 )
 
 // DefaultNIMProfiles are derived from the model comparison tiers for NVIDIA NIM.

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/usage"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/usage"
 )
 
 func TestEstimatorUsesProviderPricing(t *testing.T) {

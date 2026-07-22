@@ -239,11 +239,11 @@ func Load() (*Config, error) {
 	v.SetConfigType("yaml")
 	v.AddConfigPath(".")
 	v.AddConfigPath("./config")
-	v.AddConfigPath("/etc/novexa")
+	v.AddConfigPath("/etc/conductor")
 
 	// Environment variables
 	v.AutomaticEnv()
-	v.SetEnvPrefix("NOVEXA")
+	v.SetEnvPrefix("CONDUCTOR")
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Read config file (optional)
@@ -354,7 +354,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Database defaults
 	v.SetDefault("database.driver", "sqlite")
-	v.SetDefault("database.dsn", "./data/novexa.db")
+	v.SetDefault("database.dsn", "./data/conductor.db")
 	v.SetDefault("database.max_open_conns", 10)
 	v.SetDefault("database.max_idle_conns", 5)
 
@@ -396,7 +396,7 @@ func setDefaults(v *viper.Viper) {
 }
 
 // autoEnableProviders enables providers and fills API keys from well-known env vars.
-// Viper's NOVEXA_ prefix does not map OPENAI_API_KEY / NVIDIA_NIM_API_KEY / etc.,
+// Viper's CONDUCTOR_ prefix does not map OPENAI_API_KEY / NVIDIA_NIM_API_KEY / etc.,
 // so we hydrate those explicitly when the config field is empty.
 func autoEnableProviders(cfg *Config) {
 	hydrate := func(p *ProviderConfig, envKey string) {
@@ -449,10 +449,10 @@ func isDefaultLocalOllamaBaseURL(u string) bool {
 func validate(cfg *Config) error {
 	// API key is required
 	if cfg.APIKey == "" {
-		cfg.APIKey = os.Getenv("NOVEXA_API_KEY")
+		cfg.APIKey = os.Getenv("CONDUCTOR_API_KEY")
 	}
 	if cfg.APIKey == "" {
-		return fmt.Errorf("api_key is required (set NOVEXA_API_KEY environment variable)")
+		return fmt.Errorf("api_key is required (set CONDUCTOR_API_KEY environment variable)")
 	}
 
 	// Validate server config

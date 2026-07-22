@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/database"
-	"github.com/novexa/gateway/internal/health"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 //go:generate go run github.com/maxbrunsfeld/counterfeiter/v6 -generate

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/pkg/sse"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/pkg/sse"
 )
 
 // Base implements provider.Provider for OpenAI-compatible upstreams.

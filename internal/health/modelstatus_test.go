@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/novexa/gateway/internal/health"
+	"github.com/EffNine/conductor/internal/health"
 )
 
 func TestModelStatusStoreDefaultThresholdIsOne(t *testing.T) {

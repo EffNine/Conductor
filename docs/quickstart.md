@@ -1,6 +1,6 @@
 # Quick Start Guide
 
-Get Novexa Gateway running in 5 minutes.
+Get Conductor running in 5 minutes.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ Get Novexa Gateway running in 5 minutes.
 
 ```bash
 cat > .env << EOF
-NOVEXA_API_KEY=your-secret-gateway-key
+CONDUCTOR_API_KEY=your-secret-gateway-key
 OPENAI_API_KEY=sk-your-openai-key
 EOF
 ```
@@ -22,11 +22,11 @@ EOF
 
 ```bash
 docker run -d \
-  --name novexa-gateway \
+  --name conductor \
   -p 8080:8080 \
   --env-file .env \
-  -v novexa-data:/app/data \
-  ghcr.io/effnine/novexa-gateway:latest
+  -v conductor-data:/app/data \
+  ghcr.io/effnine/conductor:latest
 ```
 
 ### 3. Test it
@@ -46,18 +46,18 @@ curl http://localhost:8080/v1/chat/completions \
 ```yaml
 services:
   gateway:
-    image: ghcr.io/effnine/novexa-gateway:latest
+    image: ghcr.io/effnine/conductor:latest
     ports:
       - "8080:8080"
     environment:
-      - NOVEXA_API_KEY=your-secret-gateway-key
+      - CONDUCTOR_API_KEY=your-secret-gateway-key
       - OPENAI_API_KEY=sk-your-openai-key
     volumes:
-      - novexa-data:/app/data
+      - conductor-data:/app/data
     restart: unless-stopped
 
 volumes:
-  novexa-data:
+  conductor-data:
 ```
 
 ```bash
@@ -68,14 +68,14 @@ docker compose up -d
 
 ```bash
 # Clone
-git clone https://github.com/EffNine/novexa-gateway.git
-cd novexa-gateway
+git clone https://github.com/EffNine/conductor.git
+cd conductor
 
 # Build
 make build
 
 # Run
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 ./bin/gateway
 ```
@@ -87,7 +87,7 @@ export OPENAI_API_KEY=sk-your-openai-key
 Only the gateway key and provider keys are required:
 
 ```bash
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 ```
 
@@ -96,7 +96,7 @@ export OPENAI_API_KEY=sk-your-openai-key
 Create a `config.yaml`:
 
 ```yaml
-api_key: "${NOVEXA_API_KEY}"
+api_key: "${CONDUCTOR_API_KEY}"
 
 providers:
   openai:
@@ -120,8 +120,8 @@ docker run -d \
   -p 8080:8080 \
   --env-file .env \
   -v $(pwd)/config.yaml:/app/config.yaml \
-  -v novexa-data:/app/data \
-  ghcr.io/effnine/novexa-gateway:latest
+  -v conductor-data:/app/data \
+  ghcr.io/effnine/conductor:latest
 ```
 
 ## Using with Clients
@@ -182,7 +182,7 @@ curl http://localhost:8080/api/models \
 
 ### Model Online Status
 
-When providers are enabled, the gateway probes models and can hide unreachable ones from `/v1/models`. Novexa runs a full probe pass on every startup/redeploy, then every 12 hours by default (all registered providers):
+When providers are enabled, the gateway probes models and can hide unreachable ones from `/v1/models`. Conductor runs a full probe pass on every startup/redeploy, then every 12 hours by default (all registered providers):
 
 ```bash
 # Probe cache
@@ -222,12 +222,12 @@ curl http://localhost:8080/api/logs \
 ### Gateway won't start
 
 ```bash
-docker logs novexa-gateway
+docker logs conductor
 ```
 
 Common issues:
-- Missing `NOVEXA_API_KEY`
-- Port 8080 already in use (change with `NOVEXA_SERVER_PORT`)
+- Missing `CONDUCTOR_API_KEY`
+- Port 8080 already in use (change with `CONDUCTOR_SERVER_PORT`)
 - Invalid provider API key
 
 ### Provider returns errors

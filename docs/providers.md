@@ -1,6 +1,6 @@
 # Provider Setup Guide
 
-Novexa Gateway has provider adapters for 9 upstream services. The following table shows what is currently implemented versus stubbed.
+Conductor has provider adapters for 9 upstream services. The following table shows what is currently implemented versus stubbed.
 
 ## Provider Status
 
@@ -195,7 +195,7 @@ Example response:
 
 NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
 
-Novexa probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) and can auto-hide failures from `/v1/models`.
+Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) and can auto-hide failures from `/v1/models`.
 
 ### Defaults
 
