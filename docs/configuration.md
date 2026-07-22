@@ -329,6 +329,57 @@ health:
       - openrouter
 ```
 
+### Auto model selection (NVIDIA NIM)
+
+When `providers.nvidia_nim.auto.enabled: true`, clients can send `"model": "auto"` and the gateway will pick the best available NIM model at runtime. It first classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), then uses a matching `task_profile` to restrict candidates and tune the scoring weights. Within the profile, models are scored by:
+
+- **Reachability** — only models that passed the reachability probe are considered.
+- **Historical cost** — average USD per token from `usage_records` over the configured `lookback`.
+- **Latency** — latest probe latency from the model status cache.
+
+Models with no usage history get a neutral cost score so they are not penalized.
+
+```yaml
+providers:
+  nvidia_nim:
+    enabled: true
+    api_key: "${NVIDIA_NIM_API_KEY}"
+    models:
+      - "deepseek-ai/deepseek-v4-flash"
+      - "meta/llama-3.1-8b-instruct"
+    auto:
+      enabled: true
+      provider: "nvidia_nim"
+      lookback: 24h
+      weights:
+        reachability: 10.0
+        cost: 3.0
+        latency: 2.0
+      task_profiles:
+        elite:
+          models:
+            - "mistralai/mistral-large-3-675b-instruct-2512"
+            - "nvidia/nemotron-3-super-120b-a12b"
+          weights:
+            reachability: 10.0
+            cost: 1.0
+            latency: 2.0
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Enable runtime auto selection for this provider | `false` |
+| `provider` | Provider scope for auto selection | `nvidia_nim` |
+| `lookback` | How far back to read usage history for cost scoring | `24h` |
+| `weights.reachability` | Weight for reachability signal | `10.0` |
+| `weights.cost` | Weight for historical cost signal | `3.0` |
+| `weights.latency` | Weight for probe latency signal | `2.0` |
+| `task_profiles` | Task-type-specific model allowlists and weight overrides | Built-in NIM tiers |
+
+If `task_profiles` is omitted, the gateway uses built-in profiles derived from the NVIDIA NIM model comparison (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`). If a profile restricts candidates to a list, only those models are considered; otherwise the full advertised catalog is used.
+
+Auto mode respects `catalog.curated_only`: only models advertised in `/v1/models` are candidates. Status is exposed on `GET /api/auto/status`. You can also configure an `aliases` entry such as `"nim-auto": "auto"` to expose a friendlier model name.
+
 ## Minimal Configuration
 
 For the simplest setup, only the gateway key and provider keys are required:

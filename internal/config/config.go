@@ -76,12 +76,42 @@ type ProvidersConfig struct {
 
 // ProviderConfig holds configuration for a single provider
 type ProviderConfig struct {
-	Enabled    bool          `mapstructure:"enabled"`
-	APIKey     string        `mapstructure:"api_key"`
-	BaseURL    string        `mapstructure:"base_url"`
-	Timeout    time.Duration `mapstructure:"timeout"`
-	MaxRetries int           `mapstructure:"max_retries"`
-	Models     []string      `mapstructure:"models"` // Static Model List when ListModels is unavailable
+	Enabled    bool            `mapstructure:"enabled"`
+	APIKey     string          `mapstructure:"api_key"`
+	BaseURL    string          `mapstructure:"base_url"`
+	Timeout    time.Duration   `mapstructure:"timeout"`
+	MaxRetries int             `mapstructure:"max_retries"`
+	Models     []string        `mapstructure:"models"` // Static Model List when ListModels is unavailable
+	AutoMode   *AutoModeConfig `mapstructure:"auto"`
+}
+
+// AutoModeConfig controls runtime automatic model selection for a provider.
+// Currently used for NVIDIA NIM; the struct is provider-scoped so it can be
+// enabled per provider in the future.
+type AutoModeConfig struct {
+	Enabled      bool                       `mapstructure:"enabled"`
+	Provider     string                     `mapstructure:"provider"`
+	Lookback     time.Duration              `mapstructure:"lookback"`
+	Weights      AutoModeWeights            `mapstructure:"weights"`
+	TaskProfiles map[string]AutoModeProfile `mapstructure:"task_profiles"`
+}
+
+// AutoModeWeights controls the scoring mix for auto model selection.
+// Higher weight makes that signal more influential. Weights are normalized
+// internally, so absolute scale does not matter.
+type AutoModeWeights struct {
+	Reachability float64 `mapstructure:"reachability"`
+	Cost         float64 `mapstructure:"cost"`
+	Latency      float64 `mapstructure:"latency"`
+}
+
+// AutoModeProfile is a task-specific model allowlist and weight override.
+// When a task matches a profile, only those models are candidates and the
+// profile weights are used. If no profile matches, the default weights and
+// the full advertised catalog are used.
+type AutoModeProfile struct {
+	Models  []string        `mapstructure:"models"`
+	Weights AutoModeWeights `mapstructure:"weights"`
 }
 
 // RouteConfig holds configuration for a model route
@@ -303,6 +333,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.nvidia_nim.base_url", "https://integrate.api.nvidia.com/v1")
 	v.SetDefault("providers.nvidia_nim.timeout", 180*time.Second)
 	v.SetDefault("providers.nvidia_nim.max_retries", 3)
+	v.SetDefault("providers.nvidia_nim.auto.enabled", false)
+	v.SetDefault("providers.nvidia_nim.auto.provider", "nvidia_nim")
+	v.SetDefault("providers.nvidia_nim.auto.lookback", 24*time.Hour)
+	v.SetDefault("providers.nvidia_nim.auto.weights.reachability", 10.0)
+	v.SetDefault("providers.nvidia_nim.auto.weights.cost", 3.0)
+	v.SetDefault("providers.nvidia_nim.auto.weights.latency", 1.0)
 
 	v.SetDefault("providers.nous_portal.enabled", false)
 	v.SetDefault("providers.nous_portal.base_url", "https://inference-api.nousresearch.com/v1")

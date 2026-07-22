@@ -38,8 +38,10 @@ Creates a model response for the given chat conversation.
 ```
 
 **Required Fields**:
-- `model` (string): Model ID or alias to use
+- `model` (string): Model ID, alias, or `auto` when auto model selection is enabled
 - `messages` (array): Array of message objects
+
+When `model: "auto"` is sent and `providers.nvidia_nim.auto.enabled` is `true`, the gateway selects the best available NVIDIA NIM model at runtime using reachability, historical cost, and probe latency scores. The upstream request is rewritten to use the chosen model ID.
 
 **Optional Fields**:
 - `temperature` (number): Sampling temperature (0-2). Default: 1.0
@@ -269,6 +271,26 @@ Returns the cached per-model reachability probe results only (models that have b
   ]
 }
 ```
+
+---
+
+### Auto Mode Status
+
+**Endpoint**: `GET /api/auto/status`
+
+Reports whether runtime automatic model selection is enabled and the provider it targets.
+
+#### Response
+
+```json
+{
+  "enabled": true,
+  "provider": "nvidia_nim",
+  "note": "auto mode selects from NVIDIA NIM catalog using task, health, cost, and latency"
+}
+```
+
+When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/completions` (and `POST /v1/embeddings`). The gateway classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), picks the matching `task_profile` (or the built-in NIM defaults), and then scores candidate models by reachability, historical cost, and probe latency to choose the upstream model at request time.
 
 ---
 
