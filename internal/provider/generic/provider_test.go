@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider/generic"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider/generic"
 )
 
 func TestChatCompletionForwardsOpenAIRequest(t *testing.T) {

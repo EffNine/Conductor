@@ -1,4 +1,4 @@
-# Handoff: Novexa Gateway — Unified API Key + Merged Model Picker
+# Handoff: Conductor — Unified API Key + Merged Model Picker
 
 ## Goal
 
@@ -42,7 +42,7 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
   - `ErrNotImplemented` sentinel.
 - Implemented real `ListModels` and `GetPricing` for OpenAI provider.
 - Added stub implementations for anthropic, deepseek, gemini, generic, groq, lmstudio, ollama, openrouter.
-- Updated `cmd/gateway/main.go` to register all stub providers when enabled.
+- Updated `cmd/conductor/main.go` to register all stub providers when enabled.
 - `go build ./...` passes.
 
 ### Slice 3: Merged `/v1/models` — COMPLETE

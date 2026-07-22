@@ -7,15 +7,15 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/database"
-	"github.com/novexa/gateway/internal/health"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/router"
-	"github.com/novexa/gateway/internal/usage"
 	"go.uber.org/zap"
 )
 
@@ -57,6 +57,11 @@ func (h *Handler) SetModelStatus(store *health.ModelStatusStore, prober *health.
 	h.modelProber = prober
 }
 
+// SetAutoSelector wires runtime automatic model selection into the router.
+func (h *Handler) SetAutoSelector(s router.AutoSelector) {
+	h.router.SetAutoSelector(s)
+}
+
 // Register registers all HTTP routes
 func (h *Handler) Register(app *fiber.App) {
 	// OpenAI-compatible endpoints
@@ -70,6 +75,7 @@ func (h *Handler) Register(app *fiber.App) {
 	// Dashboard endpoints
 	app.Get("/api/models", h.HandleDashboardModels)
 	app.Get("/api/models/status", h.HandleModelStatus)
+	app.Get("/api/auto/status", h.HandleAutoStatus)
 	app.Get("/api/health", h.HandleProviderHealth)
 	app.Get("/api/providers", h.HandleListProviders)
 	app.Get("/api/usage", h.HandleUsage)
@@ -77,6 +83,15 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/api/logs", h.HandleLogs)
 	app.Get("/api/config", h.HandleConfig)
 	app.Put("/api/config/reload", h.HandleReloadConfig)
+}
+
+// HandleAutoStatus reports the runtime auto model selection status.
+func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{
+		"enabled":  h.router.HasAutoSelector(),
+		"provider": "nvidia_nim",
+		"note":     "auto mode currently selects from NVIDIA NIM catalog using health, cost, and latency",
+	})
 }
 
 // HandleChatCompletion handles POST /v1/chat/completions
@@ -115,8 +130,8 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		})
 	}
 
-	// Resolve route
-	resolved, fallbacks, err := h.router.ResolveWithFallback(req.Model)
+	// Resolve route (context-aware and task-aware for auto mode)
+	resolved, fallbacks, err := h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{
@@ -294,6 +309,12 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 				break
 			}
 
+			// Drop zero-value chunks (upstream data: {}) so clients never see
+			// empty model/id frames that wipe aggregated replies.
+			if chunk.IsEmpty() {
+				continue
+			}
+
 			for _, choice := range chunk.Choices {
 				accumulateMessage(choice.Delta)
 				accumulateMessage(choice.Message)
@@ -349,6 +370,7 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 			Object:  "model",
 			Created: h.startTime.Unix(),
 			OwnedBy: ownedBy,
+			Name:    e.DisplayName(),
 		})
 	}
 
@@ -383,6 +405,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 
 	type modelRow struct {
 		ModelID         string  `json:"model_id"`
+		Name            string  `json:"name,omitempty"`
 		Provider        string  `json:"provider"`
 		ProviderModelID string  `json:"provider_model_id"`
 		OwnedBy         string  `json:"owned_by,omitempty"`
@@ -396,6 +419,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	for _, e := range entries {
 		row := modelRow{
 			ModelID:         e.ModelID,
+			Name:            e.DisplayName(),
 			Provider:        e.Provider,
 			ProviderModelID: e.ProviderModelID,
 			OwnedBy:         e.OwnedBy,

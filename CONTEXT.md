@@ -1,10 +1,10 @@
-# Novexa Gateway — Domain Glossary
+# Conductor — Domain Glossary
 
-This file defines the canonical domain language for Novexa Gateway. It contains no implementation details.
+This file defines the canonical domain language for Conductor. It contains no implementation details.
 
 ## Scope
 
-Novexa Gateway is a single-operator, self-hosted AI API gateway. One operator owns one gateway API key. The gateway is configured with multiple upstream provider API keys/plans. Client tools (VS Code, Claude Code, Continue, Aider, Open WebUI, etc.) talk to the gateway using that one key and see a merged model picker drawn from all configured provider subscriptions.
+Conductor is a single-operator, self-hosted AI API gateway. One operator owns one gateway API key. The gateway is configured with multiple upstream provider API keys/plans. Client tools (VS Code, Claude Code, Continue, Aider, Open WebUI, etc.) talk to the gateway using that one key and see a merged model picker drawn from all configured provider subscriptions.
 
 ## Dashboard Scope (MVP)
 

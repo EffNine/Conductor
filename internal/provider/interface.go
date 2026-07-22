@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
+	"github.com/EffNine/conductor/internal/apitypes"
 )
 
 // ErrNotImplemented is returned by provider methods that are not yet implemented.

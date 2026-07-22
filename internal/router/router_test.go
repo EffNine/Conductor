@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/router"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/router"
 )
 
 func TestResolveStripsProviderPrefix(t *testing.T) {
@@ -73,6 +73,48 @@ func TestResolveBareModelIDUsesRoute(t *testing.T) {
 	if resolved.ProviderModelID != "gpt-4o-2024-08-06" {
 		t.Fatalf("ProviderModelID = %q, want gpt-4o-2024-08-06", resolved.ProviderModelID)
 	}
+}
+
+func TestResolveAutoSelectsWhenWired(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "nvidia_nim"})
+
+	engine := router.NewEngine(&config.Config{}, reg)
+	engine.SetAutoSelector(&fixedAutoSelector{modelID: "meta/llama-3.1-8b-instruct"})
+
+	resolved, err := engine.ResolveWithMessages("auto", []apitypes.Message{{Role: "user", Content: "hello"}})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if resolved.ProviderName != "nvidia_nim" {
+		t.Fatalf("ProviderName = %q, want nvidia_nim", resolved.ProviderName)
+	}
+	if resolved.ProviderModelID != "meta/llama-3.1-8b-instruct" {
+		t.Fatalf("ProviderModelID = %q, want meta/llama-3.1-8b-instruct", resolved.ProviderModelID)
+	}
+	if resolved.ModelID != "auto" {
+		t.Fatalf("ModelID = %q, want auto", resolved.ModelID)
+	}
+}
+
+func TestResolveAutoReturnsErrorWhenNotWired(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "nvidia_nim"})
+
+	engine := router.NewEngine(&config.Config{}, reg)
+
+	_, err := engine.Resolve("auto")
+	if err == nil {
+		t.Fatal("expected error when auto selector is not wired")
+	}
+}
+
+type fixedAutoSelector struct {
+	modelID string
+}
+
+func (f *fixedAutoSelector) Select(_ context.Context, _ string) (string, error) {
+	return f.modelID, nil
 }
 
 type stubProvider struct {

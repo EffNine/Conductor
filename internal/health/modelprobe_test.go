@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/health"
-	"github.com/novexa/gateway/internal/provider"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/provider"
 	"go.uber.org/zap"
 )
 

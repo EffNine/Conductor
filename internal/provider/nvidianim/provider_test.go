@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/provider/nvidianim"
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/provider/nvidianim"
 )
 
 func TestChatCompletionForwardsOpenAIRequest(t *testing.T) {

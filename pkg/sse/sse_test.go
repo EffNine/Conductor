@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/novexa/gateway/pkg/sse"
+	"github.com/EffNine/conductor/pkg/sse"
 )
 
 func TestNewStreamReaderSkipsCommentOnlyKeepalives(t *testing.T) {

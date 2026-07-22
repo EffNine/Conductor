@@ -1,4 +1,4 @@
-# Novexa Gateway — Implementation Plan
+# Conductor — Implementation Plan
 
 Parent goal: one gateway API key that proxies to multiple upstream AI provider keys, exposes a merged model picker, and tracks usage/cost across providers.
 

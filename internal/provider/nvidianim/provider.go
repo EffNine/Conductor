@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/provider/openaibase"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/provider/openaibase"
 )
 
 // Provider implements the provider.Provider interface for NVIDIA NIM.

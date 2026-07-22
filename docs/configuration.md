@@ -1,10 +1,10 @@
 # Configuration Reference
 
-Novexa Gateway uses environment variables first, then YAML, then defaults.
+Conductor uses environment variables first, then YAML, then defaults.
 
 ## Priority
 
-1. Environment variables (`NOVEXA_*` or provider-specific keys)
+1. Environment variables (`CONDUCTOR_*` or provider-specific keys)
 2. YAML config file
 3. Default values
 
@@ -14,12 +14,12 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `NOVEXA_API_KEY` | Gateway API key for client authentication | — | **Yes** |
-| `NOVEXA_SERVER_PORT` | HTTP server port | `8080` | No |
-| `NOVEXA_SERVER_HOST` | HTTP server host | `0.0.0.0` | No |
-| `NOVEXA_SERVER_READ_TIMEOUT` | Request read timeout | `30s` | No |
-| `NOVEXA_SERVER_WRITE_TIMEOUT` | Response write timeout | `120s` | No |
-| `NOVEXA_SERVER_MAX_REQUEST_SIZE` | Maximum request body size | `10MB` | No |
+| `CONDUCTOR_API_KEY` | Gateway API key for client authentication | — | **Yes** |
+| `CONDUCTOR_SERVER_PORT` | HTTP server port | `8080` | No |
+| `CONDUCTOR_SERVER_HOST` | HTTP server host | `0.0.0.0` | No |
+| `CONDUCTOR_SERVER_READ_TIMEOUT` | Request read timeout | `30s` | No |
+| `CONDUCTOR_SERVER_WRITE_TIMEOUT` | Response write timeout | `120s` | No |
+| `CONDUCTOR_SERVER_MAX_REQUEST_SIZE` | Maximum request body size | `10MB` | No |
 
 ### Provider API Keys
 
@@ -41,45 +41,45 @@ Novexa Gateway uses environment variables first, then YAML, then defaults.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_DATABASE_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
-| `NOVEXA_DATABASE_DSN` | Database connection string | `./data/novexa.db` |
+| `CONDUCTOR_DATABASE_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
+| `CONDUCTOR_DATABASE_DSN` | Database connection string | `./data/conductor.db` |
 
 ### Logging Settings
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_LOGGING_LEVEL` | Log level (`debug`, `info`, `warn`, `error`) | `info` |
-| `NOVEXA_LOGGING_FORMAT` | Log format (`json` or `console`) | `json` |
-| `NOVEXA_LOGGING_LOG_PROMPTS` | Log request prompts (security risk) | `false` |
-| `NOVEXA_LOGGING_LOG_RESPONSES` | Log response bodies | `false` |
+| `CONDUCTOR_LOGGING_LEVEL` | Log level (`debug`, `info`, `warn`, `error`) | `info` |
+| `CONDUCTOR_LOGGING_FORMAT` | Log format (`json` or `console`) | `json` |
+| `CONDUCTOR_LOGGING_LOG_PROMPTS` | Log request prompts (security risk) | `false` |
+| `CONDUCTOR_LOGGING_LOG_RESPONSES` | Log response bodies | `false` |
 
 ### Rate Limiting
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE` | Global requests per minute | `1000` |
-| `NOVEXA_RATE_LIMIT_PER_PROVIDER_REQUESTS_PER_MINUTE` | Per-provider requests per minute | `100` |
+| `CONDUCTOR_RATE_LIMIT_GLOBAL_REQUESTS_PER_MINUTE` | Global requests per minute | `1000` |
+| `CONDUCTOR_RATE_LIMIT_PER_PROVIDER_REQUESTS_PER_MINUTE` | Per-provider requests per minute | `100` |
 
 ### Catalog
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_CATALOG_CURATED_ONLY` | Advertise only `providers.*.models` (skip dynamic ListModels) | `false` |
+| `CONDUCTOR_CATALOG_CURATED_ONLY` | Advertise only `providers.*.models` (skip dynamic ListModels) | `false` |
 
 ### Health Monitoring
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NOVEXA_HEALTH_CHECK_INTERVAL` | Provider health check interval | `60s` |
-| `NOVEXA_HEALTH_TIMEOUT` | Provider health check timeout | `10s` |
-| `NOVEXA_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive provider failures before unhealthy | `3` |
-| `NOVEXA_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
-| `NOVEXA_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
-| `NOVEXA_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `12h` |
-| `NOVEXA_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `15s` |
-| `NOVEXA_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
-| `NOVEXA_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
-| `NOVEXA_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible after first pass | `false` |
+| `CONDUCTOR_HEALTH_CHECK_INTERVAL` | Provider health check interval | `60s` |
+| `CONDUCTOR_HEALTH_TIMEOUT` | Provider health check timeout | `10s` |
+| `CONDUCTOR_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive provider failures before unhealthy | `3` |
+| `CONDUCTOR_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
+| `CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
+| `CONDUCTOR_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `12h` |
+| `CONDUCTOR_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `60s` |
+| `CONDUCTOR_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
+| `CONDUCTOR_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
+| `CONDUCTOR_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible after first pass | `false` |
 
 ## YAML Configuration File
 
@@ -98,7 +98,7 @@ server:
     headers: ["Authorization", "Content-Type"]
 
 # Gateway API key
-api_key: "${NOVEXA_API_KEY}"
+api_key: "${CONDUCTOR_API_KEY}"
 
 # Provider configuration
 providers:
@@ -211,7 +211,7 @@ retry:
 # Database configuration
 database:
   driver: "sqlite"
-  dsn: "./data/novexa.db"
+  dsn: "./data/conductor.db"
   max_open_conns: 10
   max_idle_conns: 5
 
@@ -241,7 +241,7 @@ health:
     enabled: true
     hide_unreachable: true
     check_interval: 12h
-    timeout: 15s
+    timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
@@ -283,7 +283,7 @@ Providers with an empty `models` list contribute nothing while curated-only is o
 
 ### Model reachability
 
-NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-callable endpoints. There is no catalog flag for "free and online". Novexa optionally probes each configured provider's models with a minimal `POST /chat/completions` (`max_tokens: 1`) and:
+NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-callable endpoints. There is no catalog flag for "free and online". Conductor optionally probes each configured provider's models with a minimal `POST /chat/completions` (`max_tokens: 1`) and:
 
 - Runs a full probe pass on every startup/redeploy, then again every `check_interval`
 - Caches online/offline status (also updated from live chat failures)
@@ -296,7 +296,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 | `enabled` | Run background per-model probes | `true` |
 | `hide_unreachable` | Omit unreachable / unpassed models from `/v1/models` and default `/api/models` | `true` |
 | `check_interval` | Time between full probe passes (after the startup pass) | `12h` |
-| `timeout` | Timeout per individual model probe | `15s` |
+| `timeout` | Timeout per individual model probe | `60s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
 | `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
 | `providers` | Provider names to probe; empty = all registered | `[]` (all) |
@@ -329,12 +329,63 @@ health:
       - openrouter
 ```
 
+### Auto model selection (NVIDIA NIM)
+
+When `providers.nvidia_nim.auto.enabled: true`, clients can send `"model": "auto"` and the gateway will pick the best available NIM model at runtime. It first classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), then uses a matching `task_profile` to restrict candidates and tune the scoring weights. Within the profile, models are scored by:
+
+- **Reachability** — only models that passed the reachability probe are considered.
+- **Historical cost** — average USD per token from `usage_records` over the configured `lookback`.
+- **Latency** — latest probe latency from the model status cache.
+
+Models with no usage history get a neutral cost score so they are not penalized.
+
+```yaml
+providers:
+  nvidia_nim:
+    enabled: true
+    api_key: "${NVIDIA_NIM_API_KEY}"
+    models:
+      - "deepseek-ai/deepseek-v4-flash"
+      - "meta/llama-3.1-8b-instruct"
+    auto:
+      enabled: true
+      provider: "nvidia_nim"
+      lookback: 24h
+      weights:
+        reachability: 10.0
+        cost: 3.0
+        latency: 2.0
+      task_profiles:
+        elite:
+          models:
+            - "mistralai/mistral-large-3-675b-instruct-2512"
+            - "nvidia/nemotron-3-super-120b-a12b"
+          weights:
+            reachability: 10.0
+            cost: 1.0
+            latency: 2.0
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Enable runtime auto selection for this provider | `false` |
+| `provider` | Provider scope for auto selection | `nvidia_nim` |
+| `lookback` | How far back to read usage history for cost scoring | `24h` |
+| `weights.reachability` | Weight for reachability signal | `10.0` |
+| `weights.cost` | Weight for historical cost signal | `3.0` |
+| `weights.latency` | Weight for probe latency signal | `2.0` |
+| `task_profiles` | Task-type-specific model allowlists and weight overrides | Built-in NIM tiers |
+
+If `task_profiles` is omitted, the gateway uses built-in profiles derived from the NVIDIA NIM model comparison (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`). If a profile restricts candidates to a list, only those models are considered; otherwise the full advertised catalog is used.
+
+Auto mode respects `catalog.curated_only`: only models advertised in `/v1/models` are candidates. Status is exposed on `GET /api/auto/status`. You can also configure an `aliases` entry such as `"nim-auto": "auto"` to expose a friendlier model name.
+
 ## Minimal Configuration
 
 For the simplest setup, only the gateway key and provider keys are required:
 
 ```bash
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 ```
 
@@ -344,7 +395,7 @@ The gateway will start on port 8080, enable OpenAI, and use SQLite with sensible
 
 Startup fails if:
 
-- `NOVEXA_API_KEY` is not set
+- `CONDUCTOR_API_KEY` is not set
 - Server port is invalid
 - Logging level/format is invalid
 - Database driver is unsupported

@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Novexa Gateway can be deployed locally, on free cloud platforms, or on any infrastructure that supports Docker.
+Conductor can be deployed locally, on free cloud platforms, or on any infrastructure that supports Docker.
 
 ## Local Deployment
 
@@ -8,12 +8,12 @@ Novexa Gateway can be deployed locally, on free cloud platforms, or on any infra
 
 ```bash
 docker run -d \
-  --name novexa-gateway \
+  --name conductor \
   -p 8080:8080 \
-  -e NOVEXA_API_KEY=your-secret-key \
+  -e CONDUCTOR_API_KEY=your-secret-key \
   -e OPENAI_API_KEY=sk-your-openai-key \
-  -v novexa-data:/app/data \
-  novexa/gateway:latest
+  -v conductor-data:/app/data \
+  effnine/conductor:latest
 ```
 
 ### Docker Compose
@@ -23,24 +23,24 @@ version: '3.8'
 
 services:
   gateway:
-    image: novexa/gateway:latest
+    image: effnine/conductor:latest
     ports:
       - "8080:8080"
     environment:
-      - NOVEXA_API_KEY=your-secret-key
+      - CONDUCTOR_API_KEY=your-secret-key
       - OPENAI_API_KEY=sk-your-openai-key
     volumes:
-      - novexa-data:/app/data
+      - conductor-data:/app/data
     restart: unless-stopped
 
 volumes:
-  novexa-data:
+  conductor-data:
 ```
 
 ### Build from Source
 
 ```bash
-git clone https://github.com/novexa/gateway.git
+git clone https://github.com/EffNine/conductor.git
 cd gateway
 make build
 ./bin/gateway
@@ -82,7 +82,7 @@ railway login
 railway init
 
 # Set environment variables
-railway variables set NOVEXA_API_KEY=your-secret-key
+railway variables set CONDUCTOR_API_KEY=your-secret-key
 railway variables set OPENAI_API_KEY=sk-your-openai-key
 
 # Deploy
@@ -120,20 +120,20 @@ curl -L https://fly.io/install.sh | sh
 fly auth login
 
 # Deploy (creates app + SQLite volume + secrets + release)
-export NOVEXA_API_KEY=your-secret-gateway-key
+export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
 ./scripts/fly-deploy.sh
 # or: make fly-deploy
 ```
 
-If `novexa-gateway` is taken: `APP_NAME=novexa-gateway-you ./scripts/fly-deploy.sh`
+If `conductor` is taken: `APP_NAME=conductor-you ./scripts/fly-deploy.sh`
 
 #### Manual steps
 
 ```bash
-fly apps create novexa-gateway
-fly volumes create novexa_data --size 1 --region iad
-fly secrets set NOVEXA_API_KEY=your-secret-key OPENAI_API_KEY=sk-your-openai-key
+fly apps create conductor
+fly volumes create conductor_data --size 1 --region iad
+fly secrets set CONDUCTOR_API_KEY=your-secret-key OPENAI_API_KEY=sk-your-openai-key
 fly deploy
 fly status
 ```
@@ -158,18 +158,18 @@ Render offers free web services with automatic deploys.
 ```yaml
 services:
   - type: web
-    name: novexa-gateway
+    name: conductor
     runtime: docker
     dockerfilePath: ./deployments/Dockerfile
     envVars:
-      - key: NOVEXA_API_KEY
+      - key: CONDUCTOR_API_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: DATABASE_DSN
-        value: ./data/novexa.db
+        value: ./data/conductor.db
     disk:
-      name: novexa-data
+      name: conductor-data
       mountPath: /app/data
       sizeGB: 1
 ```
@@ -186,7 +186,7 @@ services:
 
 #### 3. Get URL
 
-Your gateway will be available at `https://novexa-gateway.onrender.com`
+Your gateway will be available at `https://conductor.onrender.com`
 
 #### Notes
 
@@ -243,18 +243,18 @@ services:
       - gateway
 
   gateway:
-    image: novexa/gateway:latest
+    image: effnine/conductor:latest
     environment:
-      - NOVEXA_API_KEY=your-secret-key
+      - CONDUCTOR_API_KEY=your-secret-key
       - OPENAI_API_KEY=sk-your-openai-key
     volumes:
-      - novexa-data:/app/data
+      - conductor-data:/app/data
     restart: unless-stopped
 
 volumes:
   caddy-data:
   caddy-config:
-  novexa-data:
+  conductor-data:
 ```
 
 ### Kubernetes
@@ -267,17 +267,17 @@ For bare metal deployments, create a systemd service:
 
 ```ini
 [Unit]
-Description=Novexa Gateway
+Description=Conductor
 After=network.target
 
 [Service]
 Type=simple
-User=novexa
-WorkingDirectory=/opt/novexa-gateway
-ExecStart=/opt/novexa-gateway/bin/gateway
+User=conductor
+WorkingDirectory=/opt/conductor
+ExecStart=/opt/conductor/bin/gateway
 Restart=always
 RestartSec=10
-Environment=NOVEXA_API_KEY=your-secret-key
+Environment=CONDUCTOR_API_KEY=your-secret-key
 Environment=OPENAI_API_KEY=sk-your-openai-key
 
 [Install]
@@ -291,7 +291,7 @@ WantedBy=multi-user.target
 ### Required
 
 ```bash
-NOVEXA_API_KEY=your-secret-gateway-key
+CONDUCTOR_API_KEY=your-secret-gateway-key
 OPENAI_API_KEY=sk-your-openai-key
 ```
 
@@ -309,7 +309,7 @@ DEEPSEEK_API_KEY=your-deepseek-key
 
 # Database
 DATABASE_DRIVER=sqlite
-DATABASE_DSN=./data/novexa.db
+DATABASE_DSN=./data/conductor.db
 
 # Logging
 LOGGING_LEVEL=info
@@ -322,26 +322,26 @@ LOGGING_FORMAT=json
 
 ### SQLite Data Location
 
-By default, SQLite database is stored at `./data/novexa.db`
+By default, SQLite database is stored at `./data/conductor.db`
 
 ### Docker Volume
 
 ```bash
-docker run -v novexa-data:/app/data novexa/gateway:latest
+docker run -v conductor-data:/app/data effnine/conductor:latest
 ```
 
 ### Cloud Platform Volumes
 
 - **Railway**: Create a volume and mount to `/app/data`
-- **Fly.io**: `fly volumes create novexa_data --size 1`
+- **Fly.io**: `fly volumes create conductor_data --size 1`
 - **Render**: Add a disk in `render.yaml`
 
 ### Backup
 
 ```bash
 # Backup SQLite database
-docker exec novexa-gateway sqlite3 /app/data/novexa.db ".backup '/app/data/backup.db'"
-docker cp novexa-gateway:/app/data/backup.db ./backup.db
+docker exec conductor sqlite3 /app/data/conductor.db ".backup '/app/data/backup.db'"
+docker cp conductor:/app/data/backup.db ./backup.db
 ```
 
 ---
@@ -360,7 +360,7 @@ All cloud platforms support health checks. Configure:
 
 ```bash
 # Docker
-docker logs novexa-gateway
+docker logs conductor
 
 # Railway
 railway logs
@@ -416,7 +416,7 @@ rate_limit:
 Keep the gateway updated:
 
 ```bash
-docker pull novexa/gateway:latest
+docker pull effnine/conductor:latest
 docker-compose up -d
 ```
 
@@ -435,7 +435,7 @@ Render free tier services spin down after inactivity. First request after idle t
 If SQLite can't write to the volume:
 
 ```bash
-docker run -u $(id -u):$(id -g) -v novexa-data:/app/data novexa/gateway:latest
+docker run -u $(id -u):$(id -g) -v conductor-data:/app/data effnine/conductor:latest
 ```
 
 ### Out of Memory

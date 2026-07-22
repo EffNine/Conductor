@@ -1,4 +1,4 @@
-# Novexa Gateway Configuration Example
+# Conductor Configuration Example
 # Copy this file to config.yaml and fill in your API keys.
 # All values can be overridden with environment variables.
 
@@ -15,8 +15,8 @@ server:
     methods: ["GET", "POST", "OPTIONS"]
     headers: ["Authorization", "Content-Type"]
 
-# Gateway API key (required - set via NOVEXA_API_KEY env var)
-api_key: "${NOVEXA_API_KEY}"
+# Gateway API key (required - set via CONDUCTOR_API_KEY env var)
+api_key: "${CONDUCTOR_API_KEY}"
 
 # Provider configuration
 providers:
@@ -105,6 +105,49 @@ providers:
     models:
       - "deepseek-ai/deepseek-v4-flash"
       - "meta/llama-3.1-8b-instruct"
+    # Auto mode: when the client sends model: "auto", pick the best NIM model
+    # at runtime from the advertised catalog using health, cost, and latency.
+    # The gateway classifies each request (coding, reasoning, vision, fast,
+    # elite, default) and uses the matching task profile. If task_profiles is
+    # omitted, built-in defaults based on the NIM model comparison are used.
+    auto:
+      enabled: false
+      provider: "nvidia_nim"
+      lookback: 24h
+      weights:
+        reachability: 10.0
+        cost: 3.0
+        latency: 2.0
+      task_profiles:
+        elite:
+          models:
+            - "mistralai/mistral-large-3-675b-instruct-2512"
+            - "nvidia/nemotron-3-super-120b-a12b"
+            - "openai/gpt-oss-120b"
+            - "qwen/qwen3-next-80b-a3b-instruct"
+            - "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+          weights:
+            reachability: 10.0
+            cost: 1.0
+            latency: 2.0
+        coding:
+          models:
+            - "stepfun-ai/step-3.7-flash"
+            - "meta/llama-3.1-70b-instruct"
+            - "nvidia/llama-3.3-nemotron-super-49b-v1"
+            - "stepfun-ai/step-3.5-flash"
+            - "openai/gpt-oss-20b"
+          weights:
+            reachability: 10.0
+            cost: 2.0
+            latency: 3.0
+        vision:
+          models:
+            - "meta/llama-3.2-11b-vision-instruct"
+          weights:
+            reachability: 10.0
+            cost: 1.0
+            latency: 1.0
 
   # Nous Portal subscription gateway
   nous_portal:
@@ -173,7 +216,7 @@ retry:
 # Database configuration
 database:
   driver: "sqlite"
-  dsn: "./data/novexa.db"
+  dsn: "./data/conductor.db"
   max_open_conns: 10
   max_idle_conns: 5
 
@@ -204,7 +247,7 @@ health:
     enabled: true
     hide_unreachable: true
     check_interval: 12h
-    timeout: 15s
+    timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []   # empty = all providers

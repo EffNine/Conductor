@@ -79,8 +79,11 @@ func (r *ChatCompletionRequest) EnsureStreamUsage() {
 
 // Message represents a chat message
 type Message struct {
-	Role             string     `json:"role"`
-	Content          string     `json:"content"`
+	// Role and Content use omitempty so stream deltas do not emit empty
+	// strings. OpenCode's custom OpenAI client rejects delta.role:"" (Zod) and
+	// trailing {} chunks that re-marshal as empty model/content wipe the reply.
+	Role             string     `json:"role,omitempty"`
+	Content          string     `json:"content,omitempty"`
 	Name             string     `json:"name,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string     `json:"tool_call_id,omitempty"`
@@ -191,14 +194,27 @@ type CompletionTokensDetails struct {
 
 // StreamChunk represents a streaming chunk
 type StreamChunk struct {
-	ID      string   `json:"id"`
-	Object  string   `json:"object"`
-	Created int64    `json:"created"`
-	Model   string   `json:"model"`
+	ID      string   `json:"id,omitempty"`
+	Object  string   `json:"object,omitempty"`
+	Created int64    `json:"created,omitempty"`
+	Model   string   `json:"model,omitempty"`
 	Choices []Choice `json:"choices"`
 	Usage   *Usage   `json:"usage,omitempty"`
 	Done    bool     `json:"-"` // True if this is the [DONE] sentinel
 	Error   error    `json:"-"` // Non-nil if streaming failed
+}
+
+// IsEmpty reports whether the chunk carries no client-visible payload.
+// Upstream proxies sometimes emit data: {} before [DONE]; forwarding those
+// zero-value chunks clears model/id in aggregating clients (e.g. OpenCode).
+func (c StreamChunk) IsEmpty() bool {
+	if c.Done || c.Error != nil || c.Usage != nil {
+		return false
+	}
+	if c.ID != "" || c.Object != "" || c.Model != "" || c.Created != 0 {
+		return false
+	}
+	return len(c.Choices) == 0
 }
 
 // EmbeddingRequest represents an OpenAI-compatible embedding request
@@ -229,6 +245,9 @@ type ModelInfo struct {
 	Object  string `json:"object"`
 	Created int64  `json:"created"`
 	OwnedBy string `json:"owned_by"`
+	// Name is an optional short display label for model pickers. Clients that
+	// only show id are unchanged; chat requests must still use id.
+	Name string `json:"name,omitempty"`
 }
 
 // ModelList represents a list of models

@@ -1,10 +1,10 @@
 services:
   - type: web
-    name: novexa-gateway
+    name: conductor
     runtime: docker
     dockerfilePath: ./deployments/Dockerfile
     envVars:
-      - key: NOVEXA_API_KEY
+      - key: CONDUCTOR_API_KEY
         sync: false
       - key: OPENAI_API_KEY
         sync: false
@@ -23,6 +23,6 @@ services:
       - key: OLLAMA_BASE_URL
         sync: false
     disk:
-      name: novexa-data
+      name: conductor-data
       mountPath: /app/data
       sizeGB: 1

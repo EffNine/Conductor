@@ -6,13 +6,13 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/handler"
+	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/router"
 	"github.com/gofiber/fiber/v2"
-	"github.com/novexa/gateway/internal/apitypes"
-	"github.com/novexa/gateway/internal/catalog"
-	"github.com/novexa/gateway/internal/config"
-	"github.com/novexa/gateway/internal/handler"
-	"github.com/novexa/gateway/internal/provider"
-	"github.com/novexa/gateway/internal/router"
 	"go.uber.org/zap"
 )
 
@@ -58,18 +58,18 @@ func TestListModelsExcludesAliases(t *testing.T) {
 		t.Fatalf("Unmarshal: %v\nbody=%s", err, body)
 	}
 
-	ids := make([]string, len(list.Data))
-	for i, m := range list.Data {
-		ids[i] = m.ID
-	}
-
+	ids := make([]string, 0, len(list.Data))
 	foundGPT := false
-	for _, id := range ids {
-		if id == "fast" {
-			t.Fatalf("alias %q must not appear in /v1/models: %v", id, ids)
+	for _, m := range list.Data {
+		ids = append(ids, m.ID)
+		if m.ID == "fast" {
+			t.Fatalf("alias %q must not appear in /v1/models: %v", m.ID, ids)
 		}
-		if id == "openai/gpt-4o" {
+		if m.ID == "openai/gpt-4o" {
 			foundGPT = true
+			if m.Name != "gpt-4o" {
+				t.Fatalf("name = %q, want gpt-4o (short display without provider prefix)", m.Name)
+			}
 		}
 	}
 	if !foundGPT {

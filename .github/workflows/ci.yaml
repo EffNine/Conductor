@@ -64,13 +64,13 @@ jobs:
         run: go build -v ./...
 
       - name: Build binary
-        run: go build -ldflags="-s -w" -o bin/gateway ./cmd/gateway
+        run: go build -ldflags="-s -w" -o bin/conductor ./cmd/conductor
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: gateway-binary
-          path: bin/gateway
+          name: conductor-binary
+          path: bin/conductor
 
   docker:
     name: Docker Build
@@ -87,4 +87,4 @@ jobs:
           context: .
           file: deployments/Dockerfile
           push: false
-          tags: novexa/gateway:latest
+          tags: effnine/conductor:latest
