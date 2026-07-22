@@ -299,7 +299,7 @@ type stubFilter struct {
 	ready bool
 }
 
-func (s *stubFilter) ShouldAdvertise(modelID string) bool {
+func (s *stubFilter) ShouldAdvertise(modelID, provider string) bool {
 	return !s.hide[modelID]
 }
 

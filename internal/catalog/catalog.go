@@ -35,7 +35,7 @@ func (e Entry) DisplayName() string {
 
 // ReachabilityFilter decides whether a catalog entry should be advertised.
 type ReachabilityFilter interface {
-	ShouldAdvertise(modelID string) bool
+	ShouldAdvertise(modelID, provider string) bool
 }
 
 // FilterReadiness is implemented by ModelStatusStore. After FilterReady() becomes
@@ -117,10 +117,10 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 		return entries, nil
 	}
 	// Always apply ShouldAdvertise: confirmed failures drop out during the pass;
-	// unprobed stay until FilterReady (see ModelStatusStore.ShouldAdvertise).
+	// unprobed stay visible until their provider's first probe pass finishes.
 	filtered := make([]Entry, 0, len(entries))
 	for _, e := range entries {
-		if c.filter.ShouldAdvertise(e.ModelID) {
+		if c.filter.ShouldAdvertise(e.ModelID, e.Provider) {
 			filtered = append(filtered, e)
 		}
 	}
