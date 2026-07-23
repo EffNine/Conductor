@@ -23,6 +23,7 @@ type ModelProber struct {
 	cfg      config.ModelHealthConfig
 
 	providerFilter map[string]struct{}
+	skipProviders  map[string]struct{}
 	stopCh         chan struct{}
 	wg             sync.WaitGroup
 	probing        sync.Mutex
@@ -60,7 +61,23 @@ func NewModelProber(
 		logger:         logger,
 		cfg:            cfg,
 		providerFilter: filter,
+		skipProviders:  make(map[string]struct{}),
 		stopCh:         make(chan struct{}),
+	}
+}
+
+// SkipProviders marks providers that should not be probed (e.g. loopback ollama
+// on Fly). Skipped providers are still marked filter-ready after a pass so their
+// catalog entries follow unknown_as_reachable (available-only hides them when
+// they were never successfully probed).
+func (p *ModelProber) SkipProviders(names ...string) {
+	if p.skipProviders == nil {
+		p.skipProviders = make(map[string]struct{})
+	}
+	for _, name := range names {
+		if name != "" {
+			p.skipProviders[name] = struct{}{}
+		}
 	}
 }
 
@@ -134,9 +151,13 @@ func (p *ModelProber) ProbeAll() {
 	var wg sync.WaitGroup
 	probed := 0
 	probedProviders := make(map[string]struct{})
+	skippedProviders := make(map[string]struct{})
 
 	for _, e := range entries {
 		if !p.shouldProbe(e.Provider) {
+			if _, skip := p.skipProviders[e.Provider]; skip {
+				skippedProviders[e.Provider] = struct{}{}
+			}
 			continue
 		}
 		probedProviders[e.Provider] = struct{}{}
@@ -154,8 +175,14 @@ func (p *ModelProber) ProbeAll() {
 	for name := range probedProviders {
 		p.store.MarkProviderFilterReady(name)
 	}
+	// Loopback-skipped providers never get real probes; mark them ready so
+	// unknown_as_reachable=false hides their unreachable local catalog entries.
+	for name := range skippedProviders {
+		p.store.MarkProviderFilterReady(name)
+	}
 	if len(p.providerFilter) == 0 {
-		// A pass with no provider filter covered every registered provider.
+		// A pass with no provider filter covered every registered provider
+		// (probed or explicitly skipped as unreachable-local).
 		p.store.MarkFilterReady()
 	}
 	p.logger.Info("model probe: pass complete", zap.Int("probed", probed), zap.Int("catalog", len(entries)))
@@ -214,6 +241,9 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 }
 
 func (p *ModelProber) shouldProbe(providerName string) bool {
+	if _, skip := p.skipProviders[providerName]; skip {
+		return false
+	}
 	if len(p.providerFilter) == 0 {
 		return true
 	}
