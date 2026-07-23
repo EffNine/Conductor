@@ -58,7 +58,7 @@ When model reachability probing is enabled, unreachable catalog entries may be o
 When **curated-only** mode is enabled, the gateway ignores dynamic provider catalogs for advertisement and instead exposes only the Curated Model List.
 
 ### Curated Model List
-The operator-chosen allowlist of Model IDs advertised when curated-only mode is on. Configured per provider via the Static Model List (`providers.*.models`). Providers with an empty list contribute nothing to `/v1/models`. Reachability probes, when enabled, also target this allowlist rather than the full upstream catalog.
+The operator-chosen allowlist of Model IDs advertised when curated-only mode is on for a provider. Configured per provider via the Static Model List (`providers.*.models`). Providers with a non-empty list advertise only those IDs; providers with an empty list still use their dynamic catalog. Reachability probes, when enabled, target the advertised catalog (allowlist where set).
 
 ### Model Reachability / Online Status
 Whether a catalog Model ID currently accepts inference (typically a minimal chat completion). Provider-level health only proves the upstream API is up; it does not prove each listed model is callable. Probing is especially relevant for providers like NVIDIA NIM whose catalog mixes free hosted endpoints with unreachable or retired ones.

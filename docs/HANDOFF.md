@@ -82,7 +82,7 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 ### Curated models only — COMPLETE
 - `catalog.curated_only` advertises only the Static Model List under `providers.*.models`.
 - Dynamic `ListModels` catalogs are ignored for `/v1/models` and for reachability probes when curated-only is on.
-- Providers with an empty `models` list contribute nothing in curated-only mode.
+- Providers with an empty `models` list still use dynamic ListModels in curated-only mode.
 - Documented in CONTEXT (Curated Model List), configuration, providers, architecture, API, README, example config.
 
 ### Slice 6: Documentation reconciliation — COMPLETE

@@ -24,8 +24,8 @@ fi
 
 FLY_BIN="$(command -v fly || command -v flyctl)"
 
-APP_NAME="${APP_NAME:-conductor}"
-REGION="${REGION:-iad}"
+APP_NAME="${APP_NAME:-conductor-yknfkg}"
+REGION="${REGION:-sin}"
 VOLUME_NAME="${VOLUME_NAME:-conductor_data}"
 
 if ! "$FLY_BIN" auth whoami >/dev/null 2>&1; then

@@ -150,7 +150,7 @@ func TestCatalogCuratedOnlyUsesStaticAllowlist(t *testing.T) {
 
 	c := catalog.New(reg, catalog.StaticModels{
 		"nvidia_nim": {"deepseek-ai/deepseek-v4-flash", "meta/llama-3.1-8b-instruct"},
-		// openai has no curated list → contributes nothing in curated_only mode
+		// openai has no curated list → still uses dynamic ListModels
 	})
 	c.SetCuratedOnly(true)
 
@@ -161,12 +161,14 @@ func TestCatalogCuratedOnlyUsesStaticAllowlist(t *testing.T) {
 	ids := modelIDs(entries)
 	assertContains(t, ids, "nvidia_nim/deepseek-ai/deepseek-v4-flash")
 	assertContains(t, ids, "nvidia_nim/meta/llama-3.1-8b-instruct")
-	if len(entries) != 2 {
-		t.Fatalf("got %d entries, want 2: %v", len(entries), ids)
+	assertContains(t, ids, "openai/gpt-4o")
+	assertContains(t, ids, "openai/gpt-4o-mini")
+	if len(entries) != 4 {
+		t.Fatalf("got %d entries, want 4: %v", len(entries), ids)
 	}
 	for _, id := range ids {
-		if id == "openai/gpt-4o" || id == "nvidia_nim/noise/a" {
-			t.Fatalf("non-curated model leaked into catalog: %v", ids)
+		if id == "nvidia_nim/noise/a" || id == "nvidia_nim/noise/b" {
+			t.Fatalf("non-curated NIM model leaked into catalog: %v", ids)
 		}
 	}
 
@@ -174,8 +176,8 @@ func TestCatalogCuratedOnlyUsesStaticAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListAll: %v", err)
 	}
-	if len(all) != 2 {
-		t.Fatalf("ListAll should also be curated-only, got %d: %v", len(all), modelIDs(all))
+	if len(all) != 4 {
+		t.Fatalf("ListAll should match curated+dynamic mix, got %d: %v", len(all), modelIDs(all))
 	}
 }
 

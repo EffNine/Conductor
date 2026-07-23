@@ -279,9 +279,9 @@ providers:
 
 | Field | Description | Default |
 |-------|-------------|---------|
-| `curated_only` | Advertise only `providers.*.models`; ignore dynamic ListModels for catalog and probes | `false` |
+| `curated_only` | For providers with a non-empty `models` list, advertise only that allowlist; others still use dynamic ListModels. When on and NIM has no models list, a built-in short NIM allowlist is applied | `false` (Fly `fly.toml` sets `true`) |
 
-Providers with an empty `models` list contribute nothing while curated-only is on. Prefixed IDs in `/v1/models` still work for chat (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`). Curated-only does not block chat for Model IDs outside the list if the client already knows them and routing succeeds.
+Providers with an empty `models` list keep their dynamic catalog while curated-only is on (so enabling curated mode for NIM does not wipe OpenAI/OpenCode/etc.). Override NIM models via `providers.nvidia_nim.models` or `CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS` (comma-separated). Prefixed IDs in `/v1/models` still work for chat (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`). Curated-only does not block chat for Model IDs outside the list if the client already knows them and routing succeeds.
 
 ### Model reachability
 

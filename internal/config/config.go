@@ -15,6 +15,25 @@ const (
 	ollamaCloudBaseURL   = "https://ollama.com/v1"
 )
 
+// DefaultNvidiaNimCuratedModels is applied when catalog.curated_only is on,
+// NVIDIA NIM is enabled, and providers.nvidia_nim.models is empty. Keeps
+// Fly/env-only deploys off the full ~180 NIM catalog without requiring YAML.
+var DefaultNvidiaNimCuratedModels = []string{
+	"deepseek-ai/deepseek-v4-flash",
+	"meta/llama-3.1-8b-instruct",
+	"meta/llama-3.1-70b-instruct",
+	"meta/llama-3.2-11b-vision-instruct",
+	"stepfun-ai/step-3.7-flash",
+	"stepfun-ai/step-3.5-flash",
+	"openai/gpt-oss-20b",
+	"openai/gpt-oss-120b",
+	"nvidia/nemotron-3-super-120b-a12b",
+	"nvidia/llama-3.3-nemotron-super-49b-v1.5",
+	"nvidia/llama-3.3-nemotron-super-49b-v1",
+	"mistralai/mistral-large-3-675b-instruct-2512",
+	"qwen/qwen3-next-80b-a3b-instruct",
+}
+
 // Config holds all configuration for the application
 type Config struct {
 	Server    ServerConfig                `mapstructure:"server"`
@@ -35,9 +54,9 @@ type Config struct {
 
 // CatalogConfig controls how the merged Model Catalog is built for /v1/models.
 type CatalogConfig struct {
-	// CuratedOnly, when true, advertises only Model IDs listed under each
-	// provider's `models` (Static Model List). Dynamic ListModels results are
-	// ignored for catalog advertisement and reachability probing. Default false.
+	// CuratedOnly, when true, uses each provider's Static Model List (`models`)
+	// as an allowlist when non-empty. Providers with an empty list still use
+	// dynamic ListModels. Default false (Fly enables via env).
 	CuratedOnly bool `mapstructure:"curated_only"`
 }
 
@@ -267,6 +286,13 @@ func Load() (*Config, error) {
 	// Auto-enable providers if their API key env vars are set
 	autoEnableProviders(&cfg)
 
+	// Provider model allowlists from CONDUCTOR_PROVIDERS_*_MODELS (comma-separated)
+	hydrateProviderModelsFromEnv(&cfg)
+
+	// When curated-only is on and NIM has no models list, apply a short default
+	// allowlist so Fly deploys without config.yaml do not advertise ~180 models.
+	applyDefaultCuratedModels(&cfg)
+
 	// Validate config
 	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -482,6 +508,61 @@ func autoEnableProviders(cfg *Config) {
 	} else if !wasEnabled && ollama.APIKey != "" && isDefaultLocalOllamaBaseURL(ollama.BaseURL) {
 		ollama.BaseURL = ollamaCloudBaseURL
 	}
+}
+
+// hydrateProviderModelsFromEnv fills providers.*.models from comma-separated
+// CONDUCTOR_PROVIDERS_<NAME>_MODELS when the YAML list is empty.
+func hydrateProviderModelsFromEnv(cfg *Config) {
+	apply := func(p *ProviderConfig, envKey string) {
+		if len(p.Models) > 0 {
+			return
+		}
+		raw := strings.TrimSpace(os.Getenv(envKey))
+		if raw == "" {
+			return
+		}
+		p.Models = splitCSV(raw)
+	}
+
+	apply(&cfg.Providers.OpenAI, "CONDUCTOR_PROVIDERS_OPENAI_MODELS")
+	apply(&cfg.Providers.Anthropic, "CONDUCTOR_PROVIDERS_ANTHROPIC_MODELS")
+	apply(&cfg.Providers.Gemini, "CONDUCTOR_PROVIDERS_GEMINI_MODELS")
+	apply(&cfg.Providers.DeepSeek, "CONDUCTOR_PROVIDERS_DEEPSEEK_MODELS")
+	apply(&cfg.Providers.OpenRouter, "CONDUCTOR_PROVIDERS_OPENROUTER_MODELS")
+	apply(&cfg.Providers.Groq, "CONDUCTOR_PROVIDERS_GROQ_MODELS")
+	apply(&cfg.Providers.Ollama, "CONDUCTOR_PROVIDERS_OLLAMA_MODELS")
+	apply(&cfg.Providers.LMStudio, "CONDUCTOR_PROVIDERS_LMSTUDIO_MODELS")
+	apply(&cfg.Providers.Opencode, "CONDUCTOR_PROVIDERS_OPENCODE_MODELS")
+	apply(&cfg.Providers.NvidiaNim, "CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS")
+	apply(&cfg.Providers.NousPortal, "CONDUCTOR_PROVIDERS_NOUS_PORTAL_MODELS")
+	apply(&cfg.Providers.XAI, "CONDUCTOR_PROVIDERS_XAI_MODELS")
+	apply(&cfg.Providers.AgnesAI, "CONDUCTOR_PROVIDERS_AGNESAI_MODELS")
+}
+
+func splitCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// applyDefaultCuratedModels fills an empty NIM models list when curated_only is on.
+func applyDefaultCuratedModels(cfg *Config) {
+	if !cfg.Catalog.CuratedOnly {
+		return
+	}
+	if !cfg.Providers.NvidiaNim.Enabled {
+		return
+	}
+	if len(cfg.Providers.NvidiaNim.Models) > 0 {
+		return
+	}
+	cfg.Providers.NvidiaNim.Models = append([]string(nil), DefaultNvidiaNimCuratedModels...)
 }
 
 // isDefaultLocalOllamaBaseURL reports whether u is empty or the built-in local Ollama host.

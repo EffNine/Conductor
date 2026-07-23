@@ -211,6 +211,41 @@ func TestBridgeLegacyNovexaEnv(t *testing.T) {
 	}
 }
 
+func TestHydrateProviderModelsFromEnv(t *testing.T) {
+	t.Setenv("CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS", " meta/llama-3.1-8b-instruct , deepseek-ai/deepseek-v4-flash ")
+
+	cfg := &Config{}
+	hydrateProviderModelsFromEnv(cfg)
+
+	want := []string{"meta/llama-3.1-8b-instruct", "deepseek-ai/deepseek-v4-flash"}
+	if len(cfg.Providers.NvidiaNim.Models) != 2 {
+		t.Fatalf("models = %#v, want %#v", cfg.Providers.NvidiaNim.Models, want)
+	}
+	for i, id := range want {
+		if cfg.Providers.NvidiaNim.Models[i] != id {
+			t.Fatalf("models[%d] = %q, want %q", i, cfg.Providers.NvidiaNim.Models[i], id)
+		}
+	}
+}
+
+func TestApplyDefaultCuratedModels(t *testing.T) {
+	cfg := &Config{}
+	cfg.Catalog.CuratedOnly = true
+	cfg.Providers.NvidiaNim.Enabled = true
+
+	applyDefaultCuratedModels(cfg)
+
+	if len(cfg.Providers.NvidiaNim.Models) != len(DefaultNvidiaNimCuratedModels) {
+		t.Fatalf("got %d models, want %d defaults", len(cfg.Providers.NvidiaNim.Models), len(DefaultNvidiaNimCuratedModels))
+	}
+
+	cfg.Providers.NvidiaNim.Models = []string{"custom/only"}
+	applyDefaultCuratedModels(cfg)
+	if len(cfg.Providers.NvidiaNim.Models) != 1 || cfg.Providers.NvidiaNim.Models[0] != "custom/only" {
+		t.Fatalf("should not overwrite explicit models: %#v", cfg.Providers.NvidiaNim.Models)
+	}
+}
+
 func TestIsLoopbackBaseURL(t *testing.T) {
 	cases := []struct {
 		in   string

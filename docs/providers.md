@@ -114,7 +114,9 @@ Static models appear in `/v1/models` when the provider's dynamic listing is unav
 
 ### Curated-only mode
 
-To advertise **only** the static lists (and skip large dynamic catalogs such as NVIDIA NIM), set `catalog.curated_only: true`. See [Configuration — Curated catalog](configuration.md#curated-catalog).
+To shrink large dynamic catalogs such as NVIDIA NIM while keeping other
+providers dynamic, set `catalog.curated_only: true` and list Model IDs under
+that provider's `models` field. See [Configuration — Curated catalog](configuration.md#curated-catalog).
 
 ```yaml
 catalog:

@@ -64,8 +64,9 @@ func New(registry *provider.Registry, static StaticModels) *Catalog {
 	return &Catalog{registry: registry, static: static}
 }
 
-// SetCuratedOnly toggles curated-only mode. When true, List/ListAll advertise
-// only Model IDs from the configured Static Model List (providers.*.models).
+// SetCuratedOnly toggles curated-only mode. When true, providers with a
+// non-empty Static Model List advertise only those IDs; providers with an
+// empty list still use dynamic ListModels.
 func (c *Catalog) SetCuratedOnly(enabled bool) {
 	c.curatedOnly = enabled
 }
@@ -107,7 +108,8 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 // List returns the merged Model Catalog from all providers.
 // Every Model ID is provider-prefixed (e.g. nvidia_nim/deepseek-ai/deepseek-v4-flash)
 // so clients can send the listed ID directly to /v1/chat/completions.
-// When curated_only is enabled, only Static Model List entries are advertised.
+// When curated_only is enabled, providers with a Static Model List use that
+// allowlist; providers without one still use dynamic ListModels.
 // When a reachability filter is configured with hide enabled, unreachable models
 // are omitted.
 func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
@@ -131,13 +133,17 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 
 // ListAll returns the full merged catalog without reachability filtering.
 // Used by the model prober so it can still check models that are currently hidden.
-// When curated_only is enabled, this still returns only the curated Static Model List
-// so probes target the operator's allowlist rather than the full upstream catalog.
+// When curated_only is enabled, providers with a non-empty Static Model List use
+// that allowlist; providers with an empty list still use dynamic ListModels.
+// This shrinks huge catalogs (NVIDIA NIM) without wiping other providers.
 func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
 	if c.curatedOnly {
-		return c.listCurated(), nil
+		return c.listCuratedOrDynamic(ctx)
 	}
+	return c.listDynamic(ctx)
+}
 
+func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {
 	var entries []Entry
 
 	for _, p := range c.registry.All() {
@@ -164,15 +170,33 @@ func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
 	return entries, nil
 }
 
-// listCurated builds the catalog exclusively from providers.*.models.
-// Providers with an empty models list contribute nothing.
-func (c *Catalog) listCurated() []Entry {
+// listCuratedOrDynamic uses providers.*.models when set; otherwise dynamic ListModels.
+func (c *Catalog) listCuratedOrDynamic(ctx context.Context) ([]Entry, error) {
 	var entries []Entry
 	for _, p := range c.registry.All() {
-		entries = append(entries, c.staticEntries(p.Name())...)
+		if len(c.static[p.Name()]) > 0 {
+			entries = append(entries, c.staticEntries(p.Name())...)
+			continue
+		}
+		models, err := p.ListModels(ctx)
+		if err != nil {
+			continue
+		}
+		for _, m := range models {
+			baseID := m.ModelID
+			if baseID == "" {
+				baseID = m.ProviderModelID
+			}
+			entries = append(entries, Entry{
+				ModelID:         p.Name() + "/" + baseID,
+				Provider:        p.Name(),
+				ProviderModelID: m.ProviderModelID,
+				OwnedBy:         m.OwnedBy,
+			})
+		}
 	}
 	sortEntries(entries)
-	return entries
+	return entries, nil
 }
 
 func (c *Catalog) staticEntries(providerName string) []Entry {
