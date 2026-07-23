@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -191,5 +192,39 @@ func TestAutoEnableProviders_AgnesAI(t *testing.T) {
 	}
 	if cfg.Providers.AgnesAI.APIKey != "agnes-test-key" {
 		t.Fatalf("APIKey = %q, want agnes-test-key", cfg.Providers.AgnesAI.APIKey)
+	}
+}
+
+func TestBridgeLegacyNovexaEnv(t *testing.T) {
+	t.Setenv("NOVEXA_CATALOG_CURATED_ONLY", "true")
+	t.Setenv("CONDUCTOR_CATALOG_CURATED_ONLY", "")
+	t.Setenv("NOVEXA_HEALTH_MODELS_HIDE_UNREACHABLE", "true")
+	t.Setenv("CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE", "false") // current wins
+
+	bridgeLegacyNovexaEnv()
+
+	if got := os.Getenv("CONDUCTOR_CATALOG_CURATED_ONLY"); got != "true" {
+		t.Fatalf("CONDUCTOR_CATALOG_CURATED_ONLY = %q, want true (bridged)", got)
+	}
+	if got := os.Getenv("CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE"); got != "false" {
+		t.Fatalf("CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE = %q, want false (current wins)", got)
+	}
+}
+
+func TestIsLoopbackBaseURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"http://localhost:11434/v1", true},
+		{"http://127.0.0.1:1234", true},
+		{"https://ollama.com/v1", false},
+		{"http://host.docker.internal:11434/v1", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := IsLoopbackBaseURL(tc.in); got != tc.want {
+			t.Errorf("IsLoopbackBaseURL(%q) = %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }

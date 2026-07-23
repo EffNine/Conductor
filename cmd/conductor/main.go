@@ -98,8 +98,32 @@ func main() {
 
 	// Per-model reachability (especially NVIDIA NIM free vs unreachable endpoints)
 	modelStatus := health.NewModelStatusStore(cfg.Health.Models.UnhealthyThreshold, cfg.Health.Models.UnknownAsReachable)
+	if persist := health.NewDBStatusPersistence(db); persist != nil {
+		modelStatus.SetPersistence(persist)
+		if n, err := health.RestoreModelStatusStore(modelStatus, db); err != nil {
+			logger.Warn("model status: failed to restore from database", zap.Error(err))
+		} else if n > 0 || modelStatus.FilterReady() {
+			logger.Info("model status: restored from database",
+				zap.Int("models", n),
+				zap.Bool("filter_ready", modelStatus.FilterReady()),
+			)
+		}
+	}
 	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
+	// Skip probes against loopback-only providers so remote deploys (Fly) finish
+	// the available-only pass instead of hanging on localhost ollama/lmstudio.
+	var skipLocal []string
+	if cfg.Providers.Ollama.Enabled && config.IsLoopbackBaseURL(cfg.Providers.Ollama.BaseURL) {
+		skipLocal = append(skipLocal, "ollama")
+	}
+	if cfg.Providers.LMStudio.Enabled && config.IsLoopbackBaseURL(cfg.Providers.LMStudio.BaseURL) {
+		skipLocal = append(skipLocal, "lmstudio")
+	}
+	if len(skipLocal) > 0 {
+		modelProber.SkipProviders(skipLocal...)
+		logger.Info("model probe: skipping loopback providers", zap.Strings("providers", skipLocal))
+	}
 	modelProber.Start()
 	defer modelProber.Stop()
 

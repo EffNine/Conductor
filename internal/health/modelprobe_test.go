@@ -468,3 +468,63 @@ func TestRecordLiveResultIgnoresNeutralAndTransientFailures(t *testing.T) {
 		t.Fatalf("404 live failure should mark model offline: %+v", st)
 	}
 }
+
+func TestModelProberSkipProvidersMarksReadyWithoutProbing(t *testing.T) {
+	var chatHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "remote", Object: "model"}},
+			})
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			chatHits.Add(1)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"1","choices":[{"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	reg.Register(&staticOnlyProvider{name: "ollama"})
+
+	store := health.NewModelStatusStore(1, false)
+	cat := catalog.New(reg, catalog.StaticModels{
+		"ollama": {"llama3"},
+	})
+	cat.SetReachabilityFilter(store, true)
+
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            time.Second,
+		Concurrency:        2,
+		UnhealthyThreshold: 1,
+		UnknownAsReachable: false,
+	})
+	prober.SkipProviders("ollama")
+	prober.ProbeAll()
+
+	if chatHits.Load() < 1 {
+		t.Fatal("expected nvidia_nim to be probed")
+	}
+	if !store.FilterReady() {
+		t.Fatal("expected global filter ready after all-provider pass")
+	}
+	if !store.ProviderFilterReady("ollama") {
+		t.Fatal("skipped ollama should still be marked provider-ready")
+	}
+
+	entries, err := cat.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, e := range entries {
+		if e.ModelID == "ollama/llama3" {
+			t.Fatalf("loopback-skipped ollama model should be hidden after available-only pass: %+v", entries)
+		}
+	}
+}

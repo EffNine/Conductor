@@ -19,6 +19,12 @@ type ModelStatus struct {
 	ConsecutiveFails int       `json:"consecutive_fails"`
 }
 
+// StatusPersistence stores reachability across process restarts.
+type StatusPersistence interface {
+	UpsertStatus(st ModelStatus) error
+	SaveFilterState(allReady bool, readyProviders []string) error
+}
+
 // ModelStatusStore tracks per-model online status from probes and live traffic.
 type ModelStatusStore struct {
 	mu                 sync.RWMutex
@@ -31,6 +37,7 @@ type ModelStatusStore struct {
 	// so scoped probes (e.g. only nvidia_nim) do not hide models from other providers.
 	allProvidersReady bool
 	readyProviders    map[string]struct{}
+	persist           StatusPersistence
 }
 
 // NewModelStatusStore creates an empty store.
@@ -46,22 +53,67 @@ func NewModelStatusStore(unhealthyThreshold int, unknownAsReachable bool) *Model
 	}
 }
 
+// SetPersistence attaches durable storage for status updates.
+func (s *ModelStatusStore) SetPersistence(p StatusPersistence) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.persist = p
+}
+
+// Restore hydrates in-memory status from durable storage. Call once at startup
+// before the first /v1/models request so available-only filtering survives
+// cold starts (Fly auto-stop).
+func (s *ModelStatusStore) Restore(statuses []ModelStatus, allReady bool, readyProviders []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range statuses {
+		st := statuses[i]
+		cp := st
+		s.statuses[st.ModelID] = &cp
+	}
+	s.allProvidersReady = allReady
+	for _, name := range readyProviders {
+		if name != "" {
+			s.readyProviders[name] = struct{}{}
+		}
+	}
+}
+
 // MarkFilterReady enables reachability-based hiding for all providers after a
 // full probe pass.
 func (s *ModelStatusStore) MarkFilterReady() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.allProvidersReady = true
+	ready := s.readyProviderNamesLocked()
+	persist := s.persist
+	s.mu.Unlock()
+	if persist != nil {
+		_ = persist.SaveFilterState(true, ready)
+	}
 }
 
 // MarkProviderFilterReady enables reachability-based hiding for one provider
 // after its first scoped probe pass completes.
 func (s *ModelStatusStore) MarkProviderFilterReady(provider string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if provider != "" {
 		s.readyProviders[provider] = struct{}{}
 	}
+	allReady := s.allProvidersReady
+	ready := s.readyProviderNamesLocked()
+	persist := s.persist
+	s.mu.Unlock()
+	if persist != nil {
+		_ = persist.SaveFilterState(allReady, ready)
+	}
+}
+
+func (s *ModelStatusStore) readyProviderNamesLocked() []string {
+	out := make([]string, 0, len(s.readyProviders))
+	for name := range s.readyProviders {
+		out = append(out, name)
+	}
+	return out
 }
 
 // FilterReady reports whether /v1/models may hide unreachable models globally.
@@ -86,14 +138,18 @@ func (s *ModelStatusStore) ProviderFilterReady(provider string) bool {
 // RecordSuccess marks a model as reachable.
 func (s *ModelStatusStore) RecordSuccess(modelID, provider, providerModelID string, latencyMs int64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	st := s.getOrCreateLocked(modelID, provider, providerModelID)
 	st.Reachable = true
 	st.LatencyMs = latencyMs
 	st.LastError = ""
 	st.CheckedAt = time.Now().UTC()
 	st.ConsecutiveFails = 0
+	cp := *st
+	persist := s.persist
+	s.mu.Unlock()
+	if persist != nil {
+		_ = persist.UpsertStatus(cp)
+	}
 }
 
 // RecordFailure records a failed probe or live request.
@@ -104,8 +160,6 @@ func (s *ModelStatusStore) RecordFailure(modelID, provider, providerModelID, err
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	st := s.getOrCreateLocked(modelID, provider, providerModelID)
 	st.LatencyMs = 0
 	st.LastError = errMsg
@@ -113,6 +167,12 @@ func (s *ModelStatusStore) RecordFailure(modelID, provider, providerModelID, err
 	st.ConsecutiveFails++
 	if st.ConsecutiveFails >= s.unhealthyThreshold {
 		st.Reachable = false
+	}
+	cp := *st
+	persist := s.persist
+	s.mu.Unlock()
+	if persist != nil {
+		_ = persist.UpsertStatus(cp)
 	}
 }
 

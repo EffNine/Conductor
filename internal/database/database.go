@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/EffNine/conductor/internal/config"
@@ -77,6 +78,27 @@ type CostRate struct {
 	EffectiveTo         *time.Time `json:"effective_to,omitempty"`
 }
 
+// ModelStatusRecord persists per-model reachability so /v1/models can stay
+// available-only across process restarts (e.g. Fly.io auto-stop cold starts).
+type ModelStatusRecord struct {
+	ModelID          string    `gorm:"primaryKey;type:text" json:"model_id"`
+	Provider         string    `gorm:"type:text;index" json:"provider"`
+	ProviderModelID  string    `gorm:"type:text" json:"provider_model_id"`
+	Reachable        bool      `json:"reachable"`
+	LatencyMs        int64     `json:"latency_ms"`
+	LastError        string    `gorm:"type:text" json:"last_error"`
+	CheckedAt        time.Time `gorm:"index" json:"checked_at"`
+	ConsecutiveFails int       `json:"consecutive_fails"`
+}
+
+// ModelProbeMeta stores probe-pass readiness flags (single-row table, id="default").
+type ModelProbeMeta struct {
+	ID                string    `gorm:"primaryKey;type:text" json:"id"`
+	AllProvidersReady bool      `json:"all_providers_ready"`
+	ReadyProviders    string    `gorm:"type:text" json:"ready_providers"` // comma-separated
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 // Connect creates a new database connection
 func Connect(cfg *config.DatabaseConfig) (*Database, error) {
 	var dialector gorm.Dialector
@@ -135,7 +157,50 @@ func (d *Database) Migrate() error {
 		&RequestLog{},
 		&ProviderHealthRecord{},
 		&CostRate{},
+		&ModelStatusRecord{},
+		&ModelProbeMeta{},
 	)
+}
+
+// LoadModelStatuses returns all persisted model reachability rows.
+func (d *Database) LoadModelStatuses() ([]ModelStatusRecord, error) {
+	var rows []ModelStatusRecord
+	if err := d.DB.Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// UpsertModelStatus inserts or updates one model reachability row.
+func (d *Database) UpsertModelStatus(row *ModelStatusRecord) error {
+	if row == nil || row.ModelID == "" {
+		return nil
+	}
+	return d.DB.Save(row).Error
+}
+
+// LoadModelProbeMeta returns probe readiness metadata, or nil if none stored.
+func (d *Database) LoadModelProbeMeta() (*ModelProbeMeta, error) {
+	var meta ModelProbeMeta
+	err := d.DB.First(&meta, "id = ?", "default").Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &meta, nil
+}
+
+// SaveModelProbeMeta persists probe readiness flags.
+func (d *Database) SaveModelProbeMeta(allReady bool, readyProviders []string) error {
+	meta := ModelProbeMeta{
+		ID:                "default",
+		AllProvidersReady: allReady,
+		ReadyProviders:    strings.Join(readyProviders, ","),
+		UpdatedAt:         time.Now().UTC(),
+	}
+	return d.DB.Save(&meta).Error
 }
 
 // Close closes the database connection
