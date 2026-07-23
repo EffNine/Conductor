@@ -46,12 +46,12 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   under `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
 - **Curated models only.** Set `catalog.curated_only: true` (or `CONDUCTOR_CATALOG_CURATED_ONLY=true`)
-  and list Model IDs under each provider's `models:` field (or
-  `CONDUCTOR_PROVIDERS_<NAME>_MODELS` CSV). Providers with an allowlist advertise only those
-  IDs; providers without one still use dynamic ListModels. When curated-only is on and NIM has
-  no models list, a built-in short NIM allowlist is applied so Fly does not advertise ~180 models.
-  Root `fly.toml` enables curated-only + NIM-only probes by default. Legacy `NOVEXA_*` env vars
-  are still accepted as aliases for `CONDUCTOR_*` after the rebrand.
+  — this applies to **all** providers. Any provider with a `models:` list (or
+  `CONDUCTOR_PROVIDERS_<NAME>_MODELS` CSV) advertises only that allowlist; providers without one
+  still use dynamic ListModels. When curated-only is on and NIM has no models list, a built-in
+  short NIM allowlist is applied (NIM is uniquely huge/~180 mixed endpoints). Root `fly.toml`
+  enables curated-only and probes **all** providers by default (loopback ollama/lmstudio skipped).
+  Legacy `NOVEXA_*` env vars are still accepted as aliases for `CONDUCTOR_*` after the rebrand.
 
 ### Local end-to-end testing without real provider keys
 
