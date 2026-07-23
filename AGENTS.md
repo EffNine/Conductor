@@ -39,13 +39,16 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   registered providers on startup/redeploy (then every `12h`). Confirmed failures drop out of
   `/v1/models` as soon as they fail (list shrinks, never flashes empty). Unprobed models stay
   visible until the first pass finishes, then only models that **passed** remain
-  (`unknown_as_reachable: false`). Status: `GET /api/models`, `GET /api/models/status`,
-  `GET /api/models?include_unreachable=true`. Config under `health.models`
-  (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
+  (`unknown_as_reachable: false`). Status is **persisted to SQLite** so Fly cold starts keep the
+  available-only list instead of flashing the full catalog again. Loopback providers (local
+  `ollama` / `lmstudio`) are skipped during probes so remote deploys finish the pass. Status:
+  `GET /api/models`, `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config
+  under `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
 - **Curated models only.** Set `catalog.curated_only: true` (or `CONDUCTOR_CATALOG_CURATED_ONLY=true`)
   and list Model IDs under each provider's `models:` field. `/v1/models` and reachability probes
   then use that allowlist instead of the full dynamic provider catalog — useful for NVIDIA NIM.
+  Legacy `NOVEXA_*` env vars are still accepted as aliases for `CONDUCTOR_*` after the rebrand.
 
 ### Local end-to-end testing without real provider keys
 

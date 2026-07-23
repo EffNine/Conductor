@@ -231,6 +231,9 @@ type ManualCostRate struct {
 
 // Load loads configuration from file and environment variables
 func Load() (*Config, error) {
+	// Rebrand: NOVEXA_* secrets/env still work as CONDUCTOR_* aliases.
+	bridgeLegacyNovexaEnv()
+
 	v := viper.New()
 
 	// Set defaults
@@ -405,6 +408,42 @@ func setDefaults(v *viper.Viper) {
 	// Cost defaults
 	v.SetDefault("cost.enabled", true)
 	v.SetDefault("cost.currency", "USD")
+}
+
+// bridgeLegacyNovexaEnv copies NOVEXA_* env vars to CONDUCTOR_* when the
+// Conductor-prefixed key is unset. Preserves Fly secrets set before the rebrand.
+func bridgeLegacyNovexaEnv() {
+	const legacyPrefix = "NOVEXA_"
+	const currentPrefix = "CONDUCTOR_"
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, legacyPrefix) {
+			continue
+		}
+		eq := strings.IndexByte(entry, '=')
+		if eq < 0 {
+			continue
+		}
+		legacyKey := entry[:eq]
+		val := entry[eq+1:]
+		currentKey := currentPrefix + strings.TrimPrefix(legacyKey, legacyPrefix)
+		if os.Getenv(currentKey) == "" {
+			_ = os.Setenv(currentKey, val)
+		}
+	}
+}
+
+// IsLoopbackBaseURL reports whether u points at localhost / 127.0.0.1.
+// Used to skip model probes against local-only providers (ollama, lmstudio) when
+// the gateway runs remotely (e.g. Fly.io), so the probe pass can finish.
+func IsLoopbackBaseURL(u string) bool {
+	u = strings.ToLower(strings.TrimSpace(u))
+	if u == "" {
+		return false
+	}
+	return strings.Contains(u, "://localhost") ||
+		strings.Contains(u, "://127.0.0.1") ||
+		strings.Contains(u, "://[::1]") ||
+		strings.Contains(u, "://0.0.0.0")
 }
 
 // autoEnableProviders enables providers and fills API keys from well-known env vars.
