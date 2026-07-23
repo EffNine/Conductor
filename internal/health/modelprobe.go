@@ -198,18 +198,20 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
 	defer cancel()
 
-	// Lightweight reachability check: enough tokens for a one-word reply,
-	// thinking_budget 0 so reasoning models (Seed-OSS, Nemotron) answer directly
-	// without a long thinking phase or empty content from max_tokens: 1.
+	// Lightweight reachability check: enough tokens for a one-word reply.
+	// Do NOT send thinking_budget: most NIM models reject it with 400/422
+	// ("Unsupported parameter" / "Extra inputs are not permitted"). That is
+	// neither success nor a definitive unreachable signal, so available-only
+	// mode (unknown_as_reachable=false) was falsely hiding working models.
+	// Reasoning models that honor thinking_budget still succeed here with
+	// max_tokens>=16; live traffic can set thinking_budget when needed.
 	maxTokens := 16
-	thinkingBudget := 0
 	req := &apitypes.ChatCompletionRequest{
 		Model: entry.ProviderModelID,
 		Messages: []apitypes.Message{
 			{Role: "user", Content: "ping"},
 		},
-		MaxTokens:      &maxTokens,
-		ThinkingBudget: &thinkingBudget,
+		MaxTokens: &maxTokens,
 	}
 
 	start := time.Now()

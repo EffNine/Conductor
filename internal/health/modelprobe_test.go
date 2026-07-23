@@ -344,18 +344,24 @@ func (p *staticOnlyProvider) HealthCheck(context.Context) (*provider.HealthStatu
 
 func (p *staticOnlyProvider) SupportsModel(string) bool { return true }
 
-func TestModelProberUsesThinkingBudgetZero(t *testing.T) {
+func TestModelProberOmitsThinkingBudget(t *testing.T) {
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
 				Object: "list",
-				Data:   []apitypes.ModelInfo{{ID: "bytedance/seed-oss-36b-instruct", Object: "model"}},
+				Data:   []apitypes.ModelInfo{{ID: "google/gemma-2-2b-it", Object: "model"}},
 			})
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
 			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
 				t.Fatalf("decode: %v", err)
+			}
+			// Many NIM models reject thinking_budget; probes must not send it.
+			if _, ok := gotBody["thinking_budget"]; ok {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"message":"Validation: Unsupported parameter(s): thinking_budget"}}`))
+				return
 			}
 			_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
 				ID:      "chatcmpl-1",
@@ -370,21 +376,85 @@ func TestModelProberUsesThinkingBudgetZero(t *testing.T) {
 
 	reg := provider.NewRegistry()
 	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
-	store := health.NewModelStatusStore(1, true)
+	store := health.NewModelStatusStore(1, false) // available-only
 	cat := catalog.New(reg, nil)
+	cat.SetReachabilityFilter(store, true)
 	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
-		Enabled:     true,
-		Timeout:     2 * time.Second,
-		Concurrency: 1,
-		Providers:   []string{"nvidia_nim"},
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            2 * time.Second,
+		Concurrency:        1,
+		Providers:          []string{"nvidia_nim"},
+		UnknownAsReachable: false,
 	})
 	prober.ProbeAll()
 
-	if gotBody["thinking_budget"] != float64(0) {
-		t.Fatalf("thinking_budget = %v, want 0", gotBody["thinking_budget"])
+	if _, ok := gotBody["thinking_budget"]; ok {
+		t.Fatalf("thinking_budget must be omitted from probe body, got %v", gotBody["thinking_budget"])
 	}
 	if gotBody["max_tokens"] != float64(16) {
 		t.Fatalf("max_tokens = %v, want 16", gotBody["max_tokens"])
+	}
+	st := store.Get("nvidia_nim/google/gemma-2-2b-it")
+	if st == nil || !st.Reachable {
+		t.Fatalf("model should be recorded reachable without thinking_budget: %+v", st)
+	}
+	if !store.ShouldAdvertise("nvidia_nim/google/gemma-2-2b-it", "nvidia_nim") {
+		t.Fatal("available-only catalog must advertise probe-passed model")
+	}
+}
+
+func TestModelProberThinkingBudgetWouldFalseNegative(t *testing.T) {
+	// Regression: sending thinking_budget:0 yields 400 on most NIM models; that
+	// leaves no status row and available-only mode hides a working model.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "nvidia/nemotron-3-super-120b-a12b", Object: "model"}},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if _, ok := body["thinking_budget"]; ok {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":{"message":"Validation: Unsupported parameter(s): thinking_budget"}}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+				ID:      "chatcmpl-1",
+				Object:  "chat.completion",
+				Choices: []apitypes.Choice{{Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "pong"}}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	store := health.NewModelStatusStore(1, false)
+	cat := catalog.New(reg, nil)
+	cat.SetReachabilityFilter(store, true)
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            2 * time.Second,
+		Concurrency:        1,
+		Providers:          []string{"nvidia_nim"},
+		UnknownAsReachable: false,
+	})
+	prober.ProbeAll()
+
+	if store.Get("nvidia_nim/nvidia/nemotron-3-super-120b-a12b") == nil {
+		t.Fatal("expected success status after probe without thinking_budget")
+	}
+	if !store.ShouldAdvertise("nvidia_nim/nvidia/nemotron-3-super-120b-a12b", "nvidia_nim") {
+		t.Fatal("working model must not be hidden by available-only after clean probe")
 	}
 }
 
