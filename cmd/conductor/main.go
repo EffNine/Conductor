@@ -111,18 +111,21 @@ func main() {
 	}
 	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
-	// Skip probes against loopback-only providers so remote deploys (Fly) finish
-	// the available-only pass instead of hanging on localhost ollama/lmstudio.
-	var skipLocal []string
-	if cfg.Providers.Ollama.Enabled && config.IsLoopbackBaseURL(cfg.Providers.Ollama.BaseURL) {
-		skipLocal = append(skipLocal, "ollama")
-	}
-	if cfg.Providers.LMStudio.Enabled && config.IsLoopbackBaseURL(cfg.Providers.LMStudio.BaseURL) {
-		skipLocal = append(skipLocal, "lmstudio")
-	}
-	if len(skipLocal) > 0 {
-		modelProber.SkipProviders(skipLocal...)
-		logger.Info("model probe: skipping loopback providers", zap.Strings("providers", skipLocal))
+	// On Fly (and only there), skip probes against loopback-only providers so the
+	// available-only pass finishes instead of hanging on localhost ollama/lmstudio.
+	// Local gateways still probe those providers so /v1/models lists them.
+	if os.Getenv("FLY_APP_NAME") != "" {
+		var skipLocal []string
+		if cfg.Providers.Ollama.Enabled && config.IsLoopbackBaseURL(cfg.Providers.Ollama.BaseURL) {
+			skipLocal = append(skipLocal, "ollama")
+		}
+		if cfg.Providers.LMStudio.Enabled && config.IsLoopbackBaseURL(cfg.Providers.LMStudio.BaseURL) {
+			skipLocal = append(skipLocal, "lmstudio")
+		}
+		if len(skipLocal) > 0 {
+			modelProber.SkipProviders(skipLocal...)
+			logger.Info("model probe: skipping loopback providers", zap.Strings("providers", skipLocal))
+		}
 	}
 	modelProber.Start()
 	defer modelProber.Stop()

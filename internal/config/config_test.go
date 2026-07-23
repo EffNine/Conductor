@@ -218,8 +218,12 @@ func TestIsLoopbackBaseURL(t *testing.T) {
 	}{
 		{"http://localhost:11434/v1", true},
 		{"http://127.0.0.1:1234", true},
+		{"http://[::1]:11434/v1", true},
+		{"http://0.0.0.0:1234/v1", true},
 		{"https://ollama.com/v1", false},
 		{"http://host.docker.internal:11434/v1", false},
+		{"http://localhost.evil.com/v1", false},
+		{"http://127.0.0.1.example.com/v1", false},
 		{"", false},
 	}
 	for _, tc := range cases {

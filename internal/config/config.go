@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -436,14 +437,21 @@ func bridgeLegacyNovexaEnv() {
 // Used to skip model probes against local-only providers (ollama, lmstudio) when
 // the gateway runs remotely (e.g. Fly.io), so the probe pass can finish.
 func IsLoopbackBaseURL(u string) bool {
-	u = strings.ToLower(strings.TrimSpace(u))
+	u = strings.TrimSpace(u)
 	if u == "" {
 		return false
 	}
-	return strings.Contains(u, "://localhost") ||
-		strings.Contains(u, "://127.0.0.1") ||
-		strings.Contains(u, "://[::1]") ||
-		strings.Contains(u, "://0.0.0.0")
+	parsed, err := url.Parse(u)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	switch host {
+	case "localhost", "127.0.0.1", "::1", "0.0.0.0":
+		return true
+	default:
+		return false
+	}
 }
 
 // autoEnableProviders enables providers and fills API keys from well-known env vars.
