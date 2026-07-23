@@ -39,19 +39,20 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   registered providers on startup/redeploy (then every `12h`). Confirmed failures drop out of
   `/v1/models` as soon as they fail (list shrinks, never flashes empty). Unprobed models stay
   visible until the first pass finishes, then only models that **passed** remain
-  (`unknown_as_reachable: false`). Status is **persisted to SQLite** so Fly cold starts keep the
-  available-only list instead of flashing the full catalog again. Loopback providers (local
-  `ollama` / `lmstudio`) are skipped during probes so remote deploys finish the pass. Status:
-  `GET /api/models`, `GET /api/models/status`, `GET /api/models?include_unreachable=true`. Config
-  under `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
+  (`unknown_as_reachable: false`) until the next probe cycle re-checks them. Status is
+  **persisted to SQLite** so Fly cold starts keep the available-only list instead of flashing
+  the full catalog again. Loopback providers (local `ollama` / `lmstudio`) are skipped during
+  probes so remote deploys finish the pass. Status: `GET /api/models`, `GET /api/models/status`,
+  `GET /api/models?include_unreachable=true`. Config under `health.models`
+  (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
-- **Curated models only.** Set `catalog.curated_only: true` (or `CONDUCTOR_CATALOG_CURATED_ONLY=true`)
-  — this applies to **all** providers. Any provider with a `models:` list (or
-  `CONDUCTOR_PROVIDERS_<NAME>_MODELS` CSV) advertises only that allowlist; providers without one
-  still use dynamic ListModels. When curated-only is on and NIM has no models list, a built-in
-  short NIM allowlist is applied (NIM is uniquely huge/~180 mixed endpoints). Root `fly.toml`
-  enables curated-only and probes **all** providers by default (loopback ollama/lmstudio skipped).
-  Legacy `NOVEXA_*` env vars are still accepted as aliases for `CONDUCTOR_*` after the rebrand.
+- **Curated models only (optional).** Default is **dynamic** catalog + probe hide. Set
+  `catalog.curated_only: true` (or `CONDUCTOR_CATALOG_CURATED_ONLY=true`) to also apply static
+  allowlists: any provider with a `models:` list (or `CONDUCTOR_PROVIDERS_<NAME>_MODELS` CSV)
+  advertises only that allowlist; providers without one still use dynamic ListModels. When
+  curated-only is on and NIM has no models list, a built-in short NIM allowlist is applied.
+  Fly `fly.toml` leaves curated_only off. Legacy `NOVEXA_*` env vars are still accepted as
+  aliases for `CONDUCTOR_*` after the rebrand.
 
 ### Local end-to-end testing without real provider keys
 

@@ -174,10 +174,10 @@ providers:
     max_retries: 3
 
 # Catalog advertisement
-# curated_only: when true, providers with a non-empty `models` list advertise only
-# that allowlist (dynamic ListModels ignored for them). Providers with an empty
-# models list still use dynamic catalogs. Fly defaults curated_only on so NIM
-# does not dump ~180 models into the picker.
+# curated_only: optional static allowlists. Default false = dynamic ListModels
+# from each provider, then health.models probes hide failures (available-only).
+# When true, providers with a non-empty `models` list advertise only that
+# allowlist; providers with an empty list still use dynamic catalogs.
 catalog:
   curated_only: false
 
