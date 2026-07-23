@@ -11,12 +11,12 @@ primary_region = 'sin'
 
 [env]
   CONDUCTOR_SERVER_PORT = '8080'
-  # Advertise a short NIM allowlist instead of the full ~180-model catalog.
-  # Override the list with CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS (comma-separated)
-  # or providers.nvidia_nim.models in config.yaml.
-  CONDUCTOR_CATALOG_CURATED_ONLY = 'true'
-  # Probe only NIM so the available-only pass finishes quickly on small VMs.
-  CONDUCTOR_HEALTH_MODELS_PROVIDERS = 'nvidia_nim'
+  # Dynamic catalog (curated_only left off). /v1/models starts from each
+  # provider's ListModels, then health.models probes hide failures. Models that
+  # pass stay advertised until they fail on a later probe cycle. Results are
+  # persisted to SQLite so Fly cold starts keep the available-only list.
+  # Optional static allowlist: CONDUCTOR_CATALOG_CURATED_ONLY=true plus
+  # CONDUCTOR_PROVIDERS_<NAME>_MODELS=...
 
 [[mounts]]
   source = 'conductor_data'
