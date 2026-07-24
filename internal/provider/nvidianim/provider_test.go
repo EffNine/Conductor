@@ -177,44 +177,176 @@ func TestChatCompletionReturnsProviderError(t *testing.T) {
 	}
 }
 
-func TestChatCompletionInjectsDeepSeekV4ChatTemplateKwargs(t *testing.T) {
-	var gotBody map[string]any
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Fatalf("decode: %v", err)
+func TestIsThinkingModel(t *testing.T) {
+	cases := []struct {
+		model string
+		want  bool
+	}{
+		{"deepseek-ai/deepseek-v4-flash", true},
+		{"deepseek-ai/deepseek-v3.2", true},
+		{"deepseek-ai/deepseek-r1-distill-qwen-32b", true},
+		{"z-ai/glm5", true},
+		{"moonshotai/kimi-k2.6", true},
+		{"qwen/qwen3-235b-a22b", true},
+		{"qwen/qwen3-next-80b-a3b-thinking", true},
+		{"qwen/qwen3-next-80b-a3b-instruct", false},
+		{"nvidia/llama-3.3-nemotron-super-49b-v1.5", true},
+		{"nvidia/nemotron-3-super-120b-a12b", true},
+		{"nvidia/llama-3.1-nemotron-70b-reward", false},
+		{"meta/llama-3.1-8b-instruct", false},
+		{"minimaxai/minimax-m3", true},
+		{"thinkingmachines/inkling", true},
+		{"microsoft/phi-4-mini-flash-reasoning", true},
+		{"mistralai/magistral-small-2506", true},
+	}
+	for _, tc := range cases {
+		if got := nvidianim.IsThinkingModel(tc.model); got != tc.want {
+			t.Errorf("IsThinkingModel(%q) = %v, want %v", tc.model, got, tc.want)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
-			ID: "1", Object: "chat.completion", Model: "deepseek-ai/deepseek-v4-flash",
-			Choices: []apitypes.Choice{{
-				Index:        0,
-				Message:      &apitypes.Message{Role: "assistant", Content: "ok", ReasoningContent: "plan"},
-				FinishReason: str("stop"),
-			}},
-		})
-	}))
-	defer server.Close()
+	}
+}
 
-	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
-	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
-		Model:    "deepseek-ai/deepseek-v4-flash",
-		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatalf("ChatCompletion: %v", err)
+func TestChatCompletionInjectsThinkingKwargsByFamily(t *testing.T) {
+	cases := []struct {
+		name   string
+		model  string
+		effort string
+		check  func(t *testing.T, body map[string]any)
+	}{
+		{
+			name:  "deepseek-v4",
+			model: "deepseek-ai/deepseek-v4-flash",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				if body["reasoning_effort"] != "high" {
+					t.Fatalf("reasoning_effort = %v", body["reasoning_effort"])
+				}
+				kwargs := mustKwargs(t, body)
+				if kwargs["thinking"] != true || kwargs["reasoning_effort"] != "high" {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "deepseek-v3",
+			model: "deepseek-ai/deepseek-v3.2",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["thinking"] != true {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+				if _, ok := kwargs["reasoning_effort"]; ok {
+					t.Fatalf("v3 should not set kwargs.reasoning_effort: %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "glm5",
+			model: "z-ai/glm5",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["enable_thinking"] != true || kwargs["clear_thinking"] != false {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "kimi",
+			model: "moonshotai/kimi-k2.6",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["thinking"] != true {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "qwen3-thinking",
+			model: "qwen/qwen3-next-80b-a3b-thinking",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["enable_thinking"] != true {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "nemotron-super",
+			model: "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["thinking"] != true {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "nemotron-3",
+			model: "nvidia/nemotron-3-super-120b-a12b",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["enable_thinking"] != true {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:   "minimax-disabled",
+			model:  "minimaxai/minimax-m3",
+			effort: "none",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["thinking_mode"] != "disabled" {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
+		{
+			name:  "inkling",
+			model: "thinkingmachines/inkling",
+			check: func(t *testing.T, body map[string]any) {
+				t.Helper()
+				kwargs := mustKwargs(t, body)
+				if kwargs["reasoning_effort"] != "high" {
+					t.Fatalf("kwargs = %v", kwargs)
+				}
+			},
+		},
 	}
-	if gotBody["reasoning_effort"] != "high" {
-		t.Fatalf("reasoning_effort = %v, want high", gotBody["reasoning_effort"])
-	}
-	kwargs, ok := gotBody["chat_template_kwargs"].(map[string]any)
-	if !ok {
-		t.Fatalf("chat_template_kwargs missing: %v", gotBody)
-	}
-	if kwargs["thinking"] != true {
-		t.Fatalf("thinking = %v, want true", kwargs["thinking"])
-	}
-	if kwargs["reasoning_effort"] != "high" {
-		t.Fatalf("kwargs.reasoning_effort = %v", kwargs["reasoning_effort"])
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+					ID: "1", Object: "chat.completion", Model: tc.model,
+					Choices: []apitypes.Choice{{
+						Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}, FinishReason: str("stop"),
+					}},
+				})
+			}))
+			defer server.Close()
+
+			p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+			req := &apitypes.ChatCompletionRequest{
+				Model:           tc.model,
+				Messages:        []apitypes.Message{{Role: "user", Content: "hi"}},
+				ReasoningEffort: tc.effort,
+			}
+			if _, err := p.ChatCompletion(context.Background(), req); err != nil {
+				t.Fatalf("ChatCompletion: %v", err)
+			}
+			tc.check(t, gotBody)
+		})
 	}
 }
 
@@ -316,7 +448,34 @@ func TestChatCompletionRemapsDeveloperRole(t *testing.T) {
 		t.Fatalf("role = %v, want system", first["role"])
 	}
 	if _, ok := gotBody["chat_template_kwargs"]; ok {
-		t.Fatalf("non-deepseek-v4 should not get chat_template_kwargs: %v", gotBody["chat_template_kwargs"])
+		t.Fatalf("non-thinking model should not get chat_template_kwargs: %v", gotBody["chat_template_kwargs"])
+	}
+}
+
+func TestChatCompletionSkipsInstructOnlyQwen3(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID: "1", Object: "chat.completion", Model: "qwen/qwen3-next-80b-a3b-instruct",
+			Choices: []apitypes.Choice{{
+				Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}, FinishReason: str("stop"),
+			}},
+		})
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "qwen/qwen3-next-80b-a3b-instruct",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	if _, ok := gotBody["chat_template_kwargs"]; ok {
+		t.Fatalf("qwen3 instruct-only should not get kwargs: %v", gotBody["chat_template_kwargs"])
 	}
 }
 
@@ -345,6 +504,15 @@ func TestChatCompletionStreamInjectsDeepSeekV4ChatTemplateKwargs(t *testing.T) {
 	if !ok || kwargs["thinking"] != true {
 		t.Fatalf("stream chat_template_kwargs = %v", gotBody["chat_template_kwargs"])
 	}
+}
+
+func mustKwargs(t *testing.T, body map[string]any) map[string]any {
+	t.Helper()
+	kwargs, ok := body["chat_template_kwargs"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing: %v", body)
+	}
+	return kwargs
 }
 
 func str(s string) *string { return &s }

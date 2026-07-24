@@ -195,23 +195,30 @@ Example response:
 }
 ```
 
-## DeepSeek V4 on NVIDIA NIM
+## NIM reasoning models (`chat_template_kwargs`)
 
-DeepSeek V4 (`deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`) expects `chat_template_kwargs` with `thinking` / `reasoning_effort` for reliable streaming. Clients that speak plain OpenAI (notably OpenCode’s `customOpenAI` aggregator) often omit that field, which yields empty assistant `content` with `completion_tokens: 0` or a hung stream.
+Several NVIDIA NIM reasoning families hang or return empty `content` / `completion_tokens: 0` when plain OpenAI clients (notably OpenCode’s `customOpenAI`) omit `chat_template_kwargs`. The `nvidia_nim` adapter injects per-family defaults when those fields are absent:
 
-The `nvidia_nim` adapter injects:
+| Family | Example Model IDs | Injected kwargs (thinking on) |
+| --- | --- | --- |
+| DeepSeek V4 | `deepseek-ai/deepseek-v4-flash`, `…/deepseek-v4-pro` | `{ thinking: true, reasoning_effort: "high" }` (+ top-level `reasoning_effort`) |
+| DeepSeek V3 / R1 | `deepseek-ai/deepseek-v3.2`, `…/deepseek-r1-distill-*` | `{ thinking: true }` |
+| GLM (Z.AI) | `z-ai/glm5`, `z-ai/glm4.7` | `{ enable_thinking: true, clear_thinking: false }` |
+| Kimi | `moonshotai/kimi-k2.6`, `…/kimi-k2-thinking` | `{ thinking: true }` |
+| Qwen3 reasoning | `qwen/qwen3-*-thinking`, `…/qwen3-coder-*`, `…/qwen3-235b-*`, `qwen/qwq-*` | `{ enable_thinking: true }` |
+| Nemotron super/ultra | `nvidia/llama-3.3-nemotron-super-*`, `…/nemotron-ultra-*` | `{ thinking: true }` |
+| Nemotron-3 | `nvidia/nemotron-3-*` | `{ enable_thinking: true }` |
+| MiniMax M3 | `minimaxai/minimax-m3` | `{ thinking_mode: "enabled" }` |
+| Inkling | `thinkingmachines/inkling` | `{ reasoning_effort: "high" }` |
+| Phi / Magistral | `microsoft/phi-*-reasoning`, `mistralai/magistral-*` | `{ enable_thinking: true }` |
 
-```json
-{ "chat_template_kwargs": { "thinking": true, "reasoning_effort": "high" }, "reasoning_effort": "high" }
-```
-
-when those fields are absent. Pass `reasoning_effort: "none"` to force non-thinking mode. `developer` message roles are remapped to `system` (NIM returns 500 when `developer` is combined with template kwargs).
+Pass `reasoning_effort: "none"` (or equivalent disable kwargs) to force non-thinking mode. Instruct-only Qwen3 IDs such as `qwen/qwen3-next-80b-a3b-instruct` are left alone. `developer` message roles are remapped to `system` (NIM returns 500 when `developer` is combined with template kwargs).
 
 ## Model Reachability (NVIDIA NIM)
 
 NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
 
-Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`. DeepSeek V4 probes send `reasoning_effort: "none"` so thinking mode does not consume the tiny token budget.
+Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`. Thinking-model probes send `reasoning_effort: "none"` so thinking mode does not consume the tiny token budget.
 
 ### Defaults
 

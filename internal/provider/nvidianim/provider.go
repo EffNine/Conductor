@@ -34,8 +34,8 @@ func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatC
 
 // prepareChatRequest returns a shallow copy shaped for NVIDIA NIM:
 //   - remaps OpenAI "developer" role to "system" (NIM 500s with chat_template_kwargs)
-//   - injects chat_template_kwargs for DeepSeek V4 so reasoning streams instead of
-//     hanging / returning empty content when clients omit the field (e.g. OpenCode)
+//   - injects per-model chat_template_kwargs for reasoning families so streams do not
+//     hang / return empty content when clients omit the field (e.g. OpenCode)
 func prepareChatRequest(req *apitypes.ChatCompletionRequest) *apitypes.ChatCompletionRequest {
 	if req == nil {
 		return nil
@@ -51,12 +51,8 @@ func prepareChatRequest(req *apitypes.ChatCompletionRequest) *apitypes.ChatCompl
 		}
 		out.Messages = msgs
 	}
-	applyDeepSeekV4ChatTemplate(&out)
+	applyThinkingChatTemplate(&out)
 	return &out
-}
-
-func isDeepSeekV4(model string) bool {
-	return strings.Contains(strings.ToLower(model), "deepseek-v4")
 }
 
 // mapNIMReasoningEffort maps OpenAI-style effort values onto NIM's none|high|max.
@@ -70,53 +66,6 @@ func mapNIMReasoningEffort(effort string) string {
 		return "max"
 	default:
 		return "high"
-	}
-}
-
-func resolveDeepSeekV4Effort(req *apitypes.ChatCompletionRequest) string {
-	if req.ReasoningEffort != "" {
-		return mapNIMReasoningEffort(req.ReasoningEffort)
-	}
-	if req.Reasoning != nil && req.Reasoning.Effort != "" {
-		return mapNIMReasoningEffort(req.Reasoning.Effort)
-	}
-	if req.ChatTemplateKwargs != nil {
-		if v, ok := req.ChatTemplateKwargs["reasoning_effort"].(string); ok && v != "" {
-			return mapNIMReasoningEffort(v)
-		}
-		if thinking, ok := req.ChatTemplateKwargs["thinking"].(bool); ok && !thinking {
-			return "none"
-		}
-	}
-	// NIM DeepSeek V4 defaults to high; clients like OpenCode often omit the field.
-	return "high"
-}
-
-func applyDeepSeekV4ChatTemplate(req *apitypes.ChatCompletionRequest) {
-	if req == nil || !isDeepSeekV4(req.Model) {
-		return
-	}
-
-	effort := resolveDeepSeekV4Effort(req)
-	kwargs := map[string]any{}
-	if req.ChatTemplateKwargs != nil {
-		for k, v := range req.ChatTemplateKwargs {
-			kwargs[k] = v
-		}
-	}
-	// Client-provided keys win; fill only what NIM needs when omitted.
-	if _, ok := kwargs["thinking"]; !ok {
-		kwargs["thinking"] = effort != "none"
-	}
-	if _, ok := kwargs["reasoning_effort"]; !ok && effort != "none" {
-		kwargs["reasoning_effort"] = effort
-	}
-	req.ChatTemplateKwargs = kwargs
-
-	// Top-level reasoning_effort is what NVIDIA's API snippets document; keep it
-	// aligned so either translation path works.
-	if req.ReasoningEffort == "" {
-		req.ReasoningEffort = effort
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/provider/nvidianim"
 	"go.uber.org/zap"
 )
 
@@ -371,9 +372,9 @@ func (p *ModelProber) probeModelResult(entry catalog.Entry) ProbeResult {
 		},
 		MaxTokens: &maxTokens,
 	}
-	// DeepSeek V4 on NIM defaults to thinking mode; keep probes non-thinking so
+	// Reasoning NIM models default to thinking mode; keep probes non-thinking so
 	// max_tokens:16 is enough for a one-word reply instead of a reasoning trace.
-	if strings.Contains(strings.ToLower(entry.ProviderModelID), "deepseek-v4") {
+	if nvidianim.IsThinkingModel(entry.ProviderModelID) {
 		req.ReasoningEffort = "none"
 	}
 
