@@ -29,10 +29,13 @@ func (p *DBStatusPersistence) UpsertStatus(st ModelStatus) error {
 		Provider:         st.Provider,
 		ProviderModelID:  st.ProviderModelID,
 		Reachable:        st.Reachable,
+		State:            string(st.State),
 		LatencyMs:        st.LatencyMs,
 		LastError:        st.LastError,
 		CheckedAt:        st.CheckedAt,
+		NextProbeAt:      st.NextProbeTime,
 		ConsecutiveFails: st.ConsecutiveFails,
+		ErrorRate:        st.ErrorRate,
 	})
 }
 
@@ -61,15 +64,22 @@ func RestoreModelStatusStore(store *ModelStatusStore, db *database.Database) (in
 
 	statuses := make([]ModelStatus, 0, len(rows))
 	for _, row := range rows {
+		state := State(row.State)
+		if state == "" {
+			state = DeriveState(row.Reachable, row.ConsecutiveFails, true)
+		}
 		statuses = append(statuses, ModelStatus{
 			ModelID:          row.ModelID,
 			Provider:         row.Provider,
 			ProviderModelID:  row.ProviderModelID,
 			Reachable:        row.Reachable,
+			State:            NormalizeState(state),
 			LatencyMs:        row.LatencyMs,
 			LastError:        row.LastError,
 			CheckedAt:        row.CheckedAt,
+			NextProbeTime:    row.NextProbeAt,
 			ConsecutiveFails: row.ConsecutiveFails,
+			ErrorRate:        row.ErrorRate,
 		})
 	}
 

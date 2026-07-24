@@ -199,14 +199,15 @@ Example response:
 
 NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
 
-Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 1`) and can auto-hide failures from `/v1/models`.
+Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`.
 
 ### Defaults
 
 - Enabled for **all registered providers** by default (`providers: []`)
 - During the first probe pass, `/v1/models` keeps the full catalog (no flicker)
-- After that pass, only models that **passed** are listed (`unknown_as_reachable: false`)
-- `unhealthy_threshold: 1`, interval `12h`, concurrency `3`
+- After that pass, never-probed models stay visible (`unknown_as_reachable: true`); recovering/unhealthy models are hidden
+- Failed probes retry on exponential backoff (default `30s` → capped at `12h`)
+- `unhealthy_threshold: 1`, full-pass interval `2h`, concurrency `3`
 
 ### Configuration
 
@@ -215,12 +216,23 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 12h
+    check_interval: 2h
     timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
-    unknown_as_reachable: false
+    unknown_as_reachable: true
+    backoff:
+      enabled: true
+      initial_delay: 30s
+      max_delay: 12h
+      multiplier: 3.5
+      jitter_fraction: 0.2
+    error_tracking:
+      enabled: true
+      window: 5m
+      unhealthy_threshold: 0.15
+      recovery_threshold: 0.05
 ```
 
 Disable entirely with `health.models.enabled: false`. To probe only NIM:

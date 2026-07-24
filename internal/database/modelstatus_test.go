@@ -57,6 +57,13 @@ func TestModelStatusPersistenceRoundTrip(t *testing.T) {
 	if st == nil || st.LatencyMs != 15 || st.CheckedAt.IsZero() {
 		t.Fatalf("unexpected restored status: %+v", st)
 	}
+	if st.State != health.StateHealthy {
+		t.Fatalf("expected healthy state after restore, got %s", st.State)
+	}
+	bad := store2.Get("nvidia_nim/bad")
+	if bad == nil || (bad.State != health.StateRecovering && bad.State != health.StateUnhealthy) {
+		t.Fatalf("expected recovering/unhealthy after restore, got %+v", bad)
+	}
 	// Ensure CheckedAt survived as UTC-ish time.
 	if time.Since(st.CheckedAt) > time.Minute {
 		t.Fatalf("CheckedAt too old: %v", st.CheckedAt)

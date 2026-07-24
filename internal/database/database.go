@@ -85,10 +85,13 @@ type ModelStatusRecord struct {
 	Provider         string    `gorm:"type:text;index" json:"provider"`
 	ProviderModelID  string    `gorm:"type:text" json:"provider_model_id"`
 	Reachable        bool      `json:"reachable"`
+	State            string    `gorm:"type:text" json:"state"`
 	LatencyMs        int64     `json:"latency_ms"`
 	LastError        string    `gorm:"type:text" json:"last_error"`
 	CheckedAt        time.Time `gorm:"index" json:"checked_at"`
+	NextProbeAt      time.Time `json:"next_probe_at"`
 	ConsecutiveFails int       `json:"consecutive_fails"`
+	ErrorRate        float64   `json:"error_rate"`
 }
 
 // ModelProbeMeta stores probe-pass readiness flags (single-row table, id="default").

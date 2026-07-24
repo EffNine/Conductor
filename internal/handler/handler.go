@@ -75,6 +75,7 @@ func (h *Handler) Register(app *fiber.App) {
 	// Dashboard endpoints
 	app.Get("/api/models", h.HandleDashboardModels)
 	app.Get("/api/models/status", h.HandleModelStatus)
+	app.Post("/api/models/force-probe", h.HandleForceProbe)
 	app.Get("/api/auto/status", h.HandleAutoStatus)
 	app.Get("/api/health", h.HandleProviderHealth)
 	app.Get("/api/providers", h.HandleListProviders)
@@ -404,15 +405,18 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	}
 
 	type modelRow struct {
-		ModelID         string  `json:"model_id"`
-		Name            string  `json:"name,omitempty"`
-		Provider        string  `json:"provider"`
-		ProviderModelID string  `json:"provider_model_id"`
-		OwnedBy         string  `json:"owned_by,omitempty"`
-		Reachable       *bool   `json:"reachable,omitempty"`
-		LatencyMs       *int64  `json:"latency_ms,omitempty"`
-		LastError       *string `json:"last_error,omitempty"`
-		CheckedAt       *string `json:"checked_at,omitempty"`
+		ModelID         string   `json:"model_id"`
+		Name            string   `json:"name,omitempty"`
+		Provider        string   `json:"provider"`
+		ProviderModelID string   `json:"provider_model_id"`
+		OwnedBy         string   `json:"owned_by,omitempty"`
+		Reachable       *bool    `json:"reachable,omitempty"`
+		State           string   `json:"state,omitempty"`
+		LatencyMs       *int64   `json:"latency_ms,omitempty"`
+		LastError       *string  `json:"last_error,omitempty"`
+		CheckedAt       *string  `json:"checked_at,omitempty"`
+		ErrorRate       *float64 `json:"error_rate,omitempty"`
+		NextProbe       *string  `json:"next_probe,omitempty"`
 	}
 
 	rows := make([]modelRow, 0, len(entries))
@@ -430,6 +434,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 			row.Reachable = &r
 			if known {
 				if st := h.modelStatus.Get(e.ModelID); st != nil {
+					row.State = string(st.State)
 					lat := st.LatencyMs
 					row.LatencyMs = &lat
 					if st.LastError != "" {
@@ -438,7 +443,15 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 					}
 					checked := st.CheckedAt.UTC().Format(time.RFC3339)
 					row.CheckedAt = &checked
+					er := st.ErrorRate
+					row.ErrorRate = &er
+					if !st.NextProbeTime.IsZero() {
+						np := st.NextProbeTime.UTC().Format(time.RFC3339)
+						row.NextProbe = &np
+					}
 				}
+			} else {
+				row.State = string(health.StateUnknown)
 			}
 		}
 		rows = append(rows, row)
@@ -449,9 +462,77 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 // HandleModelStatus handles GET /api/models/status — cached probe results only.
 func (h *Handler) HandleModelStatus(c *fiber.Ctx) error {
 	if h.modelStatus == nil {
-		return c.JSON(fiber.Map{"models": []health.ModelStatus{}})
+		return c.JSON(fiber.Map{
+			"timestamp": time.Now().UTC().Format(time.RFC3339),
+			"models":    []health.StatusDetail{},
+		})
 	}
-	return c.JSON(fiber.Map{"models": h.modelStatus.GetAll()})
+	return c.JSON(fiber.Map{
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"models":    h.modelStatus.GetStatusDetails(),
+	})
+}
+
+// HandleForceProbe handles POST /api/models/force-probe — admin re-probe of one model.
+// Accepts model_id as query (?model_id=...) or JSON body {"model_id":"..."}.
+func (h *Handler) HandleForceProbe(c *fiber.Ctx) error {
+	if h.modelProber == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": "Model prober is not enabled",
+				"type":    "server_error",
+				"code":    "prober_unavailable",
+			},
+		})
+	}
+
+	modelID := c.Query("model_id")
+	if modelID == "" {
+		var body struct {
+			ModelID string `json:"model_id"`
+		}
+		_ = c.BodyParser(&body)
+		modelID = body.ModelID
+	}
+	if modelID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": "model_id is required",
+				"type":    "invalid_request_error",
+				"code":    "invalid_request",
+			},
+		})
+	}
+
+	prev, next, err := h.modelProber.ForceProbe(modelID)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": fiber.Map{
+				"message": err.Error(),
+				"type":    "invalid_request_error",
+				"code":    "force_probe_failed",
+			},
+		})
+	}
+
+	resp := fiber.Map{
+		"model_id": modelID,
+	}
+	if prev != nil {
+		resp["previous_state"] = prev.State
+	} else {
+		resp["previous_state"] = health.StateUnknown
+	}
+	if next != nil {
+		resp["new_state"] = next.State
+		resp["latency_ms"] = next.LatencyMs
+		if next.LastError != "" {
+			resp["error"] = next.LastError
+		} else {
+			resp["error"] = nil
+		}
+	}
+	return c.JSON(resp)
 }
 
 // HandleEmbeddings handles POST /v1/embeddings

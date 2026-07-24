@@ -36,15 +36,17 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   router strips and dispatches without needing a matching route entry.
 - **Model reachability probes (esp. NVIDIA NIM).** `/models` catalogs can list free and
   unreachable endpoints with no availability flag. By default the gateway probes **all**
-  registered providers on startup/redeploy (then every `12h`). Confirmed failures drop out of
-  `/v1/models` as soon as they fail (list shrinks, never flashes empty). Unprobed models stay
-  visible until the first pass finishes, then only models that **passed** remain
-  (`unknown_as_reachable: false`) until the next probe cycle re-checks them. Status is
-  **persisted to SQLite** so Fly cold starts keep the available-only list instead of flashing
-  the full catalog again. Loopback providers (local `ollama` / `lmstudio`) are skipped during
+  registered providers on startup/redeploy (then every `2h`). Confirmed failures drop out of
+  `/v1/models` as soon as they fail (list shrinks, never flashes empty) and enter **exponential
+  backoff** retries (30s → minutes → capped at 12h) instead of waiting for the next full pass.
+  Probe results are **batched** (~100ms) for atomic catalog snapshots. Unprobed models stay
+  visible by default (`unknown_as_reachable: true`) until proven unhealthy. Live request error
+  rates can mark models `degraded` (still advertised; see `/api/models/status`). Status is
+  **persisted to SQLite** so Fly cold starts keep the filtered list instead of flashing the
+  full catalog again. Loopback providers (local `ollama` / `lmstudio`) are skipped during
   probes so remote deploys finish the pass. Status: `GET /api/models`, `GET /api/models/status`,
-  `GET /api/models?include_unreachable=true`. Config under `health.models`
-  (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
+  `GET /api/models?include_unreachable=true`, `POST /api/models/force-probe`. Config under
+  `health.models` (see `docs/configuration.md`). Disable with `health.models.enabled: false`.
   Limit scope with `health.models.providers: [nvidia_nim]`.
 - **Curated models only (optional).** Default is **dynamic** catalog + probe hide. Set
   `catalog.curated_only: true` (or `CONDUCTOR_CATALOG_CURATED_ONLY=true`) to also apply static
