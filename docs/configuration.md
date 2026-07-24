@@ -242,12 +242,25 @@ health:
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 12h
+    check_interval: 2h
     timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
-    unknown_as_reachable: false
+    unknown_as_reachable: true
+    catalog_batch_window: 100ms
+    retry_interval: 30s
+    backoff:
+      enabled: true
+      initial_delay: 30s
+      max_delay: 12h
+      multiplier: 3.5
+      jitter_fraction: 0.2
+    error_tracking:
+      enabled: true
+      window: 5m
+      unhealthy_threshold: 0.15
+      recovery_threshold: 0.05
 
 # Usage tracking
 usage:
@@ -285,15 +298,19 @@ Providers with an empty `models` list keep their dynamic catalog while curated-o
 
 ### Model reachability
 
-NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-callable endpoints. There is no catalog flag for "free and online". Conductor optionally probes each configured provider's models with a minimal `POST /chat/completions` (`max_tokens: 1`) and:
+NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-callable endpoints. There is no catalog flag for "free and online". Conductor optionally probes each configured provider's models with a minimal `POST /chat/completions` (`max_tokens: 16`) and:
 
-- Runs a full probe pass on every startup/redeploy, then again every `check_interval`
-- Caches online/offline status (also updated from live chat failures)
+- Runs a full probe pass on every startup/redeploy, then again every `check_interval` (default `2h`)
+- Retries failed models on an exponential backoff schedule (30s → minutes → capped at `12h`) so transient outages do not wait for the next full pass
+- Batches probe results (`catalog_batch_window`, default `100ms`) and applies them atomically so `/v1/models` never observes a mid-update catalog
+- Tracks live request error rates (`error_tracking`) and marks models `degraded` when the rate exceeds the threshold (still advertised; status APIs show the reason)
+- Caches health state (`healthy` / `unknown` / `degraded` / `recovering` / `unhealthy`), also updated from live chat failures
 - Keeps confirmed failures hidden during the pass (list shrinks; never flashes empty)
-- After the first pass, `/v1/models` lists only models that **passed** (`unknown_as_reachable: false`); those stay advertised until they fail on a later probe cycle
-- Persists probe results to SQLite so Fly.io cold starts keep the available-only list instead of flashing the full catalog
+- After the first pass, never-probed models follow `unknown_as_reachable` (default `true` = err toward availability)
+- Persists probe results to SQLite so Fly.io cold starts keep the filtered list instead of flashing the full catalog
 - Skips loopback `ollama` / `lmstudio` base URLs during probes so remote deploys finish the pass
 - Exposes status on `GET /api/models` and `GET /api/models/status`
+- Supports admin re-probe via `POST /api/models/force-probe`
 - Use `GET /api/models?include_unreachable=true` to list hidden models with their status
 - Legacy `NOVEXA_*` environment variables are accepted as aliases for `CONDUCTOR_*`
 - Default Fly deploy uses this dynamic + probe path (`catalog.curated_only` off)
@@ -301,22 +318,34 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 | Field | Description | Default |
 |-------|-------------|---------|
 | `enabled` | Run background per-model probes | `true` |
-| `hide_unreachable` | Omit unreachable / unpassed models from `/v1/models` and default `/api/models` | `true` |
-| `check_interval` | Time between full probe passes (after the startup pass) | `12h` |
+| `hide_unreachable` | Omit recovering/unhealthy models from `/v1/models` and default `/api/models` | `true` |
+| `check_interval` | Time between full probe passes (after the startup pass) | `2h` |
 | `timeout` | Timeout per individual model probe | `60s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
 | `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
 | `providers` | Provider names to probe; empty = all registered | `[]` (all) |
-| `unknown_as_reachable` | After first pass, only list probe-passed models | `false` |
+| `unknown_as_reachable` | After first pass, keep never-probed models visible | `true` |
+| `catalog_batch_window` | Collect probe results before an atomic catalog apply | `100ms` |
+| `retry_interval` | How often to re-check models whose backoff elapsed | `30s` |
+| `backoff.enabled` | Exponential backoff retries for failed probes | `true` |
+| `backoff.initial_delay` | Delay after the first failure | `30s` |
+| `backoff.max_delay` | Cap for backoff delay | `12h` |
+| `backoff.multiplier` | Exponential growth factor | `3.5` |
+| `backoff.jitter_fraction` | Random ± fraction of delay | `0.2` |
+| `error_tracking.enabled` | Feed live request outcomes into degraded/healthy state | `true` |
+| `error_tracking.window` | Rolling window for error rate | `5m` |
+| `error_tracking.unhealthy_threshold` | Mark degraded when error rate exceeds this | `0.15` |
+| `error_tracking.recovery_threshold` | Restore healthy when error rate falls below this | `0.05` |
 
 **Classification rules:**
 
 | Outcome | Effect |
 |---------|--------|
-| HTTP 200 on probe / live chat | Mark reachable; reset failure count |
-| Definitive probe failure (404/410, model-not-found, other non-transient errors) | Count toward `unhealthy_threshold` (default 1 → hide from `/v1/models`) |
+| HTTP 200 on probe / live chat | Mark `healthy`; reset failure count and backoff |
+| Definitive probe failure (404/410, model-not-found, other non-transient errors) | Count toward `unhealthy_threshold` → `recovering` with backoff retry |
+| Live error rate above `error_tracking.unhealthy_threshold` | Mark `degraded` (still in `/v1/models`) |
 | 429 rate limit, 401/403 auth | Neutral — do not change reachability |
-| Timeout, 502/503/504 | Inconclusive — do not hide (may be transient) |
+| Timeout, 502/503/504 | Inconclusive — do not hide healthy models; still advance backoff if already recovering |
 
 Disable with:
 
@@ -334,6 +363,13 @@ health:
     providers:
       - nvidia_nim
       - openrouter
+```
+
+Force an immediate re-probe (authenticated):
+
+```bash
+curl -X POST "http://127.0.0.1:8080/api/models/force-probe?model_id=openai/gpt-4o" \
+  -H "Authorization: Bearer $CONDUCTOR_API_KEY"
 ```
 
 ### Auto model selection (NVIDIA NIM)

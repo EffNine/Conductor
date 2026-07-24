@@ -175,7 +175,7 @@ providers:
 
 # Catalog advertisement
 # curated_only: optional static allowlists. Default false = dynamic ListModels
-# from each provider, then health.models probes hide failures (available-only).
+# from each provider, then health.models probes hide failures (with backoff recovery).
 # When true, providers with a non-empty `models` list advertise only that
 # allowlist; providers with an empty list still use dynamic catalogs.
 catalog:
@@ -258,16 +258,32 @@ health:
   unhealthy_threshold: 3
   # Probe all providers on startup/redeploy, then every check_interval.
   # Until the first pass finishes, /v1/models shows the full catalog (no flicker).
-  # After that, only models that passed a probe are listed (unknown_as_reachable: false).
+  # After that, never-probed models stay visible when unknown_as_reachable: true
+  # (default). Failed probes enter exponential backoff and retry before the next
+  # full pass. Catalog updates are batched (~100ms) for atomic snapshots.
   models:
     enabled: true
     hide_unreachable: true
-    check_interval: 12h
+    check_interval: 2h
     timeout: 60s
     concurrency: 3
     unhealthy_threshold: 1
     providers: []   # empty = all providers
-    unknown_as_reachable: false
+    unknown_as_reachable: true
+    startup_probe_in_parallel: true
+    catalog_batch_window: 100ms
+    retry_interval: 30s
+    backoff:
+      enabled: true
+      initial_delay: 30s
+      max_delay: 12h
+      multiplier: 3.5
+      jitter_fraction: 0.2
+    error_tracking:
+      enabled: true
+      window: 5m
+      unhealthy_threshold: 0.15
+      recovery_threshold: 0.05
 
 # Usage tracking
 usage:

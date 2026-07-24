@@ -234,7 +234,7 @@ Returns the merged model catalog from all configured providers, including reacha
 }
 ```
 
-Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe. Full catalog stays visible until the first probe pass finishes; then only probe-passed models are listed.
+Reachability fields (`reachable`, `state`, `latency_ms`, `last_error`, `checked_at`, `error_rate`, `next_probe`) are present when the model status store is active. Unprobed models report `reachable` according to `health.models.unknown_as_reachable` (default `true`) and omit latency/error until the first probe. Full catalog stays visible until the first probe pass finishes; then recovering/unhealthy models are omitted while healthy, degraded, and (when configured) unknown models remain.
 
 ---
 
@@ -242,33 +242,68 @@ Reachability fields (`reachable`, `latency_ms`, `last_error`, `checked_at`) are 
 
 **Endpoint**: `GET /api/models/status`
 
-Returns the cached per-model reachability probe results only (models that have been probed or updated from live traffic).
+Returns detailed per-model health state from probes and live traffic (including recovering/unhealthy models hidden from `/v1/models`).
 
 #### Response
 
 ```json
 {
+  "timestamp": "2026-07-24T12:00:00Z",
   "models": [
     {
-      "model_id": "nvidia_nim/good/model",
-      "provider": "nvidia_nim",
-      "provider_model_id": "good/model",
+      "id": "openai/gpt-4o",
+      "provider": "openai",
+      "provider_model_id": "gpt-4o",
+      "state": "healthy",
       "reachable": true,
-      "latency_ms": 420,
-      "checked_at": "2026-07-20T10:30:00Z",
-      "consecutive_fails": 0
+      "last_probe": "2026-07-24T11:55:00Z",
+      "probe_error": null,
+      "error_rate": 0.02,
+      "error_rate_window": "5m0s",
+      "latency_ms": 245,
+      "consecutive_failures": 0
     },
     {
-      "model_id": "nvidia_nim/bad/model",
-      "provider": "nvidia_nim",
-      "provider_model_id": "bad/model",
+      "id": "anthropic/claude-sonnet",
+      "provider": "anthropic",
+      "provider_model_id": "claude-sonnet",
+      "state": "recovering",
       "reachable": false,
+      "last_probe": "2026-07-24T11:58:00Z",
+      "next_probe": "2026-07-24T12:03:30Z",
+      "probe_error": "connection timeout",
+      "error_rate": 0,
       "latency_ms": 0,
-      "last_error": "model not found",
-      "checked_at": "2026-07-20T10:30:01Z",
-      "consecutive_fails": 2
+      "consecutive_failures": 2,
+      "backoff_multiplier": 3.5,
+      "retry_countdown_ms": 210000
     }
   ]
+}
+```
+
+---
+
+### Force Model Probe
+
+**Endpoint**: `POST /api/models/force-probe`
+
+Immediately re-probes one model, resetting its backoff schedule. Requires the gateway API key.
+
+#### Request
+
+Query: `?model_id=openai/gpt-4o`  
+or JSON body: `{"model_id":"openai/gpt-4o"}`
+
+#### Response
+
+```json
+{
+  "model_id": "openai/gpt-4o",
+  "previous_state": "recovering",
+  "new_state": "healthy",
+  "latency_ms": 156,
+  "error": null
 }
 ```
 
@@ -300,10 +335,12 @@ NVIDIA NIM (and similar catalogs) often list models that are not currently calla
 
 Conductor optionally probes registered providers with a minimal chat completion and:
 
-1. Runs a full pass on every startup/redeploy, then again every `check_interval`
-2. Caches online/offline status (also updated from live chat successes/failures)
-3. Hides unreachable models from `GET /v1/models` when `health.models.hide_unreachable` is true
-4. Exposes status on `GET /api/models` and `GET /api/models/status`
+1. Runs a full pass on every startup/redeploy, then again every `check_interval` (default `2h`)
+2. Retries failures on exponential backoff so recovery does not wait for the next full pass
+3. Batches probe results for atomic catalog snapshots
+4. Caches health state (also updated from live chat successes/failures and error-rate tracking)
+5. Hides recovering/unhealthy models from `GET /v1/models` when `health.models.hide_unreachable` is true
+6. Exposes status on `GET /api/models`, `GET /api/models/status`, and `POST /api/models/force-probe`
 
 **Defaults** (see [Configuration](configuration.md#model-reachability)):
 
@@ -312,9 +349,11 @@ Conductor optionally probes registered providers with a minimal chat completion 
 | Enabled | `true` |
 | Providers probed | all registered (`providers: []`) |
 | Hide unreachable from `/v1/models` | `true` |
-| Check interval | `12h` (plus startup/redeploy pass) |
+| Check interval | `2h` (plus startup/redeploy pass) |
 | Unhealthy threshold | `1` consecutive failure |
-| Unprobed models visible after first pass | `false` (available-only) |
+| Unprobed models visible after first pass | `true` (err toward availability) |
+| Backoff | enabled (`30s` initial, `12h` cap, `3.5×`) |
+| Live error tracking | enabled (`5m` window, `15%` degraded) |
 
 Rate limits (`429`) and auth errors (`401`/`403`) do **not** mark a model offline.
 

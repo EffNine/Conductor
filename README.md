@@ -123,10 +123,14 @@ health:
   models:
     enabled: true
     providers: []
-    check_interval: 12h
+    check_interval: 2h
     hide_unreachable: true
-    unknown_as_reachable: false
+    unknown_as_reachable: true
     unhealthy_threshold: 1
+    backoff:
+      enabled: true
+    error_tracking:
+      enabled: true
 
 cost:
   rates:

@@ -206,7 +206,7 @@ type ModelHealthConfig struct {
 	// HideUnreachable removes models that fail the unhealthy threshold from
 	// /v1/models and /api/models. Default true.
 	HideUnreachable bool `mapstructure:"hide_unreachable"`
-	// CheckInterval between full probe passes. Default 12h.
+	// CheckInterval between full probe passes. Default 2h.
 	CheckInterval time.Duration `mapstructure:"check_interval"`
 	// Timeout per individual model probe. Default 60s.
 	Timeout time.Duration `mapstructure:"timeout"`
@@ -220,10 +220,40 @@ type ModelHealthConfig struct {
 	// Empty list (default) means all registered providers.
 	Providers []string `mapstructure:"providers"`
 	// UnknownAsReachable keeps never-probed models visible after the first
-	// probe pass. Default false: /v1/models lists only models that passed a
-	// probe. During the first pass (FilterReady=false) the full catalog is
-	// still shown to avoid an empty flicker on cold start.
+	// probe pass. Default true: err toward availability so a missed probe does
+	// not empty the catalog. During the first pass (FilterReady=false) the full
+	// catalog is still shown to avoid an empty flicker on cold start.
 	UnknownAsReachable bool `mapstructure:"unknown_as_reachable"`
+	// StartupProbeInParallel runs the startup pass with configured concurrency
+	// (always true historically; kept for config compatibility).
+	StartupProbeInParallel bool `mapstructure:"startup_probe_in_parallel"`
+	// CatalogBatchWindow collects probe results before an atomic catalog apply.
+	// Default 100ms.
+	CatalogBatchWindow time.Duration `mapstructure:"catalog_batch_window"`
+	// RetryInterval is how often the prober checks for models whose backoff
+	// NextProbeTime has elapsed. Default 30s.
+	RetryInterval time.Duration `mapstructure:"retry_interval"`
+	// Backoff controls exponential retry after probe failures.
+	Backoff ProbeBackoffConfig `mapstructure:"backoff"`
+	// ErrorTracking feeds live request outcomes into degraded/healthy state.
+	ErrorTracking ErrorTrackingConfig `mapstructure:"error_tracking"`
+}
+
+// ProbeBackoffConfig schedules retries after consecutive probe failures.
+type ProbeBackoffConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	InitialDelay   time.Duration `mapstructure:"initial_delay"`
+	MaxDelay       time.Duration `mapstructure:"max_delay"`
+	Multiplier     float64       `mapstructure:"multiplier"`
+	JitterFraction float64       `mapstructure:"jitter_fraction"`
+}
+
+// ErrorTrackingConfig tracks live request error rates per model.
+type ErrorTrackingConfig struct {
+	Enabled            bool          `mapstructure:"enabled"`
+	Window             time.Duration `mapstructure:"window"`
+	UnhealthyThreshold float64       `mapstructure:"unhealthy_threshold"`
+	RecoveryThreshold  float64       `mapstructure:"recovery_threshold"`
 }
 
 // UsageConfig holds usage tracking configuration
@@ -419,14 +449,26 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.unhealthy_threshold", 3)
 	v.SetDefault("health.models.enabled", true)
 	v.SetDefault("health.models.hide_unreachable", true)
-	v.SetDefault("health.models.check_interval", 12*time.Hour)
+	v.SetDefault("health.models.check_interval", 2*time.Hour)
 	v.SetDefault("health.models.timeout", 60*time.Second)
 	v.SetDefault("health.models.concurrency", 3)
 	v.SetDefault("health.models.unhealthy_threshold", 1)
 	// Empty = probe all registered providers.
 	v.SetDefault("health.models.providers", []string{})
-	// After the first pass, only advertise models that passed a probe.
-	v.SetDefault("health.models.unknown_as_reachable", false)
+	// After the first pass, keep never-probed models visible (err toward availability).
+	v.SetDefault("health.models.unknown_as_reachable", true)
+	v.SetDefault("health.models.startup_probe_in_parallel", true)
+	v.SetDefault("health.models.catalog_batch_window", 100*time.Millisecond)
+	v.SetDefault("health.models.retry_interval", 30*time.Second)
+	v.SetDefault("health.models.backoff.enabled", true)
+	v.SetDefault("health.models.backoff.initial_delay", 30*time.Second)
+	v.SetDefault("health.models.backoff.max_delay", 12*time.Hour)
+	v.SetDefault("health.models.backoff.multiplier", 3.5)
+	v.SetDefault("health.models.backoff.jitter_fraction", 0.2)
+	v.SetDefault("health.models.error_tracking.enabled", true)
+	v.SetDefault("health.models.error_tracking.window", 5*time.Minute)
+	v.SetDefault("health.models.error_tracking.unhealthy_threshold", 0.15)
+	v.SetDefault("health.models.error_tracking.recovery_threshold", 0.05)
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)

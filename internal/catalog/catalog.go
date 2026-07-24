@@ -39,7 +39,7 @@ type ReachabilityFilter interface {
 }
 
 // FilterReadiness is implemented by ModelStatusStore. After FilterReady() becomes
-// true, unprobed models follow unknown_as_reachable (default false = available-only).
+// true, unprobed models follow unknown_as_reachable (default true = err toward availability).
 type FilterReadiness interface {
 	FilterReady() bool
 }

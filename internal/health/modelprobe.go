@@ -27,6 +27,8 @@ type ModelProber struct {
 	stopCh         chan struct{}
 	wg             sync.WaitGroup
 	probing        sync.Mutex
+	batcher        *CatalogBatcher
+	errorTracker   *ErrorTracker
 }
 
 // NewModelProber creates a background model reachability prober.
@@ -38,13 +40,31 @@ func NewModelProber(
 	cfg config.ModelHealthConfig,
 ) *ModelProber {
 	if cfg.CheckInterval <= 0 {
-		cfg.CheckInterval = 12 * time.Hour
+		cfg.CheckInterval = 2 * time.Hour
 	}
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 60 * time.Second
 	}
 	if cfg.Concurrency <= 0 {
 		cfg.Concurrency = 3
+	}
+	if cfg.RetryInterval <= 0 {
+		cfg.RetryInterval = 30 * time.Second
+	}
+	if cfg.CatalogBatchWindow <= 0 {
+		cfg.CatalogBatchWindow = 100 * time.Millisecond
+	}
+	// Zero-value backoff (common in unit tests) → designed defaults with retries on.
+	if cfg.Backoff == (config.ProbeBackoffConfig{}) {
+		cfg.Backoff = BackoffDefaults
+	} else {
+		cfg.Backoff = NormalizeBackoff(cfg.Backoff)
+	}
+	if cfg.ErrorTracking == (config.ErrorTrackingConfig{}) {
+		// Leave disabled unless explicitly configured; Load() sets defaults via viper.
+		cfg.ErrorTracking.Enabled = false
+	} else {
+		cfg.ErrorTracking = NormalizeErrorTracking(cfg.ErrorTracking)
 	}
 
 	filter := make(map[string]struct{}, len(cfg.Providers))
@@ -54,7 +74,7 @@ func NewModelProber(
 		}
 	}
 
-	return &ModelProber{
+	p := &ModelProber{
 		catalog:        cat,
 		registry:       registry,
 		store:          store,
@@ -64,6 +84,24 @@ func NewModelProber(
 		skipProviders:  make(map[string]struct{}),
 		stopCh:         make(chan struct{}),
 	}
+	if store != nil {
+		store.Configure(cfg)
+	}
+	p.batcher = NewCatalogBatcher(cfg.CatalogBatchWindow, func(results []ProbeResult) {
+		if store != nil {
+			store.ApplyBatch(results)
+		}
+	})
+	p.errorTracker = NewErrorTracker(cfg.ErrorTracking, store)
+	return p
+}
+
+// ErrorTracker returns the live request error tracker (may be nil-disabled).
+func (p *ModelProber) ErrorTracker() *ErrorTracker {
+	if p == nil {
+		return nil
+	}
+	return p.errorTracker
 }
 
 // SkipProviders marks providers that should not be probed (e.g. loopback ollama
@@ -83,9 +121,13 @@ func (p *ModelProber) SkipProviders(names ...string) {
 
 // Start begins periodic probing. Safe to call once.
 // Runs an immediate full pass on startup (covers redeploys), then every CheckInterval.
+// Also runs a short retry ticker for models in exponential backoff.
 func (p *ModelProber) Start() {
 	if !p.cfg.Enabled {
 		return
+	}
+	if p.batcher != nil {
+		p.batcher.Start()
 	}
 	p.wg.Add(1)
 	go func() {
@@ -102,18 +144,24 @@ func (p *ModelProber) Start() {
 		p.logger.Info("model probe: starting",
 			zap.String("scope", scope),
 			zap.Duration("interval", p.cfg.CheckInterval),
+			zap.Bool("backoff", p.cfg.Backoff.Enabled),
+			zap.Duration("batch_window", p.cfg.CatalogBatchWindow),
 		)
 
 		// Initial pass on startup/redeploy so /v1/models reflects reachability quickly.
 		p.ProbeAll()
 
-		ticker := time.NewTicker(p.cfg.CheckInterval)
-		defer ticker.Stop()
+		fullTicker := time.NewTicker(p.cfg.CheckInterval)
+		defer fullTicker.Stop()
+		retryTicker := time.NewTicker(p.cfg.RetryInterval)
+		defer retryTicker.Stop()
 
 		for {
 			select {
-			case <-ticker.C:
+			case <-fullTicker.C:
 				p.ProbeAll()
+			case <-retryTicker.C:
+				p.ProbeModelsNeedingRetry()
 			case <-p.stopCh:
 				return
 			}
@@ -130,6 +178,9 @@ func (p *ModelProber) Stop() {
 		close(p.stopCh)
 	}
 	p.wg.Wait()
+	if p.batcher != nil {
+		p.batcher.Stop()
+	}
 }
 
 // ProbeAll lists the catalog and probes each matching model.
@@ -188,11 +239,118 @@ func (p *ModelProber) ProbeAll() {
 	p.logger.Info("model probe: pass complete", zap.Int("probed", probed), zap.Int("catalog", len(entries)))
 }
 
+// ProbeModelsNeedingRetry re-probes models whose backoff NextProbeTime has elapsed.
+func (p *ModelProber) ProbeModelsNeedingRetry() {
+	if p.store == nil || !p.cfg.Backoff.Enabled {
+		return
+	}
+	if !p.probing.TryLock() {
+		return
+	}
+	defer p.probing.Unlock()
+
+	due := p.store.ModelsNeedingRetry(time.Now().UTC())
+	if len(due) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, p.cfg.Concurrency)
+	var wg sync.WaitGroup
+	for _, st := range due {
+		if !p.shouldProbe(st.Provider) {
+			continue
+		}
+		entry := catalog.Entry{
+			ModelID:         st.ModelID,
+			Provider:        st.Provider,
+			ProviderModelID: st.ProviderModelID,
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			p.ProbeModel(entry)
+		}()
+	}
+	wg.Wait()
+	p.logger.Debug("model probe: backoff retry pass complete", zap.Int("retried", len(due)))
+}
+
 // ProbeModel sends a minimal chat completion to test reachability.
 func (p *ModelProber) ProbeModel(entry catalog.Entry) {
+	_ = p.probeModel(entry, false)
+}
+
+// ForceProbe immediately probes one model, bypassing backoff schedule.
+// Returns previous and new status snapshots.
+func (p *ModelProber) ForceProbe(modelID string) (prev, next *ModelStatus, err error) {
+	if p == nil || p.store == nil {
+		return nil, nil, errors.New("model prober unavailable")
+	}
+	prev = p.store.Get(modelID)
+	providerName := ""
+	providerModelID := ""
+	if prev != nil {
+		providerName = prev.Provider
+		providerModelID = prev.ProviderModelID
+	}
+	if providerName == "" || providerModelID == "" {
+		// Best-effort parse provider-prefixed catalog ID.
+		if i := strings.Index(modelID, "/"); i > 0 {
+			providerName = modelID[:i]
+			providerModelID = modelID[i+1:]
+		}
+	}
+	if providerName == "" || providerModelID == "" {
+		return prev, nil, errors.New("unknown model; cannot resolve provider")
+	}
+	if !p.shouldProbe(providerName) {
+		return prev, nil, errors.New("provider is not in probe scope")
+	}
+
+	entry := catalog.Entry{
+		ModelID:         modelID,
+		Provider:        providerName,
+		ProviderModelID: providerModelID,
+	}
+	// Apply synchronously so the HTTP response reflects the new state.
+	result := p.probeModelResult(entry)
+	if p.store != nil {
+		p.store.ApplyBatch([]ProbeResult{result})
+	}
+	next = p.store.Get(modelID)
+	return prev, next, nil
+}
+
+func (p *ModelProber) probeModel(entry catalog.Entry, syncApply bool) ProbeResult {
+	result := p.probeModelResult(entry)
+	if syncApply {
+		if p.store != nil {
+			p.store.ApplyBatch([]ProbeResult{result})
+		}
+		return result
+	}
+	if p.batcher != nil {
+		p.batcher.Submit(result)
+	} else if p.store != nil {
+		p.store.ApplyBatch([]ProbeResult{result})
+	}
+	return result
+}
+
+func (p *ModelProber) probeModelResult(entry catalog.Entry) ProbeResult {
+	result := ProbeResult{
+		ModelID:         entry.ModelID,
+		Provider:        entry.Provider,
+		ProviderModelID: entry.ProviderModelID,
+	}
+
 	prov, ok := p.registry.Get(entry.Provider)
 	if !ok {
-		return
+		result.Skip = true
+		result.ErrMsg = "provider not registered"
+		return result
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.Timeout)
@@ -219,15 +377,18 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 	latency := time.Since(start).Milliseconds()
 
 	if err == nil {
-		p.store.RecordSuccess(entry.ModelID, entry.Provider, entry.ProviderModelID, latency)
+		result.Success = true
+		result.LatencyMs = latency
 		p.logger.Debug("model reachable",
 			zap.String("model", entry.ModelID),
 			zap.Int64("latency_ms", latency),
 		)
-		return
+		return result
 	}
 
 	statusCode, msg := classifyProbeError(err)
+	result.StatusCode = statusCode
+	result.ErrMsg = msg
 	p.logger.Debug("model probe failed",
 		zap.String("model", entry.ModelID),
 		zap.Int("status_code", statusCode),
@@ -235,11 +396,23 @@ func (p *ModelProber) ProbeModel(entry catalog.Entry) {
 	)
 
 	if IsNeutralProbeFailure(statusCode, msg) || IsInconclusiveProbeFailure(statusCode, msg) {
-		return
+		result.Skip = true
+		// For recovering models, inconclusive failures still advance backoff
+		// via ApplyBatch's recovering branch when Skip is false — mark Skip
+		// only for models that are not already down. ApplyBatch handles this
+		// when Skip=false and inconclusive; keep Skip=true for first-seen
+		// healthy models so timeouts never hide them.
+		if st := p.store.Get(entry.ModelID); st != nil && (st.State == StateRecovering || st.State == StateUnhealthy) {
+			result.Skip = false
+		}
+		return result
 	}
-	if IsUnreachableProbeFailure(statusCode, msg) {
-		p.store.RecordFailure(entry.ModelID, entry.Provider, entry.ProviderModelID, msg, statusCode)
+	if !IsUnreachableProbeFailure(statusCode, msg) {
+		// Non-definitive, non-transient (e.g. odd 400) — do not hide.
+		result.Skip = true
+		return result
 	}
+	return result
 }
 
 func (p *ModelProber) shouldProbe(providerName string) bool {
@@ -270,7 +443,7 @@ func classifyProbeError(err error) (statusCode int, msg string) {
 
 // RecordLiveResult updates status from a real chat completion outcome.
 // Call after primary provider attempts so reactive hide works without waiting
-// for the next probe cycle.
+// for the next probe cycle. Also feeds the error-rate tracker.
 func (p *ModelProber) RecordLiveResult(modelID, providerName, providerModelID string, err error, latencyMs int64) {
 	if p == nil || p.store == nil {
 		return
@@ -278,8 +451,26 @@ func (p *ModelProber) RecordLiveResult(modelID, providerName, providerModelID st
 	if !p.shouldProbe(providerName) {
 		return
 	}
-	if err == nil {
-		p.store.RecordSuccess(modelID, providerName, providerModelID, latencyMs)
+
+	success := err == nil
+	if p.errorTracker != nil && p.errorTracker.Enabled() {
+		p.errorTracker.RecordRequest(modelID, providerName, providerModelID, success)
+	}
+
+	if success {
+		result := ProbeResult{
+			ModelID:         modelID,
+			Provider:        providerName,
+			ProviderModelID: providerModelID,
+			Success:         true,
+			LatencyMs:       latencyMs,
+			FromLive:        true,
+		}
+		if p.batcher != nil {
+			p.batcher.Submit(result)
+		} else {
+			p.store.ApplyBatch([]ProbeResult{result})
+		}
 		return
 	}
 	statusCode, msg := classifyProbeError(err)
@@ -287,6 +478,19 @@ func (p *ModelProber) RecordLiveResult(modelID, providerName, providerModelID st
 		return
 	}
 	if IsUnreachableProbeFailure(statusCode, msg) {
-		p.store.RecordFailure(modelID, providerName, providerModelID, msg, statusCode)
+		result := ProbeResult{
+			ModelID:         modelID,
+			Provider:        providerName,
+			ProviderModelID: providerModelID,
+			Success:         false,
+			ErrMsg:          msg,
+			StatusCode:      statusCode,
+			FromLive:        true,
+		}
+		if p.batcher != nil {
+			p.batcher.Submit(result)
+		} else {
+			p.store.ApplyBatch([]ProbeResult{result})
+		}
 	}
 }

@@ -116,7 +116,7 @@ func TestShouldAdvertiseBeforeFilterReadyKeepsUnprobedHidesFailed(t *testing.T) 
 }
 
 func TestDefaultAvailableOnlyAfterFilterReady(t *testing.T) {
-	// Production defaults: threshold 1, unknown_as_reachable false.
+	// Available-only mode: threshold 1, unknown_as_reachable false.
 	store := health.NewModelStatusStore(1, false)
 
 	store.RecordSuccess("openai/good", "openai", "good", 5)

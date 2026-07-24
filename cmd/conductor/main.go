@@ -98,6 +98,7 @@ func main() {
 
 	// Per-model reachability (especially NVIDIA NIM free vs unreachable endpoints)
 	modelStatus := health.NewModelStatusStore(cfg.Health.Models.UnhealthyThreshold, cfg.Health.Models.UnknownAsReachable)
+	modelStatus.Configure(cfg.Health.Models)
 	if persist := health.NewDBStatusPersistence(db); persist != nil {
 		modelStatus.SetPersistence(persist)
 		if n, err := health.RestoreModelStatusStore(modelStatus, db); err != nil {
