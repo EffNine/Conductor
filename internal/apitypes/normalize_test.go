@@ -193,4 +193,30 @@ func TestStreamChunkIsEmpty(t *testing.T) {
 	}
 }
 
+func TestChatCompletionRequestMarshalsChatTemplateKwargs(t *testing.T) {
+	req := apitypes.ChatCompletionRequest{
+		Model:    "deepseek-ai/deepseek-v4-flash",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+		ChatTemplateKwargs: map[string]any{
+			"thinking":         true,
+			"reasoning_effort": "high",
+		},
+	}
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	kwargs, ok := got["chat_template_kwargs"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing: %s", raw)
+	}
+	if kwargs["thinking"] != true || kwargs["reasoning_effort"] != "high" {
+		t.Fatalf("kwargs = %v", kwargs)
+	}
+}
+
 func boolPtr(v bool) *bool { return &v }

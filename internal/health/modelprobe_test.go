@@ -458,6 +458,47 @@ func TestModelProberThinkingBudgetWouldFalseNegative(t *testing.T) {
 	}
 }
 
+func TestModelProberDeepSeekV4UsesNonThinking(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "deepseek-ai/deepseek-v4-flash", Object: "model"}},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+				ID:      "chatcmpl-1",
+				Object:  "chat.completion",
+				Choices: []apitypes.Choice{{Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "pong"}}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	store := health.NewModelStatusStore(1, true)
+	cat := catalog.New(reg, nil)
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:     true,
+		Timeout:     2 * time.Second,
+		Concurrency: 1,
+		Providers:   []string{"nvidia_nim"},
+	})
+	prober.ProbeAll()
+
+	if gotBody["reasoning_effort"] != "none" {
+		t.Fatalf("deepseek-v4 probe reasoning_effort = %v, want none", gotBody["reasoning_effort"])
+	}
+}
+
 func TestModelProberIgnoresTimeoutsAndTransientErrors(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
