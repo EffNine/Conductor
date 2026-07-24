@@ -60,6 +60,7 @@ When `model: "auto"` is sent and `providers.nvidia_nim.auto.enabled` is `true`, 
   - `summary` (string): `auto` | `concise` | `detailed`
 - `reasoning_effort` (string): OpenAI-style shorthand for `reasoning.effort` (`high`, `medium`, `low`, …)
 - `include_reasoning` (boolean): Legacy OpenRouter flag to include reasoning in the response
+- `chat_template_kwargs` (object): Provider-specific chat-template options (forwarded when set). For NVIDIA NIM **DeepSeek V4** models (`deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`), the gateway injects `{ "thinking": true, "reasoning_effort": "high" }` when omitted so OpenCode and other clients that strip unknown fields still get a streamed reply instead of an empty `content` / hang. Set `reasoning_effort: "none"` (or `chat_template_kwargs.thinking: false`) to disable thinking. OpenAI `developer` roles are remapped to `system` for NIM.
 
 When the upstream model returns reasoning (`message.reasoning` or `message.reasoning_content`) with empty `content`, the gateway copies reasoning into `content` so chat apps still show a reply. `usage.completion_tokens_details.reasoning_tokens` is preserved when the provider reports it.
 

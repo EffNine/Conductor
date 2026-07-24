@@ -29,6 +29,10 @@ type ChatCompletionRequest struct {
 	// ThinkingBudget is a Seed-OSS / NVIDIA NIM chat-template token budget for
 	// internal reasoning. Multiples of 512 are recommended; 0 skips thinking.
 	ThinkingBudget *int `json:"thinking_budget,omitempty"`
+
+	// ChatTemplateKwargs are provider-specific chat-template options (NVIDIA NIM
+	// DeepSeek V4, vLLM, etc.). Forwarded as a top-level JSON object when set.
+	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
 }
 
 // StreamOptions configures streaming behavior (OpenAI-compatible).

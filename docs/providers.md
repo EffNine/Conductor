@@ -195,11 +195,23 @@ Example response:
 }
 ```
 
+## DeepSeek V4 on NVIDIA NIM
+
+DeepSeek V4 (`deepseek-ai/deepseek-v4-flash`, `deepseek-ai/deepseek-v4-pro`) expects `chat_template_kwargs` with `thinking` / `reasoning_effort` for reliable streaming. Clients that speak plain OpenAI (notably OpenCode’s `customOpenAI` aggregator) often omit that field, which yields empty assistant `content` with `completion_tokens: 0` or a hung stream.
+
+The `nvidia_nim` adapter injects:
+
+```json
+{ "chat_template_kwargs": { "thinking": true, "reasoning_effort": "high" }, "reasoning_effort": "high" }
+```
+
+when those fields are absent. Pass `reasoning_effort: "none"` to force non-thinking mode. `developer` message roles are remapped to `system` (NIM returns 500 when `developer` is combined with template kwargs).
+
 ## Model Reachability (NVIDIA NIM)
 
 NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
 
-Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`.
+Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`. DeepSeek V4 probes send `reasoning_effort: "none"` so thinking mode does not consume the tiny token budget.
 
 ### Defaults
 

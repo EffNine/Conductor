@@ -177,4 +177,175 @@ func TestChatCompletionReturnsProviderError(t *testing.T) {
 	}
 }
 
+func TestChatCompletionInjectsDeepSeekV4ChatTemplateKwargs(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID: "1", Object: "chat.completion", Model: "deepseek-ai/deepseek-v4-flash",
+			Choices: []apitypes.Choice{{
+				Index: 0,
+				Message: &apitypes.Message{Role: "assistant", Content: "ok", ReasoningContent: "plan"},
+				FinishReason: str("stop"),
+			}},
+		})
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "deepseek-ai/deepseek-v4-flash",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	if gotBody["reasoning_effort"] != "high" {
+		t.Fatalf("reasoning_effort = %v, want high", gotBody["reasoning_effort"])
+	}
+	kwargs, ok := gotBody["chat_template_kwargs"].(map[string]any)
+	if !ok {
+		t.Fatalf("chat_template_kwargs missing: %v", gotBody)
+	}
+	if kwargs["thinking"] != true {
+		t.Fatalf("thinking = %v, want true", kwargs["thinking"])
+	}
+	if kwargs["reasoning_effort"] != "high" {
+		t.Fatalf("kwargs.reasoning_effort = %v", kwargs["reasoning_effort"])
+	}
+}
+
+func TestChatCompletionDeepSeekV4RespectsNoneEffort(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID: "1", Object: "chat.completion", Model: "deepseek-ai/deepseek-v4-pro",
+			Choices: []apitypes.Choice{{
+				Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}, FinishReason: str("stop"),
+			}},
+		})
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:           "deepseek-ai/deepseek-v4-pro",
+		Messages:        []apitypes.Message{{Role: "user", Content: "hi"}},
+		ReasoningEffort: "none",
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	kwargs, _ := gotBody["chat_template_kwargs"].(map[string]any)
+	if kwargs["thinking"] != false {
+		t.Fatalf("thinking = %v, want false", kwargs["thinking"])
+	}
+	if _, ok := kwargs["reasoning_effort"]; ok {
+		t.Fatalf("reasoning_effort should be omitted for none, got %v", kwargs["reasoning_effort"])
+	}
+}
+
+func TestChatCompletionDeepSeekV4PreservesClientKwargs(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID: "1", Object: "chat.completion", Model: "deepseek-ai/deepseek-v4-flash",
+			Choices: []apitypes.Choice{{
+				Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}, FinishReason: str("stop"),
+			}},
+		})
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "deepseek-ai/deepseek-v4-flash",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+		ChatTemplateKwargs: map[string]any{
+			"thinking":         true,
+			"reasoning_effort": "max",
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	kwargs, _ := gotBody["chat_template_kwargs"].(map[string]any)
+	if kwargs["reasoning_effort"] != "max" {
+		t.Fatalf("kwargs.reasoning_effort = %v, want max", kwargs["reasoning_effort"])
+	}
+}
+
+func TestChatCompletionRemapsDeveloperRole(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(apitypes.ChatCompletionResponse{
+			ID: "1", Object: "chat.completion", Model: "meta/llama-3.1-8b-instruct",
+			Choices: []apitypes.Choice{{
+				Index: 0, Message: &apitypes.Message{Role: "assistant", Content: "ok"}, FinishReason: str("stop"),
+			}},
+		})
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "meta/llama-3.1-8b-instruct",
+		Messages: []apitypes.Message{
+			{Role: "developer", Content: "be brief"},
+			{Role: "user", Content: "hi"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+	msgs, _ := gotBody["messages"].([]any)
+	if len(msgs) != 2 {
+		t.Fatalf("messages = %v", msgs)
+	}
+	first, _ := msgs[0].(map[string]any)
+	if first["role"] != "system" {
+		t.Fatalf("role = %v, want system", first["role"])
+	}
+	if _, ok := gotBody["chat_template_kwargs"]; ok {
+		t.Fatalf("non-deepseek-v4 should not get chat_template_kwargs: %v", gotBody["chat_template_kwargs"])
+	}
+}
+
+func TestChatCompletionStreamInjectsDeepSeekV4ChatTemplateKwargs(t *testing.T) {
+	var gotBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hi\"}}]}\n\n"))
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	p := nvidianim.NewProvider("test-key", server.URL, 10*time.Second)
+	ch, err := p.ChatCompletionStream(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "deepseek-ai/deepseek-v4-flash",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+		Stream:   true,
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+	for range ch {
+	}
+	kwargs, ok := gotBody["chat_template_kwargs"].(map[string]any)
+	if !ok || kwargs["thinking"] != true {
+		t.Fatalf("stream chat_template_kwargs = %v", gotBody["chat_template_kwargs"])
+	}
+}
+
 func str(s string) *string { return &s }
+
