@@ -64,7 +64,7 @@ func RestoreModelStatusStore(store *ModelStatusStore, db *database.Database) (in
 
 	statuses := make([]ModelStatus, 0, len(rows))
 	for _, row := range rows {
-		state := HealthState(row.State)
+		state := State(row.State)
 		if state == "" {
 			state = DeriveState(row.Reachable, row.ConsecutiveFails, true)
 		}

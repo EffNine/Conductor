@@ -405,18 +405,18 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	}
 
 	type modelRow struct {
-		ModelID         string  `json:"model_id"`
-		Name            string  `json:"name,omitempty"`
-		Provider        string  `json:"provider"`
-		ProviderModelID string  `json:"provider_model_id"`
-		OwnedBy         string  `json:"owned_by,omitempty"`
-		Reachable       *bool   `json:"reachable,omitempty"`
-		State           string  `json:"state,omitempty"`
-		LatencyMs       *int64  `json:"latency_ms,omitempty"`
-		LastError       *string `json:"last_error,omitempty"`
-		CheckedAt       *string `json:"checked_at,omitempty"`
+		ModelID         string   `json:"model_id"`
+		Name            string   `json:"name,omitempty"`
+		Provider        string   `json:"provider"`
+		ProviderModelID string   `json:"provider_model_id"`
+		OwnedBy         string   `json:"owned_by,omitempty"`
+		Reachable       *bool    `json:"reachable,omitempty"`
+		State           string   `json:"state,omitempty"`
+		LatencyMs       *int64   `json:"latency_ms,omitempty"`
+		LastError       *string  `json:"last_error,omitempty"`
+		CheckedAt       *string  `json:"checked_at,omitempty"`
 		ErrorRate       *float64 `json:"error_rate,omitempty"`
-		NextProbe       *string `json:"next_probe,omitempty"`
+		NextProbe       *string  `json:"next_probe,omitempty"`
 	}
 
 	rows := make([]modelRow, 0, len(entries))

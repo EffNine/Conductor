@@ -250,10 +250,10 @@ type ProbeBackoffConfig struct {
 
 // ErrorTrackingConfig tracks live request error rates per model.
 type ErrorTrackingConfig struct {
-	Enabled             bool          `mapstructure:"enabled"`
-	Window              time.Duration `mapstructure:"window"`
-	UnhealthyThreshold  float64       `mapstructure:"unhealthy_threshold"`
-	RecoveryThreshold   float64       `mapstructure:"recovery_threshold"`
+	Enabled            bool          `mapstructure:"enabled"`
+	Window             time.Duration `mapstructure:"window"`
+	UnhealthyThreshold float64       `mapstructure:"unhealthy_threshold"`
+	RecoveryThreshold  float64       `mapstructure:"recovery_threshold"`
 }
 
 // UsageConfig holds usage tracking configuration

@@ -11,35 +11,35 @@ import (
 
 // ModelStatus is the cached reachability state for one catalog Model ID.
 type ModelStatus struct {
-	ModelID          string      `json:"model_id"`
-	Provider         string      `json:"provider"`
-	ProviderModelID  string      `json:"provider_model_id"`
-	Reachable        bool        `json:"reachable"`
-	State            HealthState `json:"state"`
-	LatencyMs        int64       `json:"latency_ms"`
-	LastError        string      `json:"last_error,omitempty"`
-	CheckedAt        time.Time   `json:"checked_at"`
-	NextProbeTime    time.Time   `json:"next_probe,omitempty"`
-	ConsecutiveFails int         `json:"consecutive_fails"`
-	ErrorRate        float64     `json:"error_rate"`
+	ModelID          string    `json:"model_id"`
+	Provider         string    `json:"provider"`
+	ProviderModelID  string    `json:"provider_model_id"`
+	Reachable        bool      `json:"reachable"`
+	State            State     `json:"state"`
+	LatencyMs        int64     `json:"latency_ms"`
+	LastError        string    `json:"last_error,omitempty"`
+	CheckedAt        time.Time `json:"checked_at"`
+	NextProbeTime    time.Time `json:"next_probe,omitempty"`
+	ConsecutiveFails int       `json:"consecutive_fails"`
+	ErrorRate        float64   `json:"error_rate"`
 }
 
 // StatusDetail is the enriched status payload for GET /api/models/status.
 type StatusDetail struct {
-	ModelID              string      `json:"id"`
-	Provider             string      `json:"provider"`
-	ProviderModelID      string      `json:"provider_model_id,omitempty"`
-	State                HealthState `json:"state"`
-	Reachable            bool        `json:"reachable"`
-	LastProbe            *string     `json:"last_probe,omitempty"`
-	NextProbe            *string     `json:"next_probe,omitempty"`
-	ProbeError           *string     `json:"probe_error"`
-	ErrorRate            float64     `json:"error_rate"`
-	ErrorRateWindow      string      `json:"error_rate_window,omitempty"`
-	LatencyMs            int64       `json:"latency_ms"`
-	ConsecutiveFailures  int         `json:"consecutive_failures"`
-	BackoffMultiplier    float64     `json:"backoff_multiplier,omitempty"`
-	RetryCountdownMs     *int64      `json:"retry_countdown_ms,omitempty"`
+	ModelID             string  `json:"id"`
+	Provider            string  `json:"provider"`
+	ProviderModelID     string  `json:"provider_model_id,omitempty"`
+	State               State   `json:"state"`
+	Reachable           bool    `json:"reachable"`
+	LastProbe           *string `json:"last_probe,omitempty"`
+	NextProbe           *string `json:"next_probe,omitempty"`
+	ProbeError          *string `json:"probe_error"`
+	ErrorRate           float64 `json:"error_rate"`
+	ErrorRateWindow     string  `json:"error_rate_window,omitempty"`
+	LatencyMs           int64   `json:"latency_ms"`
+	ConsecutiveFailures int     `json:"consecutive_failures"`
+	BackoffMultiplier   float64 `json:"backoff_multiplier,omitempty"`
+	RetryCountdownMs    *int64  `json:"retry_countdown_ms,omitempty"`
 }
 
 // StatusPersistence stores reachability across process restarts.
@@ -198,7 +198,7 @@ func (s *ModelStatusStore) ApplyBatch(results []ProbeResult) {
 		return
 	}
 	s.mu.Lock()
-	var toPersist []ModelStatus
+	toPersist := make([]ModelStatus, 0, len(results))
 	for _, r := range results {
 		if r.Skip || r.ModelID == "" {
 			continue
