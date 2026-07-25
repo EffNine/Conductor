@@ -206,7 +206,7 @@ func TestStreamFlushesReasoningOnAbruptClose(t *testing.T) {
 			continue
 		}
 		for _, choice := range chunk.Choices {
-			if choice.Delta != nil && strings.Contains(choice.Delta.Content, "partial") {
+			if choice.Delta != nil && strings.Contains(choice.Delta.ContentString(), "partial") {
 				foundContent = true
 			}
 		}

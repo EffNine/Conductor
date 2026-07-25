@@ -1,5 +1,10 @@
 package apitypes
 
+import (
+	"encoding/json"
+	"strings"
+)
+
 // ChatCompletionRequest represents an OpenAI-compatible chat completion request
 type ChatCompletionRequest struct {
 	Model            string                 `json:"model"`
@@ -77,13 +82,36 @@ func (r *ChatCompletionRequest) EnsureStreamUsage() {
 	r.StreamOptions.IncludeUsage = true
 }
 
+// ContentPartType represents the type of a content part (multimodal).
+type ContentPartType string
+
+const (
+	// ContentPartText represents a text content part.
+	ContentPartText ContentPartType = "text"
+	// ContentPartImageURL represents an image URL content part.
+	ContentPartImageURL ContentPartType = "image_url"
+)
+
+// ContentPart represents a single part of a multimodal message.
+type ContentPart struct {
+	Type     ContentPartType `json:"type"`
+	Text     string          `json:"text,omitempty"`
+	ImageURL *ImageURLContent `json:"image_url,omitempty"`
+}
+
+// ImageURLContent represents an image URL in a multimodal content part.
+type ImageURLContent struct {
+	URL    string `json:"url"`
+	Detail string `json:"detail,omitempty"`
+}
+
 // Message represents a chat message
 type Message struct {
 	// Role and Content use omitempty so stream deltas do not emit empty
 	// strings. OpenCode's custom OpenAI client rejects delta.role:"" (Zod) and
 	// trailing {} chunks that re-marshal as empty model/content wipe the reply.
 	Role             string     `json:"role,omitempty"`
-	Content          string     `json:"content,omitempty"`
+	Content          interface{} `json:"content,omitempty"` // string or []ContentPart for multimodal
 	Name             string     `json:"name,omitempty"`
 	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID       string     `json:"tool_call_id,omitempty"`
@@ -91,11 +119,85 @@ type Message struct {
 	ReasoningContent string     `json:"reasoning_content,omitempty"` // DeepSeek-style reasoning
 }
 
+// ContentString returns the content as a plain string.
+// For text-only messages this returns the string directly.
+// For multimodal messages ([]ContentPart) it concatenates all text parts.
+func (m *Message) ContentString() string {
+	if m == nil || m.Content == nil {
+		return ""
+	}
+	switch v := m.Content.(type) {
+	case string:
+		return v
+	case []ContentPart:
+		var b strings.Builder
+		for _, p := range v {
+			if p.Type == ContentPartText && p.Text != "" {
+				if b.Len() > 0 {
+					b.WriteString("\n")
+				}
+				b.WriteString(p.Text)
+			}
+		}
+		return b.String()
+	}
+	return ""
+}
+
+// HasContentParts reports whether the message contains multimodal content parts.
+func (m *Message) HasContentParts() bool {
+	if m == nil || m.Content == nil {
+		return false
+	}
+	_, ok := m.Content.([]ContentPart)
+	return ok
+}
+
+// MarshalJSON implements json.Marshaler for Message. It mirrors the struct
+// tags but handles Content being interface{}: nil or empty string are omitted
+// so streaming deltas keep backward compatibility.
+func (m *Message) MarshalJSON() ([]byte, error) {
+	// Quick check: if Content is nil or empty string, omit it entirely
+	// by falling through to a type that omits content.
+	type message Message // prevent recursion
+	type messageOmitted struct {
+		Role             string     `json:"role,omitempty"`
+		Name             string     `json:"name,omitempty"`
+		ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+		ToolCallID       string     `json:"tool_call_id,omitempty"`
+		Reasoning        string     `json:"reasoning,omitempty"`
+		ReasoningContent string     `json:"reasoning_content,omitempty"`
+	}
+
+	if m.Content == nil {
+		return json.Marshal(messageOmitted{
+			Role:             m.Role,
+			Name:             m.Name,
+			ToolCalls:        m.ToolCalls,
+			ToolCallID:       m.ToolCallID,
+			Reasoning:        m.Reasoning,
+			ReasoningContent: m.ReasoningContent,
+		})
+	}
+	if s, ok := m.Content.(string); ok && s == "" {
+		return json.Marshal(messageOmitted{
+			Role:             m.Role,
+			Name:             m.Name,
+			ToolCalls:        m.ToolCalls,
+			ToolCallID:       m.ToolCallID,
+			Reasoning:        m.Reasoning,
+			ReasoningContent: m.ReasoningContent,
+		})
+	}
+	// Non-empty content — marshal normally using the struct tags.
+	return json.Marshal((*message)(m))
+}
+
 // Normalize fills Content from reasoning fields when upstream returns empty
 // content (common for reasoning models like big-pickle / mimo-v2.5). Chat apps
 // that only read message.content otherwise show a blank reply.
 func (m *Message) Normalize() {
-	if m == nil || m.Content != "" {
+	if m == nil || m.ContentString() != "" {
 		return
 	}
 	if m.ReasoningContent != "" {

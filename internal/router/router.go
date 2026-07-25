@@ -185,8 +185,8 @@ func joinMessages(messages []apitypes.Message) string {
 	}
 	parts := make([]string, 0, len(messages))
 	for _, m := range messages {
-		if m.Content != "" {
-			parts = append(parts, m.Content)
+		if m.ContentString() != "" {
+			parts = append(parts, m.ContentString())
 		}
 	}
 	return strings.Join(parts, "\n")

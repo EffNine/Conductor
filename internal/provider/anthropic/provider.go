@@ -336,7 +336,7 @@ func (p *Provider) toMessagesRequest(req *apitypes.ChatCompletionRequest) (*anth
 		role := m.Role
 		if role == "system" {
 			if anthropicReq.System == "" {
-				anthropicReq.System = m.Content
+				anthropicReq.System = m.ContentString()
 			}
 			continue
 		}
@@ -347,7 +347,7 @@ func (p *Provider) toMessagesRequest(req *apitypes.ChatCompletionRequest) (*anth
 		}
 		anthropicReq.Messages = append(anthropicReq.Messages, anthropicMessage{
 			Role:    role,
-			Content: m.Content,
+			Content: m.ContentString(),
 		})
 	}
 

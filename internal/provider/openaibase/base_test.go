@@ -107,7 +107,7 @@ func TestChatCompletionStreamSkipsKeepalivesAndKeepsReasoning(t *testing.T) {
 			emptyChunks++
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
-			contents = append(contents, chunk.Choices[0].Delta.Content)
+			contents = append(contents, chunk.Choices[0].Delta.ContentString())
 			reasoning = append(reasoning, chunk.Choices[0].Delta.Reasoning)
 		}
 	}
@@ -217,7 +217,7 @@ func TestChatCompletionStreamRequestsIncludeUsage(t *testing.T) {
 			usage = chunk.Usage
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
-			content += chunk.Choices[0].Delta.Content
+			content += chunk.Choices[0].Delta.ContentString()
 		}
 	}
 	if content != "Hi" {
@@ -261,7 +261,7 @@ func TestChatCompletionStreamIgnoresClientTimeout(t *testing.T) {
 			break
 		}
 		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta != nil {
-			content += chunk.Choices[0].Delta.Content
+			content += chunk.Choices[0].Delta.ContentString()
 		}
 	}
 	if !sawDone {
