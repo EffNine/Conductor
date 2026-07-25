@@ -59,6 +59,10 @@ type Config struct {
 	// APIKeyJustGenerated is true when Load created and persisted a new gateway key
 	// because none was configured via env, YAML, or an existing key file.
 	APIKeyJustGenerated bool `mapstructure:"-"`
+
+	// DisplayNames maps ModelID → human-friendly label used in /v1/models
+	// responses. Unmapped models fall back to the provider-stripped ID.
+	DisplayNames map[string]string `mapstructure:"display_names"`
 }
 
 // CatalogConfig controls how the merged Model Catalog is built for /v1/models.

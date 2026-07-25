@@ -9,6 +9,23 @@ import (
 	"github.com/EffNine/conductor/internal/provider"
 )
 
+// providerShortNames maps provider names to short labels used for disambiguation.
+var providerShortNames = map[string]string{
+	"nvidia_nim":  "NIM",
+	"opencode":    "OC",
+	"openrouter":  "OR",
+	"agnesai":     "Agnes",
+	"nous_portal": "Nous",
+}
+
+// shortProvider returns a short human-friendly label for a provider name.
+func shortProvider(name string) string {
+	if n, ok := providerShortNames[name]; ok {
+		return n
+	}
+	return name
+}
+
 // Entry is one advertised model in the merged catalog.
 type Entry struct {
 	ModelID         string `json:"model_id"`
@@ -18,9 +35,15 @@ type Entry struct {
 }
 
 // DisplayName returns a short picker label without the gateway provider prefix.
+// If a display_names map is configured on the Catalog, the key is checked first.
 // Example: ModelID nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b → nvidia/nemotron-3-ultra-550b-a55b.
 // Chat completions must still use ModelID.
-func (e Entry) DisplayName() string {
+func (e Entry) DisplayName(names map[string]string) string {
+	if names != nil {
+		if n, ok := names[e.ModelID]; ok && n != "" {
+			return n
+		}
+	}
 	if e.ProviderModelID != "" {
 		return e.ProviderModelID
 	}
@@ -49,11 +72,12 @@ type StaticModels map[string][]string
 
 // Catalog merges model lists from registered providers.
 type Catalog struct {
-	registry    *provider.Registry
-	static      StaticModels
-	filter      ReachabilityFilter
-	hide        bool
-	curatedOnly bool
+	registry     *provider.Registry
+	static       StaticModels
+	filter       ReachabilityFilter
+	hide         bool
+	curatedOnly  bool
+	displayNames map[string]string
 }
 
 // New creates a Catalog. static may be nil.
@@ -62,6 +86,70 @@ func New(registry *provider.Registry, static StaticModels) *Catalog {
 		static = StaticModels{}
 	}
 	return &Catalog{registry: registry, static: static}
+}
+
+// SetDisplayNames configures a ModelID → human-friendly label map used by
+// DisplayName when rendering the /v1/models response.
+func (c *Catalog) SetDisplayNames(names map[string]string) {
+	c.displayNames = names
+}
+
+// DisplayNames returns the configured ModelID → friendly-label map.
+func (c *Catalog) DisplayNames() map[string]string {
+	return c.displayNames
+}
+
+// DisplayLabels builds a deduplicated ModelID → label map for the given entries.
+// Callers should compute this once per response from the entry set they are
+// serving — labels are not stored on Catalog (avoids cross-request races).
+//
+// When two entries would resolve to the same display name, a short provider
+// suffix (e.g. "(NIM)", "(OC)") is appended. If a clash remains within the
+// same provider, the provider model ID is included too.
+func (c *Catalog) DisplayLabels(entries []Entry) map[string]string {
+	// Phase 1: compute initial label per entry
+	type labelInfo struct {
+		label    string
+		provider string
+	}
+	labels := make([]labelInfo, len(entries))
+	counts := make(map[string]int) // label → count
+	for i, e := range entries {
+		labels[i] = labelInfo{
+			label:    e.DisplayName(c.displayNames),
+			provider: e.Provider,
+		}
+		counts[labels[i].label]++
+	}
+
+	// Phase 2: append provider suffix when base label clashes
+	out := make(map[string]string, len(entries))
+	for i, e := range entries {
+		lbl := labels[i]
+		if counts[lbl.label] > 1 {
+			out[e.ModelID] = lbl.label + " (" + shortProvider(lbl.provider) + ")"
+		} else {
+			out[e.ModelID] = lbl.label
+		}
+	}
+
+	// Phase 3: same-provider collisions still share the suffixed label —
+	// disambiguate with ProviderModelID (ModelID as fallback).
+	finalCounts := make(map[string]int, len(out))
+	for _, v := range out {
+		finalCounts[v]++
+	}
+	for i, e := range entries {
+		if finalCounts[out[e.ModelID]] <= 1 {
+			continue
+		}
+		unique := e.ProviderModelID
+		if unique == "" {
+			unique = e.ModelID
+		}
+		out[e.ModelID] = labels[i].label + " (" + shortProvider(labels[i].provider) + " · " + unique + ")"
+	}
+	return out
 }
 
 // SetCuratedOnly toggles curated-only mode. When true, providers with a

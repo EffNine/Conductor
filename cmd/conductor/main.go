@@ -104,6 +104,7 @@ func main() {
 
 	// Initialize model catalog
 	modelCatalog := catalog.New(registry, catalog.StaticFromConfig(cfg))
+	modelCatalog.SetDisplayNames(cfg.DisplayNames)
 	modelCatalog.SetCuratedOnly(cfg.Catalog.CuratedOnly)
 	if cfg.Catalog.CuratedOnly {
 		logger.Info("Catalog curated_only enabled; providers with models use allowlists, others stay dynamic")

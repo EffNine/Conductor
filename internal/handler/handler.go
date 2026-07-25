@@ -360,6 +360,7 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 		})
 	}
 
+	labels := h.catalog.DisplayLabels(entries)
 	modelList := make([]apitypes.ModelInfo, 0, len(entries))
 	for _, e := range entries {
 		ownedBy := e.OwnedBy
@@ -371,7 +372,7 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 			Object:  "model",
 			Created: h.startTime.Unix(),
 			OwnedBy: ownedBy,
-			Name:    e.DisplayName(),
+			Name:    labels[e.ModelID],
 		})
 	}
 
@@ -419,11 +420,12 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 		NextProbe       *string  `json:"next_probe,omitempty"`
 	}
 
+	labels := h.catalog.DisplayLabels(entries)
 	rows := make([]modelRow, 0, len(entries))
 	for _, e := range entries {
 		row := modelRow{
 			ModelID:         e.ModelID,
-			Name:            e.DisplayName(),
+			Name:            labels[e.ModelID],
 			Provider:        e.Provider,
 			ProviderModelID: e.ProviderModelID,
 			OwnedBy:         e.OwnedBy,
