@@ -15,7 +15,8 @@ server:
     methods: ["GET", "POST", "OPTIONS"]
     headers: ["Authorization", "Content-Type"]
 
-# Gateway API key (required - set via CONDUCTOR_API_KEY env var)
+# Gateway API key (optional locally — auto-generated to data/conductor.api_key if unset)
+# Prefer CONDUCTOR_API_KEY in production. Generate with: make gen-key
 api_key: "${CONDUCTOR_API_KEY}"
 
 # Provider configuration

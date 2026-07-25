@@ -17,8 +17,11 @@ Standard commands live in the `Makefile` and `README.md` (`make build|test|lint|
   `./data/conductor.db` (relative to the working directory) and the app does NOT create the
   parent dir — it exits with `unable to open database file: no such file or directory`.
   Run `mkdir -p data` once, and always start the gateway from the repo root.
-- **`CONDUCTOR_API_KEY` is the only hard requirement to boot.** It can be set via env var or the
-  `api_key` field in `config.yaml`. Without it, startup fails config validation.
+- **`CONDUCTOR_API_KEY` is preferred but optional locally.** It can be set via env var or the
+  `api_key` field in `config.yaml`. If unset, Conductor generates a random key, writes it to
+  `data/conductor.api_key` (mode `0600`), and logs it once at startup. Use `make gen-key` (or
+  `./bin/conductor gen-key`) to print a key without starting the server. Prefer an explicit
+  secret in production (Fly/Docker secrets).
 - **Providers auto-enable from env vars.** Setting `OPENAI_API_KEY` (etc.) auto-enables that
   provider even without a `config.yaml`. See `internal/config/config.go` `autoEnableProviders`.
   `OLLAMA_API_KEY` enables Ollama Cloud (`https://ollama.com/v1`); `OLLAMA_BASE_URL` overrides

@@ -10,7 +10,7 @@ All endpoints except `GET /health` require authentication via the `Authorization
 Authorization: Bearer <your-api-key>
 ```
 
-The API key is set via the `CONDUCTOR_API_KEY` environment variable.
+The API key is set via the `CONDUCTOR_API_KEY` environment variable (or `api_key` in config). If unset, Conductor generates one on first boot and persists it to `data/conductor.api_key`. Use `conductor gen-key` / `make gen-key` to print a new key.
 
 ---
 

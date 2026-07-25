@@ -14,7 +14,7 @@ Conductor uses environment variables first, then YAML, then defaults.
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `CONDUCTOR_API_KEY` | Gateway API key for client authentication | — | **Yes** |
+| `CONDUCTOR_API_KEY` | Gateway API key for client authentication. If unset, Conductor generates one on first boot and saves it to `data/conductor.api_key` (logged once). Prefer an explicit secret in production. | auto-generated file | No* |
 | `CONDUCTOR_SERVER_PORT` | HTTP server port | `8080` | No |
 | `CONDUCTOR_SERVER_HOST` | HTTP server host | `0.0.0.0` | No |
 | `CONDUCTOR_SERVER_READ_TIMEOUT` | Request read timeout | `30s` | No |
@@ -425,12 +425,16 @@ Auto mode respects `catalog.curated_only`: only models advertised in `/v1/models
 
 ## Minimal Configuration
 
-For the simplest setup, only the gateway key and provider keys are required:
+For the simplest setup, a provider key is enough — the gateway key can be omitted locally:
 
 ```bash
-export CONDUCTOR_API_KEY=your-secret-gateway-key
+# Optional: export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
+# Or generate one explicitly:
+# make gen-key   # or: ./bin/conductor gen-key
 ```
+
+If `CONDUCTOR_API_KEY` is unset, Conductor generates a random key, writes it to `data/conductor.api_key` (mode `0600`), and logs it once at startup. Set `CONDUCTOR_API_KEY` (or a Fly/Docker secret) in production — do not rely on the file across ephemeral disks.
 
 The gateway will start on port 8080, enable OpenAI, and use SQLite with sensible defaults.
 
@@ -438,7 +442,7 @@ The gateway will start on port 8080, enable OpenAI, and use SQLite with sensible
 
 Startup fails if:
 
-- `CONDUCTOR_API_KEY` is not set
+- A gateway API key cannot be resolved or persisted (and none was set via env/YAML)
 - Server port is invalid
 - Logging level/format is invalid
 - Database driver is unsupported

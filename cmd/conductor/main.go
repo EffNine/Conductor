@@ -36,6 +36,21 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "gen-key", "generate-api-key":
+			key, err := auth.Generate()
+			if err != nil {
+				log.Fatalf("Failed to generate API key: %v", err)
+			}
+			fmt.Println(key)
+			return
+		case "help", "-h", "--help":
+			printUsage()
+			return
+		}
+	}
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -48,6 +63,13 @@ func main() {
 		log.Fatalf("Failed to initialize logger: %v", err)
 	}
 	defer func() { _ = logger.Sync() }()
+
+	if cfg.APIKeyJustGenerated {
+		keyPath := config.APIKeyFilePath(cfg)
+		logger.Warn("Generated new gateway API key; read it from the saved file and set CONDUCTOR_API_KEY in production",
+			zap.String("path", keyPath),
+		)
+	}
 
 	logger.Info("Starting Conductor",
 		zap.Int("port", cfg.Server.Port),
@@ -290,4 +312,17 @@ func registerProviders(cfg *config.Config, registry *provider.Registry, logger *
 		registry.Register(p)
 		logger.Debug("Registered provider", zap.String("provider", p.Name()))
 	}
+}
+
+func printUsage() {
+	fmt.Fprintf(os.Stderr, `Conductor — OpenAI-compatible AI gateway
+
+Usage:
+  conductor                 Start the gateway
+  conductor gen-key         Print a new random gateway API key
+  conductor help            Show this help
+
+Environment:
+  CONDUCTOR_API_KEY         Gateway API key (auto-generated on first boot if unset)
+`)
 }

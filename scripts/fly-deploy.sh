@@ -3,12 +3,13 @@
 # Prerequisites: flyctl installed, and either `fly auth login` or FLY_API_TOKEN.
 #
 # Usage:
-#   export CONDUCTOR_API_KEY=your-secret-gateway-key
+#   export CONDUCTOR_API_KEY=your-secret-gateway-key   # optional; auto-generated on first deploy if unset
 #   export OPENAI_API_KEY=sk-...          # or another implemented provider key
 #   ./scripts/fly-deploy.sh
 #
-# Optional:
-#   APP_NAME=my-conductor REGION=iad ./scripts/fly-deploy.sh
+# If CONDUCTOR_API_KEY is unset and the Fly app has no CONDUCTOR_API_KEY or legacy
+# NOVEXA_API_KEY secret yet, a random key is generated, printed once, and set as a
+# Fly secret. Redeploys reuse an existing Fly secret instead of rotating it.
 
 set -euo pipefail
 
@@ -32,11 +33,6 @@ if ! "$FLY_BIN" auth whoami >/dev/null 2>&1; then
   echo "Not logged in to Fly.io."
   echo "Run: fly auth login"
   echo "Or set FLY_API_TOKEN (https://fly.io/user/personal_access_tokens)"
-  exit 1
-fi
-
-if [[ -z "${CONDUCTOR_API_KEY:-}" ]]; then
-  echo "CONDUCTOR_API_KEY is required."
   exit 1
 fi
 
@@ -68,15 +64,49 @@ if ! "$FLY_BIN" volumes list -a "$APP_NAME" --json 2>/dev/null | grep -q "\"name
   fi
 fi
 
-SECRET_ARGS=(CONDUCTOR_API_KEY="$CONDUCTOR_API_KEY")
+# Only set CONDUCTOR_API_KEY when the operator provided one, or on first deploy when
+# the app has no gateway secret yet (including legacy NOVEXA_API_KEY). Never rotate
+# an existing Fly secret silently.
+SET_CONDUCTOR_API_KEY=0
+has_gateway_secret() {
+  local secrets_json secrets_text
+  secrets_json="$("$FLY_BIN" secrets list -a "$APP_NAME" --json 2>/dev/null || true)"
+  secrets_text="$("$FLY_BIN" secrets list -a "$APP_NAME" 2>/dev/null || true)"
+  echo "$secrets_json" | grep -q '"name"[[:space:]]*:[[:space:]]*"CONDUCTOR_API_KEY"' \
+    || echo "$secrets_text" | grep -qw "CONDUCTOR_API_KEY" \
+    || echo "$secrets_json" | grep -q '"name"[[:space:]]*:[[:space:]]*"NOVEXA_API_KEY"' \
+    || echo "$secrets_text" | grep -qw "NOVEXA_API_KEY"
+}
+if [[ -n "${CONDUCTOR_API_KEY:-}" ]]; then
+  SET_CONDUCTOR_API_KEY=1
+elif has_gateway_secret; then
+  echo "Reusing existing gateway API key Fly secret (CONDUCTOR_API_KEY or NOVEXA_API_KEY; set CONDUCTOR_API_KEY to rotate)."
+else
+  if command -v openssl >/dev/null 2>&1; then
+    CONDUCTOR_API_KEY="$(openssl rand -hex 32)"
+  else
+    CONDUCTOR_API_KEY="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
+  export CONDUCTOR_API_KEY
+  SET_CONDUCTOR_API_KEY=1
+  echo "Generated CONDUCTOR_API_KEY (will be set as a Fly secret)."
+  echo "Save this key: ${CONDUCTOR_API_KEY}"
+fi
+
+SECRET_ARGS=()
+[[ "$SET_CONDUCTOR_API_KEY" == "1" ]] && SECRET_ARGS+=(CONDUCTOR_API_KEY="$CONDUCTOR_API_KEY")
 [[ -n "${OPENAI_API_KEY:-}" ]] && SECRET_ARGS+=(OPENAI_API_KEY="$OPENAI_API_KEY")
 [[ -n "${OPENCODE_API_KEY:-}" ]] && SECRET_ARGS+=(OPENCODE_API_KEY="$OPENCODE_API_KEY")
 [[ -n "${DEEPSEEK_API_KEY:-}" ]] && SECRET_ARGS+=(DEEPSEEK_API_KEY="$DEEPSEEK_API_KEY")
 [[ -n "${NVIDIA_NIM_API_KEY:-}" ]] && SECRET_ARGS+=(NVIDIA_NIM_API_KEY="$NVIDIA_NIM_API_KEY")
 [[ -n "${NOUS_PORTAL_API_KEY:-}" ]] && SECRET_ARGS+=(NOUS_PORTAL_API_KEY="$NOUS_PORTAL_API_KEY")
 
-echo "Setting secrets..."
-"$FLY_BIN" secrets set -a "$APP_NAME" "${SECRET_ARGS[@]}"
+if [[ ${#SECRET_ARGS[@]} -gt 0 ]]; then
+  echo "Setting secrets..."
+  "$FLY_BIN" secrets set -a "$APP_NAME" "${SECRET_ARGS[@]}"
+else
+  echo "No new secrets to set."
+fi
 
 echo "Deploying (remote builder)..."
 "$FLY_BIN" deploy -a "$APP_NAME" --config fly.toml --remote-only

@@ -1,4 +1,4 @@
-.PHONY: build test lint clean docker-build docker-run run help
+.PHONY: build test lint clean docker-build docker-run run gen-key help
 
 # Binary name
 BINARY_NAME=conductor
@@ -69,6 +69,10 @@ clean:
 run: build
 	@echo "Running $(BINARY_NAME)..."
 	./$(BINARY_PATH)
+
+## gen-key: Print a new random gateway API key
+gen-key: build
+	@./$(BINARY_PATH) gen-key
 
 ## docker-build: Build Docker image
 docker-build:

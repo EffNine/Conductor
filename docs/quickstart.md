@@ -84,12 +84,16 @@ export OPENAI_API_KEY=sk-your-openai-key
 
 ### Minimal Configuration
 
-Only the gateway key and provider keys are required:
+A provider key is enough to boot locally. The gateway API key is optional:
 
 ```bash
-export CONDUCTOR_API_KEY=your-secret-gateway-key
+# Optional — auto-generated on first boot if unset (saved to data/conductor.api_key)
+# export CONDUCTOR_API_KEY=your-secret-gateway-key
+# Or: make gen-key
 export OPENAI_API_KEY=sk-your-openai-key
 ```
+
+In production, set `CONDUCTOR_API_KEY` explicitly (env or platform secret). Do not rely on `data/conductor.api_key` on ephemeral disks.
 
 ### Custom Configuration
 
@@ -226,7 +230,7 @@ docker logs conductor
 ```
 
 Common issues:
-- Missing `CONDUCTOR_API_KEY`
+- Unable to write `data/` (API key auto-generation and SQLite both need it — run `mkdir -p data` from the repo root)
 - Port 8080 already in use (change with `CONDUCTOR_SERVER_PORT`)
 - Invalid provider API key
 

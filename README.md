@@ -82,10 +82,10 @@ Bare IDs like `gpt-4o` only work if you add a matching `routes` entry (or alias)
 
 ### Minimal Setup
 
-Only `CONDUCTOR_API_KEY` is required to boot. Setting a provider env var auto-enables that provider (no `config.yaml` needed):
+No gateway key is required to boot locally: if `CONDUCTOR_API_KEY` is unset, Conductor generates one and saves it to `data/conductor.api_key` (logged once). Prefer setting the key explicitly in production. Generate one without starting the server with `make gen-key`. Setting a provider env var auto-enables that provider (no `config.yaml` needed):
 
 ```bash
-export CONDUCTOR_API_KEY=your-secret-gateway-key
+# export CONDUCTOR_API_KEY=your-secret-gateway-key   # optional locally
 export OPENAI_API_KEY=sk-your-openai-key
 # Also supported: ANTHROPIC_API_KEY, GEMINI_API_KEY, DEEPSEEK_API_KEY,
 # OPENROUTER_API_KEY, GROQ_API_KEY, OPENCODE_API_KEY, NVIDIA_NIM_API_KEY,
@@ -154,7 +154,7 @@ Client → API Key Check → Rate Limit → Validate → Route → Provider Adap
                                    Alias/Routes   Health/Probes               Usage + Cost → SQLite
 ```
 
-- **Auth** — Single gateway API key via `CONDUCTOR_API_KEY`.
+- **Auth** — Single gateway API key via `CONDUCTOR_API_KEY` (auto-generated to `data/conductor.api_key` if unset).
 - **Rate Limiter** — Global and per-provider limits.
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks.
 - **Provider Adapters** — Common `Provider` interface; OpenAI-compatible passthrough plus a custom Anthropic Messages adapter.
