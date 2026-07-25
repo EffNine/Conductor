@@ -9,6 +9,23 @@ import (
 	"github.com/EffNine/conductor/internal/provider"
 )
 
+// providerShortNames maps provider names to short labels used for disambiguation.
+var providerShortNames = map[string]string{
+	"nvidia_nim": "NIM",
+	"opencode":   "OC",
+	"openrouter": "OR",
+	"agnesai":    "Agnes",
+	"nous_portal": "Nous",
+}
+
+// shortProvider returns a short human-friendly label for a provider name.
+func shortProvider(name string) string {
+	if n, ok := providerShortNames[name]; ok {
+		return n
+	}
+	return name
+}
+
 // Entry is one advertised model in the merged catalog.
 type Entry struct {
 	ModelID         string `json:"model_id"`
@@ -18,9 +35,15 @@ type Entry struct {
 }
 
 // DisplayName returns a short picker label without the gateway provider prefix.
+// If a display_names map is configured on the Catalog, the key is checked first.
 // Example: ModelID nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b → nvidia/nemotron-3-ultra-550b-a55b.
 // Chat completions must still use ModelID.
-func (e Entry) DisplayName() string {
+func (e Entry) DisplayName(names map[string]string) string {
+	if names != nil {
+		if n, ok := names[e.ModelID]; ok && n != "" {
+			return n
+		}
+	}
 	if e.ProviderModelID != "" {
 		return e.ProviderModelID
 	}
@@ -49,11 +72,13 @@ type StaticModels map[string][]string
 
 // Catalog merges model lists from registered providers.
 type Catalog struct {
-	registry    *provider.Registry
-	static      StaticModels
-	filter      ReachabilityFilter
-	hide        bool
-	curatedOnly bool
+	registry      *provider.Registry
+	static        StaticModels
+	filter        ReachabilityFilter
+	hide          bool
+	curatedOnly   bool
+	displayNames  map[string]string
+	displayLabels map[string]string // ModelID → deduped label, computed per List()/ListAll()
 }
 
 // New creates a Catalog. static may be nil.
@@ -62,6 +87,61 @@ func New(registry *provider.Registry, static StaticModels) *Catalog {
 		static = StaticModels{}
 	}
 	return &Catalog{registry: registry, static: static}
+}
+
+// SetDisplayNames configures a ModelID → human-friendly label map used by
+// DisplayName when rendering the /v1/models response.
+func (c *Catalog) SetDisplayNames(names map[string]string) {
+	c.displayNames = names
+}
+
+// DisplayNames returns the configured ModelID → friendly-label map.
+func (c *Catalog) DisplayNames() map[string]string {
+	return c.displayNames
+}
+
+// DisplayLabel returns a deduplicated human-friendly label for the entry.
+// If multiple entries share the same label, a provider suffix is appended.
+// Falls back to DisplayName() when no dedup map is computed.
+func (c *Catalog) DisplayLabel(e Entry) string {
+	if c.displayLabels != nil {
+		if n, ok := c.displayLabels[e.ModelID]; ok {
+			return n
+		}
+	}
+	return e.DisplayName(c.displayNames)
+}
+
+// computeDisplayLabels builds a deduplicated display-name map for entries.
+// When two entries would resolve to the same display name, a short provider
+// suffix (e.g. "(NIM)", "(OC)") is appended to differentiate them.
+func (c *Catalog) computeDisplayLabels(entries []Entry) map[string]string {
+	// Phase 1: compute initial label per entry
+	type labelInfo struct {
+		label    string
+		provider string
+	}
+	labels := make([]labelInfo, len(entries))
+	counts := make(map[string]int) // label → count
+	for i, e := range entries {
+		labels[i] = labelInfo{
+			label:    e.DisplayName(c.displayNames),
+			provider: e.Provider,
+		}
+		counts[labels[i].label]++
+	}
+
+	// Phase 2: build deduped map — append provider suffix when clash detected
+	out := make(map[string]string, len(entries))
+	for i, e := range entries {
+		lbl := labels[i]
+		if counts[lbl.label] > 1 {
+			out[e.ModelID] = lbl.label + " (" + shortProvider(lbl.provider) + ")"
+		} else {
+			out[e.ModelID] = lbl.label
+		}
+	}
+	return out
 }
 
 // SetCuratedOnly toggles curated-only mode. When true, providers with a
@@ -118,6 +198,7 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 		return nil, err
 	}
 	if c.filter == nil || !c.hide {
+		c.displayLabels = c.computeDisplayLabels(entries)
 		return entries, nil
 	}
 	// Always apply ShouldAdvertise: confirmed failures drop out during the pass;
@@ -128,6 +209,7 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 			filtered = append(filtered, e)
 		}
 	}
+	c.displayLabels = c.computeDisplayLabels(filtered)
 	return filtered, nil
 }
 
@@ -137,10 +219,17 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 // that allowlist; providers with an empty list still use dynamic ListModels.
 // This shrinks huge catalogs (NVIDIA NIM) without wiping other providers.
 func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
+	var entries []Entry
+	var err error
 	if c.curatedOnly {
-		return c.listCuratedOrDynamic(ctx)
+		entries, err = c.listCuratedOrDynamic(ctx)
+	} else {
+		entries, err = c.listDynamic(ctx)
 	}
-	return c.listDynamic(ctx)
+	if err == nil {
+		c.displayLabels = c.computeDisplayLabels(entries)
+	}
+	return entries, err
 }
 
 func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {

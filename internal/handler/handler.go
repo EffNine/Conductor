@@ -371,7 +371,7 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 			Object:  "model",
 			Created: h.startTime.Unix(),
 			OwnedBy: ownedBy,
-			Name:    e.DisplayName(),
+			Name:    h.catalog.DisplayLabel(e),
 		})
 	}
 
@@ -423,7 +423,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	for _, e := range entries {
 		row := modelRow{
 			ModelID:         e.ModelID,
-			Name:            e.DisplayName(),
+			Name:            h.catalog.DisplayLabel(e),
 			Provider:        e.Provider,
 			ProviderModelID: e.ProviderModelID,
 			OwnedBy:         e.OwnedBy,
