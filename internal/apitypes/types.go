@@ -149,8 +149,8 @@ func (m *Message) HasContentParts() bool {
 	if m == nil || m.Content == nil {
 		return false
 	}
-	_, ok := m.Content.([]ContentPart)
-	return ok
+	parts, ok := m.Content.([]ContentPart)
+	return ok && len(parts) > 0
 }
 
 // UnmarshalJSON decodes Message and normalizes multimodal content arrays to

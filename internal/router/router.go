@@ -207,7 +207,7 @@ func messageHasImageURL(m apitypes.Message) bool {
 		return false
 	}
 	for _, p := range parts {
-		if p.Type == apitypes.ContentPartImageURL {
+		if p.Type == apitypes.ContentPartImageURL && p.ImageURL != nil && p.ImageURL.URL != "" {
 			return true
 		}
 	}
