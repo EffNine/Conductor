@@ -73,6 +73,72 @@ func TestChatCompletionTransformsToMessagesAPI(t *testing.T) {
 	}
 }
 
+func TestChatCompletionPreservesMultimodalImages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if len(req.Messages) != 1 {
+			t.Fatalf("messages len = %d, want 1", len(req.Messages))
+		}
+		var blocks []struct {
+			Type   string `json:"type"`
+			Text   string `json:"text,omitempty"`
+			Source *struct {
+				Type      string `json:"type"`
+				MediaType string `json:"media_type,omitempty"`
+				Data      string `json:"data,omitempty"`
+				URL       string `json:"url,omitempty"`
+			} `json:"source,omitempty"`
+		}
+		if err := json.Unmarshal(req.Messages[0].Content, &blocks); err != nil {
+			t.Fatalf("content should be multimodal blocks: %v\nraw=%s", err, string(req.Messages[0].Content))
+		}
+		if len(blocks) != 2 {
+			t.Fatalf("content blocks = %d, want 2", len(blocks))
+		}
+		if blocks[0].Type != "image" || blocks[0].Source == nil || blocks[0].Source.Type != "url" || blocks[0].Source.URL != "https://example.com/cat.png" {
+			t.Fatalf("unexpected image block: %+v", blocks[0])
+		}
+		if blocks[1].Type != "text" || blocks[1].Text != "What is this?" {
+			t.Fatalf("unexpected text block: %+v", blocks[1])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(messagesResponse{
+			ID:         "msg_vision",
+			Type:       "message",
+			Role:       "assistant",
+			Model:      "claude-3-5-sonnet-20241022",
+			StopReason: "end_turn",
+			Content:    []contentBlock{{Type: "text", Text: "A cat"}},
+			Usage:      usage{InputTokens: 20, OutputTokens: 3},
+		})
+	}))
+	defer server.Close()
+
+	p := anthropic.NewProvider("test-key", server.URL, 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet-20241022",
+		Messages: []apitypes.Message{{
+			Role: "user",
+			Content: []apitypes.ContentPart{
+				{Type: apitypes.ContentPartImageURL, ImageURL: &apitypes.ImageURLContent{URL: "https://example.com/cat.png"}},
+				{Type: apitypes.ContentPartText, Text: "What is this?"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletion: %v", err)
+	}
+}
+
 func TestEmbeddingsNotSupported(t *testing.T) {
 	p := anthropic.NewProvider("test-key", "https://api.anthropic.com/v1", 10*time.Second)
 	_, err := p.Embeddings(context.Background(), &apitypes.EmbeddingRequest{

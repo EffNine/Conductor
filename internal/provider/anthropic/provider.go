@@ -336,7 +336,7 @@ func (p *Provider) toMessagesRequest(req *apitypes.ChatCompletionRequest) (*anth
 		role := m.Role
 		if role == "system" {
 			if anthropicReq.System == "" {
-				anthropicReq.System = m.Content
+				anthropicReq.System = m.ContentString()
 			}
 			continue
 		}
@@ -347,7 +347,7 @@ func (p *Provider) toMessagesRequest(req *apitypes.ChatCompletionRequest) (*anth
 		}
 		anthropicReq.Messages = append(anthropicReq.Messages, anthropicMessage{
 			Role:    role,
-			Content: m.Content,
+			Content: toAnthropicContent(m),
 		})
 	}
 
@@ -458,8 +458,8 @@ type anthropicMessagesRequest struct {
 }
 
 type anthropicMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string or []anthropicContentBlock
 }
 
 type anthropicMessageResponse struct {
@@ -475,6 +475,92 @@ type anthropicMessageResponse struct {
 type anthropicContent struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+}
+
+// anthropicContentBlock is a request content block (text or image).
+type anthropicContentBlock struct {
+	Type   string                `json:"type"`
+	Text   string                `json:"text,omitempty"`
+	Source *anthropicImageSource `json:"source,omitempty"`
+}
+
+type anthropicImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type,omitempty"`
+	Data      string `json:"data,omitempty"`
+	URL       string `json:"url,omitempty"`
+}
+
+// toAnthropicContent maps OpenAI-style message content to Anthropic Messages API
+// content (plain string or multimodal content blocks including images).
+func toAnthropicContent(m apitypes.Message) interface{} {
+	parts, ok := m.Content.([]apitypes.ContentPart)
+	if !ok {
+		return m.ContentString()
+	}
+
+	blocks := make([]anthropicContentBlock, 0, len(parts))
+	for _, p := range parts {
+		switch p.Type {
+		case apitypes.ContentPartText:
+			if p.Text != "" {
+				blocks = append(blocks, anthropicContentBlock{Type: "text", Text: p.Text})
+			}
+		case apitypes.ContentPartImageURL:
+			if p.ImageURL == nil || p.ImageURL.URL == "" {
+				continue
+			}
+			if block, ok := imageURLToAnthropicBlock(p.ImageURL.URL); ok {
+				blocks = append(blocks, block)
+			}
+		}
+	}
+	if len(blocks) == 0 {
+		return m.ContentString()
+	}
+	return blocks
+}
+
+func imageURLToAnthropicBlock(rawURL string) (anthropicContentBlock, bool) {
+	if mediaType, data, ok := parseDataURL(rawURL); ok {
+		return anthropicContentBlock{
+			Type: "image",
+			Source: &anthropicImageSource{
+				Type:      "base64",
+				MediaType: mediaType,
+				Data:      data,
+			},
+		}, true
+	}
+	return anthropicContentBlock{
+		Type: "image",
+		Source: &anthropicImageSource{
+			Type: "url",
+			URL:  rawURL,
+		},
+	}, true
+}
+
+// parseDataURL extracts media type and base64 payload from a data: URL.
+func parseDataURL(raw string) (mediaType, data string, ok bool) {
+	if !strings.HasPrefix(raw, "data:") {
+		return "", "", false
+	}
+	rest := strings.TrimPrefix(raw, "data:")
+	comma := strings.IndexByte(rest, ',')
+	if comma < 0 {
+		return "", "", false
+	}
+	meta := rest[:comma]
+	data = rest[comma+1:]
+	if data == "" || !strings.Contains(meta, "base64") {
+		return "", "", false
+	}
+	mediaType, _, _ = strings.Cut(meta, ";")
+	if mediaType == "" {
+		return "", "", false
+	}
+	return mediaType, data, true
 }
 
 type usage struct {

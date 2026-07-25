@@ -251,7 +251,7 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, r
 			if m == nil {
 				return
 			}
-			if m.Content != "" {
+			if m.ContentString() != "" {
 				sawContent = true
 			}
 			if m.Reasoning != "" {

@@ -179,17 +179,39 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 }
 
 // joinMessages concatenates message contents for task classification.
+// Multimodal messages with image_url parts contribute an "image" token so
+// image-only prompts still classify as the vision task profile.
 func joinMessages(messages []apitypes.Message) string {
 	if len(messages) == 0 {
 		return ""
 	}
-	parts := make([]string, 0, len(messages))
+	parts := make([]string, 0, len(messages)+1)
+	hasImage := false
 	for _, m := range messages {
-		if m.Content != "" {
-			parts = append(parts, m.Content)
+		if s := m.ContentString(); s != "" {
+			parts = append(parts, s)
+		}
+		if messageHasImageURL(m) {
+			hasImage = true
 		}
 	}
+	if hasImage {
+		parts = append(parts, "image")
+	}
 	return strings.Join(parts, "\n")
+}
+
+func messageHasImageURL(m apitypes.Message) bool {
+	parts, ok := m.Content.([]apitypes.ContentPart)
+	if !ok {
+		return false
+	}
+	for _, p := range parts {
+		if p.Type == apitypes.ContentPartImageURL && p.ImageURL != nil && p.ImageURL.URL != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // splitProviderPrefix returns (provider, baseModelID) when modelID starts with a

@@ -2,6 +2,7 @@ package router_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/EffNine/conductor/internal/apitypes"
@@ -97,6 +98,28 @@ func TestResolveAutoSelectsWhenWired(t *testing.T) {
 	}
 }
 
+func TestResolveAutoPassesVisionSignalForImageOnly(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "nvidia_nim"})
+
+	engine := router.NewEngine(&config.Config{}, reg)
+	sel := &capturingAutoSelector{modelID: "vision-model"}
+	engine.SetAutoSelector(sel)
+
+	_, err := engine.ResolveWithMessages("auto", []apitypes.Message{{
+		Role: "user",
+		Content: []apitypes.ContentPart{
+			{Type: apitypes.ContentPartImageURL, ImageURL: &apitypes.ImageURLContent{URL: "https://example.com/shot.png"}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("ResolveWithMessages: %v", err)
+	}
+	if !strings.Contains(sel.task, "image") {
+		t.Fatalf("auto selector task = %q, want vision signal containing %q", sel.task, "image")
+	}
+}
+
 func TestResolveAutoReturnsErrorWhenNotWired(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "nvidia_nim"})
@@ -115,6 +138,16 @@ type fixedAutoSelector struct {
 
 func (f *fixedAutoSelector) Select(_ context.Context, _ string) (string, error) {
 	return f.modelID, nil
+}
+
+type capturingAutoSelector struct {
+	modelID string
+	task    string
+}
+
+func (c *capturingAutoSelector) Select(_ context.Context, task string) (string, error) {
+	c.task = task
+	return c.modelID, nil
 }
 
 type stubProvider struct {
