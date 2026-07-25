@@ -11,10 +11,10 @@ import (
 
 // providerShortNames maps provider names to short labels used for disambiguation.
 var providerShortNames = map[string]string{
-	"nvidia_nim": "NIM",
-	"opencode":   "OC",
-	"openrouter": "OR",
-	"agnesai":    "Agnes",
+	"nvidia_nim":  "NIM",
+	"opencode":    "OC",
+	"openrouter":  "OR",
+	"agnesai":     "Agnes",
 	"nous_portal": "Nous",
 }
 
@@ -72,13 +72,12 @@ type StaticModels map[string][]string
 
 // Catalog merges model lists from registered providers.
 type Catalog struct {
-	registry      *provider.Registry
-	static        StaticModels
-	filter        ReachabilityFilter
-	hide          bool
-	curatedOnly   bool
-	displayNames  map[string]string
-	displayLabels map[string]string // ModelID → deduped label, computed per List()/ListAll()
+	registry     *provider.Registry
+	static       StaticModels
+	filter       ReachabilityFilter
+	hide         bool
+	curatedOnly  bool
+	displayNames map[string]string
 }
 
 // New creates a Catalog. static may be nil.
@@ -100,22 +99,14 @@ func (c *Catalog) DisplayNames() map[string]string {
 	return c.displayNames
 }
 
-// DisplayLabel returns a deduplicated human-friendly label for the entry.
-// If multiple entries share the same label, a provider suffix is appended.
-// Falls back to DisplayName() when no dedup map is computed.
-func (c *Catalog) DisplayLabel(e Entry) string {
-	if c.displayLabels != nil {
-		if n, ok := c.displayLabels[e.ModelID]; ok {
-			return n
-		}
-	}
-	return e.DisplayName(c.displayNames)
-}
-
-// computeDisplayLabels builds a deduplicated display-name map for entries.
+// DisplayLabels builds a deduplicated ModelID → label map for the given entries.
+// Callers should compute this once per response from the entry set they are
+// serving — labels are not stored on Catalog (avoids cross-request races).
+//
 // When two entries would resolve to the same display name, a short provider
-// suffix (e.g. "(NIM)", "(OC)") is appended to differentiate them.
-func (c *Catalog) computeDisplayLabels(entries []Entry) map[string]string {
+// suffix (e.g. "(NIM)", "(OC)") is appended. If a clash remains within the
+// same provider, the provider model ID is included too.
+func (c *Catalog) DisplayLabels(entries []Entry) map[string]string {
 	// Phase 1: compute initial label per entry
 	type labelInfo struct {
 		label    string
@@ -131,7 +122,7 @@ func (c *Catalog) computeDisplayLabels(entries []Entry) map[string]string {
 		counts[labels[i].label]++
 	}
 
-	// Phase 2: build deduped map — append provider suffix when clash detected
+	// Phase 2: append provider suffix when base label clashes
 	out := make(map[string]string, len(entries))
 	for i, e := range entries {
 		lbl := labels[i]
@@ -140,6 +131,23 @@ func (c *Catalog) computeDisplayLabels(entries []Entry) map[string]string {
 		} else {
 			out[e.ModelID] = lbl.label
 		}
+	}
+
+	// Phase 3: same-provider collisions still share the suffixed label —
+	// disambiguate with ProviderModelID (ModelID as fallback).
+	finalCounts := make(map[string]int, len(out))
+	for _, v := range out {
+		finalCounts[v]++
+	}
+	for i, e := range entries {
+		if finalCounts[out[e.ModelID]] <= 1 {
+			continue
+		}
+		unique := e.ProviderModelID
+		if unique == "" {
+			unique = e.ModelID
+		}
+		out[e.ModelID] = labels[i].label + " (" + shortProvider(labels[i].provider) + " · " + unique + ")"
 	}
 	return out
 }
@@ -198,7 +206,6 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 		return nil, err
 	}
 	if c.filter == nil || !c.hide {
-		c.displayLabels = c.computeDisplayLabels(entries)
 		return entries, nil
 	}
 	// Always apply ShouldAdvertise: confirmed failures drop out during the pass;
@@ -209,7 +216,6 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 			filtered = append(filtered, e)
 		}
 	}
-	c.displayLabels = c.computeDisplayLabels(filtered)
 	return filtered, nil
 }
 
@@ -219,17 +225,10 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 // that allowlist; providers with an empty list still use dynamic ListModels.
 // This shrinks huge catalogs (NVIDIA NIM) without wiping other providers.
 func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
-	var entries []Entry
-	var err error
 	if c.curatedOnly {
-		entries, err = c.listCuratedOrDynamic(ctx)
-	} else {
-		entries, err = c.listDynamic(ctx)
+		return c.listCuratedOrDynamic(ctx)
 	}
-	if err == nil {
-		c.displayLabels = c.computeDisplayLabels(entries)
-	}
-	return entries, err
+	return c.listDynamic(ctx)
 }
 
 func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {
