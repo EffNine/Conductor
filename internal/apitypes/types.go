@@ -94,8 +94,8 @@ const (
 
 // ContentPart represents a single part of a multimodal message.
 type ContentPart struct {
-	Type     ContentPartType `json:"type"`
-	Text     string          `json:"text,omitempty"`
+	Type     ContentPartType  `json:"type"`
+	Text     string           `json:"text,omitempty"`
 	ImageURL *ImageURLContent `json:"image_url,omitempty"`
 }
 
@@ -110,13 +110,13 @@ type Message struct {
 	// Role and Content use omitempty so stream deltas do not emit empty
 	// strings. OpenCode's custom OpenAI client rejects delta.role:"" (Zod) and
 	// trailing {} chunks that re-marshal as empty model/content wipe the reply.
-	Role             string     `json:"role,omitempty"`
+	Role             string      `json:"role,omitempty"`
 	Content          interface{} `json:"content,omitempty"` // string or []ContentPart for multimodal
-	Name             string     `json:"name,omitempty"`
-	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID       string     `json:"tool_call_id,omitempty"`
-	Reasoning        string     `json:"reasoning,omitempty"`         // OpenRouter / Xiaomi-style reasoning
-	ReasoningContent string     `json:"reasoning_content,omitempty"` // DeepSeek-style reasoning
+	Name             string      `json:"name,omitempty"`
+	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
+	ToolCallID       string      `json:"tool_call_id,omitempty"`
+	Reasoning        string      `json:"reasoning,omitempty"`         // OpenRouter / Xiaomi-style reasoning
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // DeepSeek-style reasoning
 }
 
 // ContentString returns the content as a plain string.
@@ -151,6 +151,52 @@ func (m *Message) HasContentParts() bool {
 	}
 	_, ok := m.Content.([]ContentPart)
 	return ok
+}
+
+// UnmarshalJSON decodes Message and normalizes multimodal content arrays to
+// []ContentPart. encoding/json would otherwise store arrays in interface{} as
+// []interface{}, which ContentString/HasContentParts would not recognize.
+func (m *Message) UnmarshalJSON(data []byte) error {
+	type messageWire struct {
+		Role             string          `json:"role,omitempty"`
+		Content          json.RawMessage `json:"content,omitempty"`
+		Name             string          `json:"name,omitempty"`
+		ToolCalls        []ToolCall      `json:"tool_calls,omitempty"`
+		ToolCallID       string          `json:"tool_call_id,omitempty"`
+		Reasoning        string          `json:"reasoning,omitempty"`
+		ReasoningContent string          `json:"reasoning_content,omitempty"`
+	}
+	var wire messageWire
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	m.Role = wire.Role
+	m.Name = wire.Name
+	m.ToolCalls = wire.ToolCalls
+	m.ToolCallID = wire.ToolCallID
+	m.Reasoning = wire.Reasoning
+	m.ReasoningContent = wire.ReasoningContent
+
+	if len(wire.Content) == 0 || string(wire.Content) == "null" {
+		m.Content = nil
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(wire.Content, &s); err == nil {
+		m.Content = s
+		return nil
+	}
+	var parts []ContentPart
+	if err := json.Unmarshal(wire.Content, &parts); err == nil {
+		m.Content = parts
+		return nil
+	}
+	var v interface{}
+	if err := json.Unmarshal(wire.Content, &v); err != nil {
+		return err
+	}
+	m.Content = v
+	return nil
 }
 
 // MarshalJSON implements json.Marshaler for Message. It mirrors the struct
@@ -197,7 +243,12 @@ func (m *Message) MarshalJSON() ([]byte, error) {
 // content (common for reasoning models like big-pickle / mimo-v2.5). Chat apps
 // that only read message.content otherwise show a blank reply.
 func (m *Message) Normalize() {
-	if m == nil || m.ContentString() != "" {
+	if m == nil {
+		return
+	}
+	// Preserve existing content. Multimodal arrays can yield an empty
+	// ContentString (e.g. image-only) and must not be replaced by reasoning.
+	if m.ContentString() != "" || m.HasContentParts() {
 		return
 	}
 	if m.ReasoningContent != "" {
