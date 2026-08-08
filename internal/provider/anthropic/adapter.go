@@ -56,6 +56,10 @@ func (p *Provider) GetMetadata() provider.Metadata {
 // ChatCompletion converts an OpenAI request to Anthropic Messages format.
 func (p *Provider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	anthropicReq := MapRequest(req)
+	if anthropicReq == nil {
+		return nil, provider.NewProviderError(p.name, http.StatusBadRequest,
+			provider.ErrorTypeInvalidRequest, "Anthropic does not support structured output (response_format)", nil)
+	}
 
 	body, err := json.Marshal(anthropicReq)
 	if err != nil {
@@ -91,6 +95,13 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *apitypes.ChatComplet
 // ChatCompletionStream converts an OpenAI streaming request to Anthropic streaming format.
 func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
 	anthropicReq := MapRequest(req)
+	if anthropicReq == nil {
+		errChan := make(chan apitypes.StreamChunk, 1)
+		errChan <- apitypes.StreamChunk{Error: provider.NewProviderError(p.name, http.StatusBadRequest,
+			provider.ErrorTypeInvalidRequest, "Anthropic does not support structured output (response_format)", nil)}
+		close(errChan)
+		return errChan, nil
+	}
 	anthropicReq.Stream = true
 
 	body, err := json.Marshal(anthropicReq)

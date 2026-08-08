@@ -287,24 +287,26 @@ func TestChatCompletionWithToolResult(t *testing.T) {
 		}
 		var found bool
 		for _, m := range req.Messages {
-			if m.Role == "tool" {
-				found = true
-				var blocks []struct {
-					Type      string `json:"type"`
-					ToolUseID string `json:"tool_use_id"`
-					Content   string `json:"content"`
-				}
-				if err := json.Unmarshal(m.Content, &blocks); err != nil {
-					t.Fatalf("decode tool content: %v", err)
-				}
-				if len(blocks) != 1 || blocks[0].Type != "tool_result" {
-					t.Fatalf("unexpected block type: %s", blocks[0].Type)
-				}
-				if blocks[0].ToolUseID != "toolu_01" {
-					t.Fatalf("tool_use_id = %q, want toolu_01", blocks[0].ToolUseID)
-				}
-				if blocks[0].Content != "Sunny, 20C" {
-					t.Fatalf("content = %q, want Sunny, 20C", blocks[0].Content)
+			if m.Role != "user" {
+				continue
+			}
+			var blocks []struct {
+				Type      string `json:"type"`
+				ToolUseID string `json:"tool_use_id"`
+				Content   string `json:"content"`
+			}
+			if err := json.Unmarshal(m.Content, &blocks); err != nil {
+				continue
+			}
+			for _, b := range blocks {
+				if b.Type == "tool_result" {
+					found = true
+					if b.ToolUseID != "toolu_01" {
+						t.Fatalf("tool_use_id = %q, want toolu_01", b.ToolUseID)
+					}
+					if b.Content != "Sunny, 20C" {
+						t.Fatalf("content = %q, want Sunny, 20C", b.Content)
+					}
 				}
 			}
 		}
@@ -902,5 +904,362 @@ func TestStreamAccumulator(t *testing.T) {
 	accum.Reset()
 	if accum.id != "" {
 		t.Fatal("expected reset id to be empty")
+	}
+}
+
+
+func TestStreamingWithParallelTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		events := []string{
+			`{"type": "message_start", "message": {"id": "msg_parallel", "type": "message", "role": "assistant", "model": "claude-3-7-sonnet-20250219", "stop_reason": null, "usage": {"input_tokens": 10, "output_tokens": 0}, "created": 1234567890}}`,
+			`{"type": "content_block_start", "index": 0, "start": {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {}}}`,
+			`{"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"ci\"}"}}`,
+			`{"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "ty:\"Lond\"}"}}`,
+			`{"type": "content_block_stop", "index": 0}`,
+			`{"type": "content_block_start", "index": 1, "start": {"type": "tool_use", "id": "toolu_02", "name": "get_time", "input": {}}}`,
+			`{"type": "content_block_delta", "index": 1, "delta": {"type": "input_json_delta", "partial_json": "{}"}}`,
+			`{"type": "content_block_stop", "index": 1}`,
+			`{"type": "message_delta", "delta": {"stop_reason": "tool_use", "stop_sequence": null}, "usage": {"input_tokens": 10, "output_tokens": 8}}`,
+			`{"type": "message_stop"}`,
+		}
+		for _, e := range events {
+			_, _ = w.Write([]byte("data: " + e + "\n\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+	defer server.Close()
+
+	p := NewProvider("test-key", server.URL, 10*time.Second)
+	ch, err := p.ChatCompletionStream(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "claude-3-7-sonnet-20250219",
+		Messages: []apitypes.Message{
+			{Role: "user", Content: "Weather and time in London?"},
+		},
+		Stream: true,
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	var chunks []apitypes.StreamChunk
+	for c := range ch {
+		chunks = append(chunks, c)
+	}
+
+	var foundToolCalls int
+	for _, c := range chunks {
+		if c.Done {
+			continue
+		}
+		for _, choice := range c.Choices {
+			foundToolCalls += len(choice.Delta.ToolCalls)
+		}
+	}
+	if foundToolCalls < 2 {
+		t.Fatalf("expected at least 2 tool calls in stream, got %d", foundToolCalls)
+	}
+}
+
+func TestMultiTurnAgentWorkflow(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []struct {
+				Role    string          `json:"role"`
+				Content json.RawMessage `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				var blocks []struct {
+					Type      string `json:"type"`
+					ToolUseID string `json:"tool_use_id,omitempty"`
+					Content   string `json:"content,omitempty"`
+				}
+				if err := json.Unmarshal(m.Content, &blocks); err != nil {
+					continue
+				}
+				for _, b := range blocks {
+					if b.Type == "tool_result" && b.ToolUseID == "toolu_01" {
+						w.Header().Set("Content-Type", "application/json")
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"id": "msg_multiturn", "type": "message", "role": "assistant",
+							"model": "claude-3-5-sonnet-20241022", "stop_reason": "end_turn",
+							"content": []map[string]any{{"type": "text", "text": "It's sunny and 20°C in London"}},
+							"usage": map[string]int{"input_tokens": 30, "output_tokens": 8},
+						})
+						return
+					}
+				}
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "msg_multiturn_1", "type": "message", "role": "assistant",
+			"model": "claude-3-5-sonnet-20241022", "stop_reason": "tool_use",
+			"content": []map[string]any{
+				{"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": map[string]any{"city": "London"}},
+			},
+			"usage": map[string]int{"input_tokens": 15, "output_tokens": 8},
+		})
+	}))
+	defer server.Close()
+
+	p := NewProvider("test-key", server.URL, 10*time.Second)
+
+	resp1, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet-20241022",
+		Messages: []apitypes.Message{
+			{Role: "user", Content: "Weather in London?"},
+		},
+		Tools: []apitypes.Tool{{
+			Type: "function",
+			Function: apitypes.FunctionDef{
+				Name: "get_weather",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"city": map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("first turn ChatCompletion: %v", err)
+	}
+	if len(resp1.Choices[0].Message.ToolCalls) != 1 {
+		t.Fatalf("first turn: expected 1 tool call, got %d", len(resp1.Choices[0].Message.ToolCalls))
+	}
+
+	resp2, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet-20241022",
+		Messages: []apitypes.Message{
+			{Role: "user", Content: "Weather in London?"},
+			{Role: "assistant", ToolCalls: []apitypes.ToolCall{{
+				ID:       "toolu_01",
+				Type:     "function",
+				Function: apitypes.FunctionCall{Name: "get_weather", Arguments: `{"city":"London"}`},
+			}}},
+			{Role: "tool", ToolCallID: "toolu_01", Content: "Sunny, 20C"},
+		},
+		Tools: []apitypes.Tool{{
+			Type: "function",
+			Function: apitypes.FunctionDef{
+				Name: "get_weather",
+				Parameters: map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"city": map[string]interface{}{"type": "string"},
+					},
+				},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("second turn ChatCompletion: %v", err)
+	}
+	if resp2.Choices[0].Message.Content != "It's sunny and 20°C in London" {
+		t.Fatalf("content = %q, want It's sunny and 20°C in London", resp2.Choices[0].Message.Content)
+	}
+}
+
+func TestMapResponseWithEmptyContentPromotesReasoning(t *testing.T) {
+	resp := &anthropicMessageResponse{
+		ID:         "msg_reason",
+		Type:       "message",
+		Role:       "assistant",
+		Model:      "claude-3-7-sonnet-20250219",
+		StopReason: "end_turn",
+		Content: []anthropicContent{
+			{Type: "thinking", Thinking: "Let me think..."},
+		},
+		Usage: usage{InputTokens: 10, OutputTokens: 5},
+	}
+
+	canonical := MapResponse("claude-3-7-sonnet-20250219", resp)
+	if canonical.Choices[0].Message.Content != "Let me think..." {
+		t.Fatalf("content = %q, want Let me think...", canonical.Choices[0].Message.Content)
+	}
+}
+
+func TestStreamingInterleavedParallelTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		events := []string{
+			`{"type":"message_start","message":{"id":"msg_int","type":"message","role":"assistant","model":"claude-3-7-sonnet-20250219","stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0},"created":1}}`,
+			`{"type":"content_block_start","index":0,"start":{"type":"tool_use","id":"toolu_A","name":"first","input":{}}}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1,\"c\":"}}`,  
+			`{"type":"content_block_start","index":1,"start":{"type":"tool_use","id":"toolu_B","name":"second","input":{}}}`,
+			`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}`,
+			`{"type":"content_block_stop","index":1}`,
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"3}"}}`,
+			`{"type":"content_block_stop","index":0}`,
+			`{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":5,"output_tokens":10}}`,
+			`{"type":"message_stop"}`,
+		}
+		for _, e := range events {
+			_, _ = w.Write([]byte("data: " + e + "\n\n"))
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+	}))
+	defer server.Close()
+
+	p := NewProvider("test-key", server.URL, 10*time.Second)
+	ch, err := p.ChatCompletionStream(context.Background(), &apitypes.ChatCompletionRequest{
+		Model:    "claude-3-7-sonnet-20250219",
+		Stream:   true,
+		Messages: []apitypes.Message{{Role: "user", Content: "run both"}},
+	})
+	if err != nil {
+		t.Fatalf("ChatCompletionStream: %v", err)
+	}
+
+	var finalChunk *apitypes.StreamChunk
+	for c := range ch {
+		if c.Done || c.Error != nil {
+			continue
+		}
+		for _, choice := range c.Choices {
+			if choice.FinishReason != nil && *choice.FinishReason == "tool_calls" {
+				cc := c
+				finalChunk = &cc
+			}
+		}
+	}
+	if finalChunk == nil {
+		t.Fatal("expected final chunk with tool_calls finish reason")
+	}
+	if len(finalChunk.Choices[0].Delta.ToolCalls) != 2 {
+		t.Fatalf("expected 2 tool calls, got %d", len(finalChunk.Choices[0].Delta.ToolCalls))
+	}
+	got := make(map[string]string)
+	for _, tc := range finalChunk.Choices[0].Delta.ToolCalls {
+		got[tc.ID] = tc.Function.Name + ":" + tc.Function.Arguments
+	}
+	if got["toolu_A"] != "first:{\"a\":1,\"c\":3}" {
+		t.Fatalf("tool A args = %q", got["toolu_A"])
+	}
+	if got["toolu_B"] != "second:{\"b\":2}" {
+		t.Fatalf("tool B args = %q", got["toolu_B"])
+	}
+}
+
+func TestMapResponseReasoningOnly(t *testing.T) {
+	resp := &anthropicMessageResponse{
+		ID:         "msg_ro",
+		Type:       "message",
+		Role:       "assistant",
+		Model:      "claude-3-7-sonnet-20250219",
+		StopReason: "end_turn",
+		Content: []anthropicContent{
+			{Type: "thinking", Thinking: "deep thought"},
+		},
+		Usage: usage{InputTokens: 5, OutputTokens: 3},
+	}
+	canonical := MapResponse("claude-3-7-sonnet-20250219", resp)
+	if canonical.Choices[0].Message.Content != "deep thought" {
+		t.Fatalf("content = %q, want deep thought", canonical.Choices[0].Message.Content)
+	}
+	if canonical.Choices[0].Message.Reasoning != "deep thought" {
+		t.Fatalf("reasoning = %q", canonical.Choices[0].Message.Reasoning)
+	}
+}
+
+func TestMapResponseTextPlusReasoning(t *testing.T) {
+	resp := &anthropicMessageResponse{
+		ID:         "msg_tr",
+		Type:       "message",
+		Role:       "assistant",
+		Model:      "claude-3-7-sonnet-20250219",
+		StopReason: "end_turn",
+		Content: []anthropicContent{
+			{Type: "thinking", Thinking: "let me think"},
+			{Type: "text", Text: "the answer is 42"},
+		},
+		Usage: usage{InputTokens: 5, OutputTokens: 3},
+	}
+	canonical := MapResponse("claude-3-7-sonnet-20250219", resp)
+	if canonical.Choices[0].Message.Content != "the answer is 42" {
+		t.Fatalf("content = %q, want the answer is 42", canonical.Choices[0].Message.Content)
+	}
+	if canonical.Choices[0].Message.Reasoning != "let me think" {
+		t.Fatalf("reasoning = %q", canonical.Choices[0].Message.Reasoning)
+	}
+}
+
+func TestMapResponseToolCallNoFabricatedText(t *testing.T) {
+	resp := &anthropicMessageResponse{
+		ID:         "msg_tc",
+		Type:       "message",
+		Role:       "assistant",
+		Model:      "claude-3-5-sonnet-20241022",
+		StopReason: "tool_use",
+		Content: []anthropicContent{
+			{Type: "tool_use", ID: "toolu_01", Name: "get_weather", Input: map[string]any{"city": "London"}},
+		},
+		Usage: usage{InputTokens: 10, OutputTokens: 5},
+	}
+	canonical := MapResponse("claude-3-5-sonnet-20241022", resp)
+	if canonical.Choices[0].Message.Content != "" {
+		t.Fatalf("expected empty content for tool-only response, got %q", canonical.Choices[0].Message.Content)
+	}
+	if len(canonical.Choices[0].Message.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(canonical.Choices[0].Message.ToolCalls))
+	}
+	if *canonical.Choices[0].FinishReason != "tool_calls" {
+		t.Fatalf("finish_reason = %q, want tool_calls", *canonical.Choices[0].FinishReason)
+	}
+}
+
+func TestMapRequestRejectsResponseFormat(t *testing.T) {
+	req := &apitypes.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet-20241022",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+		ResponseFormat: map[string]interface{}{
+			"type": "json_object",
+		},
+	}
+	mapped := MapRequest(req)
+	if mapped != nil {
+		t.Fatal("expected nil request when response_format is set")
+	}
+}
+
+func TestProviderRejectsResponseFormat(t *testing.T) {
+	p := NewProvider("test-key", "https://api.anthropic.com", 10*time.Second)
+	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
+		Model: "claude-3-5-sonnet-20241022",
+		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
+		ResponseFormat: map[string]interface{}{
+			"type": "json_object",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error for response_format")
+	}
+	provErr, ok := err.(*provider.ProviderError)
+	if !ok {
+		t.Fatalf("expected *provider.ProviderError, got %T", err)
+	}
+	if provErr.Type != provider.ErrorTypeInvalidRequest {
+		t.Fatalf("error type = %q, want invalid_request", provErr.Type)
+	}
+}
+
+func TestProviderMetadataNoStructuredOutput(t *testing.T) {
+	p := NewProvider("test-key", "https://api.anthropic.com", 10*time.Second)
+	meta := p.GetMetadata()
+	if meta.Capabilities.Structured {
+		t.Fatal("Anthropic should not advertise structured output capability")
 	}
 }

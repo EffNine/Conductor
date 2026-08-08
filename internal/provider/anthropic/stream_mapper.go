@@ -7,6 +7,30 @@ import (
 	"github.com/EffNine/conductor/internal/apitypes"
 )
 
+// toolState holds the accumulated state for a single tool-use content block.
+type toolState struct {
+	id   string
+	name string
+	buf  *strings.Builder
+}
+
+// streamAccumulator tracks state across streaming events for a single message.
+type streamAccumulator struct {
+	id             string
+	model          string
+	created        int64
+	usage          *apitypes.Usage
+	textIndex      int
+	textBuffer     *strings.Builder
+	thinkingIndex  int
+	thinkingBuffer *strings.Builder
+	// toolStates is keyed by Anthropic content-block index for per-tool isolation.
+	toolStates map[int]*toolState
+	// toolOrder preserves the source-ordered sequence of tool block indices.
+	toolOrder []int
+	toolCalls []apitypes.ToolCall
+}
+
 // MapStreamChunk converts Anthropic streaming events into canonical StreamChunk.
 func MapStreamChunk(event *anthropicStreamEvent, accum *streamAccumulator) *apitypes.StreamChunk {
 	if event == nil {
@@ -88,11 +112,16 @@ func mapContentBlockStart(event *anthropicStreamEvent, accum *streamAccumulator)
 			}},
 		}
 	case "tool_use":
-		accum.toolIndex = idx
-		accum.toolID = cs.ID
-		accum.toolName = cs.Name
-		accum.toolInput = map[string]any{}
-		accum.toolJSONBuffer = &strings.Builder{}
+		ts := &toolState{
+			id:   cs.ID,
+			name: cs.Name,
+			buf:  &strings.Builder{},
+		}
+		if accum.toolStates == nil {
+			accum.toolStates = make(map[int]*toolState)
+		}
+		accum.toolStates[idx] = ts
+		accum.toolOrder = append(accum.toolOrder, idx)
 		return nil
 	case "thinking":
 		accum.thinkingIndex = idx
@@ -148,8 +177,8 @@ func mapContentBlockDelta(event *anthropicStreamEvent, accum *streamAccumulator)
 			}},
 		}
 	case "input_json_delta":
-		if accum.toolJSONBuffer != nil && d.PartialJSON != "" {
-			accum.toolJSONBuffer.WriteString(d.PartialJSON)
+		if ts, ok := accum.toolStates[idx]; ok && ts.buf != nil && d.PartialJSON != "" {
+			ts.buf.WriteString(d.PartialJSON)
 		}
 		return nil
 	case "thinking_delta":
@@ -177,25 +206,29 @@ func mapContentBlockStop(event *anthropicStreamEvent, accum *streamAccumulator) 
 	switch idx {
 	case accum.textIndex:
 		accum.textBuffer = nil
-	case accum.toolIndex:
-		if accum.toolJSONBuffer != nil && accum.toolJSONBuffer.Len() > 0 {
-			var input map[string]any
-			if err := json.Unmarshal([]byte(accum.toolJSONBuffer.String()), &input); err != nil {
-				input = map[string]any{"_raw": accum.toolJSONBuffer.String()}
-			}
-			accum.lastToolCall = apitypes.ToolCall{
-				ID:   accum.toolID,
-				Type: "function",
-				Function: apitypes.FunctionCall{
-					Name:      accum.toolName,
-					Arguments: mapToolOutput(input),
-				},
-			}
-		}
-		accum.toolInput = nil
-		accum.toolJSONBuffer = nil
 	case accum.thinkingIndex:
 		accum.thinkingBuffer = nil
+	default:
+		// Tool block stop — finalize that tool's accumulated JSON.
+		ts, ok := accum.toolStates[idx]
+		if !ok {
+			break
+		}
+		if ts.buf != nil && ts.buf.Len() > 0 {
+			var input map[string]any
+			if err := json.Unmarshal([]byte(ts.buf.String()), &input); err != nil {
+				input = map[string]any{"_raw": ts.buf.String()}
+			}
+			accum.toolCalls = append(accum.toolCalls, apitypes.ToolCall{
+				ID:   ts.id,
+				Type: "function",
+				Function: apitypes.FunctionCall{
+					Name:      ts.name,
+					Arguments: mapToolOutput(input),
+				},
+			})
+		}
+		delete(accum.toolStates, idx)
 	}
 
 	return nil
@@ -215,8 +248,8 @@ func mapMessageDelta(event *anthropicStreamEvent, accum *streamAccumulator) *api
 		FinishReason: &finishReason,
 	}}
 
-	if accum.lastToolCall.ID != "" {
-		choices[0].Delta.ToolCalls = []apitypes.ToolCall{accum.lastToolCall}
+	if len(accum.toolCalls) > 0 {
+		choices[0].Delta.ToolCalls = accum.toolCalls
 	}
 
 	chunk := &apitypes.StreamChunk{
@@ -235,24 +268,7 @@ func mapMessageDelta(event *anthropicStreamEvent, accum *streamAccumulator) *api
 	return chunk
 }
 
-// streamAccumulator tracks state across streaming events for a single message.
-type streamAccumulator struct {
-	id             string
-	model          string
-	created        int64
-	usage          *apitypes.Usage
-	textIndex      int
-	textBuffer     *strings.Builder
-	toolIndex      int
-	toolID         string
-	toolName       string
-	toolInput      map[string]any
-	toolJSONBuffer *strings.Builder
-	lastToolCall   apitypes.ToolCall
-	thinkingIndex  int
-	thinkingBuffer *strings.Builder
-}
-
+// Reset clears all per-message state so the accumulator can be reused.
 func (a *streamAccumulator) Reset() {
 	a.id = ""
 	a.model = ""
@@ -260,19 +276,16 @@ func (a *streamAccumulator) Reset() {
 	a.usage = nil
 	a.textIndex = -1
 	a.textBuffer = nil
-	a.toolIndex = -1
-	a.toolID = ""
-	a.toolName = ""
-	a.toolInput = nil
-	a.toolJSONBuffer = nil
-	a.lastToolCall = apitypes.ToolCall{}
 	a.thinkingIndex = -1
 	a.thinkingBuffer = nil
+	a.toolStates = nil
+	a.toolOrder = nil
+	a.toolCalls = nil
 }
 
 // NewStreamAccumulator creates a fresh stream accumulator.
 func NewStreamAccumulator() *streamAccumulator {
-	return &streamAccumulator{textIndex: -1, toolIndex: -1, thinkingIndex: -1}
+	return &streamAccumulator{textIndex: -1, thinkingIndex: -1}
 }
 
 // GetText returns the accumulated text content.

@@ -13,6 +13,10 @@ func MapRequest(req *apitypes.ChatCompletionRequest) *anthropicMessagesRequest {
 		return nil
 	}
 
+	if len(req.ResponseFormat) > 0 {
+		return nil
+	}
+
 	out := &anthropicMessagesRequest{
 		Model:     req.Model,
 		MaxTokens: 1024,
@@ -137,8 +141,10 @@ func mapMessage(m apitypes.Message) anthropicMessage {
 
 func mapRole(role string) string {
 	switch role {
-	case "assistant", "user", "tool":
-		return role
+	case "assistant":
+		return "assistant"
+	case "user", "tool":
+		return "user"
 	default:
 		return "user"
 	}

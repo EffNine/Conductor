@@ -46,6 +46,7 @@ func MapResponse(modelID string, resp *anthropicMessageResponse) *apitypes.ChatC
 	if thinkingContent != "" {
 		msg.Reasoning = thinkingContent
 	}
+	msg.Normalize()
 
 	usage := mapUsage(&resp.Usage)
 
