@@ -2,7 +2,6 @@ package cache
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -230,28 +229,4 @@ func EncodeDuration(d time.Duration) int64 {
 // DecodeDuration decodes nanoseconds to time.Duration.
 func DecodeDuration(nanos int64) time.Duration {
 	return time.Duration(nanos)
-}
-
-// MarshalBinaryInt64 serializes an int64 to bytes (little-endian).
-func MarshalBinaryInt64(v int64) []byte {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, uint64(v))
-	return b
-}
-
-// UnmarshalBinaryInt64 deserializes bytes to int64 (little-endian).
-func UnmarshalBinaryInt64(b []byte) int64 {
-	return int64(binary.LittleEndian.Uint64(b))
-}
-
-// MarshalBinaryUint32 serializes a uint32 to bytes (little-endian).
-func MarshalBinaryUint32(v uint32) []byte {
-	b := make([]byte, 4)
-	binary.LittleEndian.PutUint32(b, v)
-	return b
-}
-
-// UnmarshalBinaryUint32 deserializes bytes to uint32 (little-endian).
-func UnmarshalBinaryUint32(b []byte) uint32 {
-	return binary.LittleEndian.Uint32(b)
 }

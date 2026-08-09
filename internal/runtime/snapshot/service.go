@@ -2,6 +2,7 @@
 package snapshot
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -21,18 +22,18 @@ type Snapshot struct {
 
 // ProviderState represents the state of a single provider in a snapshot.
 type ProviderState struct {
-	Name            string            `json:"name"`
+	Name            string                `json:"name"`
 	State           runtime.ProviderState `json:"state"`
-	LatencyMs       int64             `json:"latency_ms"`
-	ErrorRate       float64           `json:"error_rate"`
-	Capacity        float64           `json:"capacity"`
-	SuccessCount    int64             `json:"success_count"`
-	FailureCount    int64             `json:"failure_count"`
-	TotalRequests   int64             `json:"total_requests"`
-	IsHealthy       bool              `json:"is_healthy"`
-	LastError       string            `json:"last_error,omitempty"`
-	LastHealthCheck time.Time         `json:"last_health_check"`
-	Metadata        map[string]any    `json:"metadata,omitempty"`
+	LatencyMs       int64                 `json:"latency_ms"`
+	ErrorRate       float64               `json:"error_rate"`
+	Capacity        float64               `json:"capacity"`
+	SuccessCount    int64                 `json:"success_count"`
+	FailureCount    int64                 `json:"failure_count"`
+	TotalRequests   int64                 `json:"total_requests"`
+	IsHealthy       bool                  `json:"is_healthy"`
+	LastError       string                `json:"last_error,omitempty"`
+	LastHealthCheck time.Time             `json:"last_health_check"`
+	Metadata        map[string]any        `json:"metadata,omitempty"`
 }
 
 // GlobalState captures system-wide runtime state.
@@ -73,7 +74,7 @@ func (s *Service) Create(providers map[string]runtime.ProviderRuntime) *Snapshot
 	var totalFailures int64
 
 	for name, runtime := range providers {
-		snap := runtime.Snapshot(nil)
+		snap := runtime.Snapshot(context.Background())
 		stats := getStats(runtime)
 
 		ps := ProviderState{
@@ -116,7 +117,7 @@ func (s *Service) Create(providers map[string]runtime.ProviderRuntime) *Snapshot
 	}
 
 	snap := &Snapshot{
-		Version: s.currentVersion,
+		Version:   s.currentVersion,
 		Timestamp: time.Now().UTC(),
 		Providers: providerStates,
 		GlobalState: GlobalState{

@@ -17,12 +17,12 @@ type DecisionContext struct {
 
 // RequestSpec describes the incoming chat completion request.
 type RequestSpec struct {
-	Model       string
-	Stream      bool
-	Messages    []MessageSpec
-	Tools       []ToolSpec
-	HasImage    bool
-	HasTools    bool
+	Model        string
+	Stream       bool
+	Messages     []MessageSpec
+	Tools        []ToolSpec
+	HasImage     bool
+	HasTools     bool
 	MessageCount int
 }
 
@@ -88,7 +88,7 @@ type TaskMetadata struct {
 // NewDecisionContextBuilder creates a builder for DecisionContext.
 func NewDecisionContextBuilder() *DecisionContextBuilder {
 	return &DecisionContextBuilder{
-		schema: NewSchemaMetadata("decision_context"),
+		schema:     NewSchemaMetadata("decision_context"),
 		decisionID: NewDecisionID(),
 	}
 }

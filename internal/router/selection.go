@@ -23,32 +23,32 @@ type candidateInfo struct {
 
 // RoutingDecision is the result of a routing decision.
 type RoutingDecision struct {
-	SelectedProvider    string           `json:"selected_provider"`
-	SelectedModelID     string           `json:"selected_model_id"`
-	SelectedProviderID  string           `json:"selected_provider_model_id"`
-	CandidateScores     []CandidateScore `json:"candidate_scores"`
-	RejectionReasons    []RejectionReason `json:"rejection_reasons,omitempty"`
-	RoutingDurationMs   int64            `json:"routing_duration_ms"`
+	SelectedProvider   string            `json:"selected_provider"`
+	SelectedModelID    string            `json:"selected_model_id"`
+	SelectedProviderID string            `json:"selected_provider_model_id"`
+	CandidateScores    []CandidateScore  `json:"candidate_scores"`
+	RejectionReasons   []RejectionReason `json:"rejection_reasons,omitempty"`
+	RoutingDurationMs  int64             `json:"routing_duration_ms"`
 }
 
 // CandidateScore is the score for one candidate provider.
 type CandidateScore struct {
-	Provider     string         `json:"provider"`
-	ProviderID   string         `json:"provider_model_id"`
-	TotalScore   float64        `json:"total_score"`
-	HealthScore  float64        `json:"health_score"`
-	LatencyScore float64        `json:"latency_score"`
-	CostScore    float64        `json:"cost_score"`
-	CapScore     float64        `json:"capability_score"`
-	Selected     bool           `json:"selected"`
-	Rejected     bool           `json:"rejected"`
-	RejectionReason string     `json:"rejection_reason,omitempty"`
+	Provider        string  `json:"provider"`
+	ProviderID      string  `json:"provider_model_id"`
+	TotalScore      float64 `json:"total_score"`
+	HealthScore     float64 `json:"health_score"`
+	LatencyScore    float64 `json:"latency_score"`
+	CostScore       float64 `json:"cost_score"`
+	CapScore        float64 `json:"capability_score"`
+	Selected        bool    `json:"selected"`
+	Rejected        bool    `json:"rejected"`
+	RejectionReason string  `json:"rejection_reason,omitempty"`
 }
 
 // RejectionReason describes why a candidate was not selected.
 type RejectionReason struct {
-	Provider  string `json:"provider"`
-	Reason    string `json:"reason"`
+	Provider string `json:"provider"`
+	Reason   string `json:"reason"`
 }
 
 // SelectionResult is the outcome of SelectBestProvider.
@@ -60,15 +60,15 @@ type SelectionResult struct {
 
 // RouterEngine handles intelligent provider selection.
 type RouterEngine struct {
-	mu            sync.RWMutex
-	registry      *provider.Registry
-	healthStore   *health.ModelStatusStore
-	metricsStore  *MetricsStore
-	scorer        *Scorer
-	breakerPool   *BreakerPool
-	logger        *zap.Logger
-	providerCaps  map[string]Capabilities
-	costCeiling   float64
+	mu             sync.RWMutex
+	registry       *provider.Registry
+	healthStore    *health.ModelStatusStore
+	metricsStore   *MetricsStore
+	scorer         *Scorer
+	breakerPool    *BreakerPool
+	logger         *zap.Logger
+	providerCaps   map[string]Capabilities
+	costCeiling    float64
 	healthyLatency int64
 }
 
@@ -87,9 +87,9 @@ type RouterEngineConfig struct {
 // NewRouterEngine creates a new intelligent routing engine.
 func NewRouterEngine(cfg RouterEngineConfig) *RouterEngine {
 	raw := RawWeights{
-		Health:    cfg.Weights.Health,
-		Latency:   cfg.Weights.Latency,
-		Cost:      cfg.Weights.Cost,
+		Health:     cfg.Weights.Health,
+		Latency:    cfg.Weights.Latency,
+		Cost:       cfg.Weights.Cost,
 		Capability: cfg.Weights.Capability,
 	}
 	healthyLatency := cfg.HealthyLatencyMs
@@ -117,9 +117,9 @@ func NewRouterEngine(cfg RouterEngineConfig) *RouterEngine {
 func (e *RouterEngine) UpdateWeights(w config.RoutingWeights) {
 	e.mu.Lock()
 	e.scorer.UpdateWeights(RawWeights{
-		Health:    w.Health,
-		Latency:   w.Latency,
-		Cost:      w.Cost,
+		Health:     w.Health,
+		Latency:    w.Latency,
+		Cost:       w.Cost,
 		Capability: w.Capability,
 	})
 	e.mu.Unlock()
@@ -143,9 +143,9 @@ func (e *RouterEngine) SelectBestProvider(ctx context.Context, modelID string, r
 			continue
 		}
 		cands = append(cands, candidateInfo{
-			provider:    p,
+			provider:     p,
 			providerName: p.Name(),
-			modelID:     modelID,
+			modelID:      modelID,
 		})
 	}
 
@@ -154,7 +154,7 @@ func (e *RouterEngine) SelectBestProvider(ctx context.Context, modelID string, r
 	}
 
 	// Score each candidate.
-	var scores []CandidateScore
+	scores := make([]CandidateScore, 0, len(cands))
 	var rejections []RejectionReason
 	var bestScore float64 = -1
 	var bestIdx int = -1
@@ -178,8 +178,8 @@ func (e *RouterEngine) SelectBestProvider(ctx context.Context, modelID string, r
 	routingDuration := time.Since(start).Milliseconds()
 
 	decision := RoutingDecision{
-		CandidateScores:  scores,
-		RejectionReasons: rejections,
+		CandidateScores:   scores,
+		RejectionReasons:  rejections,
 		RoutingDurationMs: routingDuration,
 	}
 
@@ -202,7 +202,7 @@ func (e *RouterEngine) SelectBestProvider(ctx context.Context, modelID string, r
 	}
 
 	return &SelectionResult{
-		Decision:  decision,
+		Decision: decision,
 		Candidate: &Candidate{
 			ProviderName:    best.providerName,
 			ProviderModelID: best.modelID,
@@ -393,7 +393,7 @@ func (e *RouterEngine) GetProviderScores(capHint CapabilityHint) []ProviderScore
 		cands = append(cands, cand{providerName: p.Name(), modelID: "all"})
 	}
 
-	var out []ProviderScoreView
+	out := make([]ProviderScoreView, 0, len(cands))
 	for _, c := range cands {
 		p, _ := e.registry.Get(c.providerName)
 		if p == nil {
@@ -406,14 +406,14 @@ func (e *RouterEngine) GetProviderScores(capHint CapabilityHint) []ProviderScore
 		}, capHint)
 
 		view := ProviderScoreView{
-			Provider:    c.providerName,
-			TotalScore:  cs.TotalScore,
-			HealthScore: cs.HealthScore,
-			LatencyScore: cs.LatencyScore,
-			CostScore:   cs.CostScore,
-			CapScore:    cs.CapScore,
-			Selected:    cs.Selected,
-			Rejected:    cs.Rejected,
+			Provider:        c.providerName,
+			TotalScore:      cs.TotalScore,
+			HealthScore:     cs.HealthScore,
+			LatencyScore:    cs.LatencyScore,
+			CostScore:       cs.CostScore,
+			CapScore:        cs.CapScore,
+			Selected:        cs.Selected,
+			Rejected:        cs.Rejected,
 			RejectionReason: cs.RejectionReason,
 		}
 		out = append(out, view)

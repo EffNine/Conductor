@@ -35,9 +35,9 @@ const (
 
 // RuntimeSnapshot captures a point-in-time view of all provider runtimes.
 type RuntimeSnapshot struct {
-	Timestamp    time.Time
-	Providers    map[string]ProviderStateSnapshot
-	GlobalState  GlobalRuntimeState
+	Timestamp   time.Time
+	Providers   map[string]ProviderStateSnapshot
+	GlobalState GlobalRuntimeState
 }
 
 // ProviderStateSnapshot captures the state of a single provider runtime.
@@ -52,22 +52,22 @@ type ProviderStateSnapshot struct {
 
 // GlobalRuntimeState captures system-wide runtime state.
 type GlobalRuntimeState struct {
-	TotalProviders   int
-	HealthyProviders int
-	DegradedProviders int
+	TotalProviders     int
+	HealthyProviders   int
+	DegradedProviders  int
 	UnhealthyProviders int
-	AvgLatencyMs     int64
-	TotalQPS         float64
+	AvgLatencyMs       int64
+	TotalQPS           float64
 }
 
 // StateChange represents a transition in provider runtime state.
 type StateChange struct {
-	ProviderName    string
-	From            ProviderState
-	To              ProviderState
-	Reason          string
-	Timestamp       time.Time
-	Metadata        map[string]any
+	ProviderName string
+	From         ProviderState
+	To           ProviderState
+	Reason       string
+	Timestamp    time.Time
+	Metadata     map[string]any
 }
 
 // ProviderRuntime is the interface that all provider runtimes must implement.

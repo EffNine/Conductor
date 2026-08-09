@@ -142,9 +142,7 @@ func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatC
 
 		for scanner.Scan() {
 			line := scanner.Text()
-			if strings.HasPrefix(line, "data: ") {
-				line = line[6:]
-			}
+			line = strings.TrimPrefix(line, "data: ")
 			if strings.TrimSpace(line) == "" {
 				continue
 			}

@@ -42,8 +42,8 @@ type Factor interface {
 type Candidate struct {
 	ProviderName    string
 	ProviderModelID string
-	HealthScore     float64 // from health status
-	LatencyMs       int64   // from latest probe / rolling average
+	HealthScore     float64  // from health status
+	LatencyMs       int64    // from latest probe / rolling average
 	CostPerToken    *float64 // nil if unknown
 	Capabilities    Capabilities
 	IsAvailable     bool // false when breaker is open or provider disabled
@@ -56,7 +56,7 @@ type FactorFn struct {
 	fn   func(Candidate) float64
 }
 
-func (f *FactorFn) Name() string { return f.name }
+func (f *FactorFn) Name() string              { return f.name }
 func (f *FactorFn) Score(c Candidate) float64 { return f.fn(c) }
 
 // NewFactor creates a Factor from a function.
@@ -96,7 +96,7 @@ func (f *HealthFactor) Score(c Candidate) float64 {
 	var latencyScore float64
 	if c.LatencyMs <= 0 {
 		latencyScore = 0.5 // unknown latency is neutral
-	} else if c.LatencyMs <= int64(f.healthyLatencyMs) {
+	} else if c.LatencyMs <= f.healthyLatencyMs {
 		latencyScore = 1.0
 	} else {
 		latencyScore = 1.0 - 0.5*float64(c.LatencyMs-f.healthyLatencyMs)/float64(f.healthyLatencyMs)
@@ -268,11 +268,11 @@ func (s *Scorer) FactorScores(c Candidate, capHint CapabilityHint) map[string]fl
 
 // RollingLatency tracks a rolling average latency for a provider.
 type RollingLatency struct {
-	mu      sync.Mutex
-	values  [64]int64
-	idx     int
-	count   int
-	sum     int64
+	mu     sync.Mutex
+	values [64]int64
+	idx    int
+	count  int
+	sum    int64
 }
 
 // NewRollingLatency creates a rolling latency tracker with a window of 64 samples.
@@ -310,13 +310,12 @@ func (r *RollingLatency) Average() int64 {
 
 // ProviderMetrics holds per-provider metrics for the routing engine.
 type ProviderMetrics struct {
-	mu               sync.Mutex
-	latency          *RollingLatency
-	lastHealthScore  float64
-	requestCount     atomic.Int64
-	successCount     atomic.Int64
-	failureCount     atomic.Int64
-	lastRequestTime  time.Time
+	mu              sync.Mutex
+	latency         *RollingLatency
+	requestCount    atomic.Int64
+	successCount    atomic.Int64
+	failureCount    atomic.Int64
+	lastRequestTime time.Time
 }
 
 // NewProviderMetrics creates a new ProviderMetrics.

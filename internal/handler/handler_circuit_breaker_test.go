@@ -19,10 +19,10 @@ func TestHandleCircuitBreakerStatusReturnsJSON(t *testing.T) {
 	reg := provider.NewRegistry()
 	engine := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
-			Enabled:            true,
-			FailureThreshold:   3,
-			RecoveryTimeout:    30000000000,
-			SuccessThreshold:   2,
+			Enabled:          true,
+			FailureThreshold: 3,
+			RecoveryTimeout:  30000000000,
+			SuccessThreshold: 2,
 		},
 	}, reg)
 	h := handler.New(engine, reg, nil, nil, nil, nil)

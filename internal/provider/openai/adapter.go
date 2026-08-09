@@ -27,13 +27,13 @@ func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
 	p.Base = openaibase.New("openai", apiKey, baseURL, timeout,
 		openaibase.WithPricing(openaiPricing),
 		openaibase.WithCapabilities(provider.Capabilities{
-			Streaming:    true,
-			Vision:       true,
-			Reasoning:    true,
-			ToolCalling:  true,
-			Structured:   true,
-			LongContext:  true,
-			Embeddings:   true,
+			Streaming:   true,
+			Vision:      true,
+			Reasoning:   true,
+			ToolCalling: true,
+			Structured:  true,
+			LongContext: true,
+			Embeddings:  true,
 		}),
 	)
 	return p
@@ -45,13 +45,13 @@ func (p *Provider) Name() string { return p.name }
 // GetMetadata returns metadata for this provider.
 func (p *Provider) GetMetadata() provider.Metadata {
 	meta := provider.NewMetadata(p.name, provider.Capabilities{
-		Streaming:    true,
-		Vision:       true,
-		Reasoning:    true,
-		ToolCalling:  true,
-		Structured:   true,
-		LongContext:  true,
-		Embeddings:   true,
+		Streaming:   true,
+		Vision:      true,
+		Reasoning:   true,
+		ToolCalling: true,
+		Structured:  true,
+		LongContext: true,
+		Embeddings:  true,
 	})
 	meta.BaseURL = p.baseURL
 	meta.DisplayName = "OpenAI"

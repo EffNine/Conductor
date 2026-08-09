@@ -29,7 +29,7 @@ const (
 	RecoveryDetected     EventType = "provider.recovery.detected"
 
 	// Snapshot events
-	RuntimeSnapshotCreated EventType = "runtime.snapshot.created"
+	RuntimeSnapshotCreated   EventType = "runtime.snapshot.created"
 	RuntimeCheckpointCreated EventType = "runtime.checkpoint.created"
 
 	// Model events
@@ -37,17 +37,17 @@ const (
 	ModelProbed        EventType = "model.probed"
 
 	// Routing events
-	RoutingDecision        EventType = "routing.decision"
-	RoutingConfigChanged   EventType = "routing.config.changed"
+	RoutingDecision      EventType = "routing.decision"
+	RoutingConfigChanged EventType = "routing.config.changed"
 
 	// Decision pipeline events
-	DecisionStarted       EventType = "decision.started"
-	IntentResolved        EventType = "intent.resolved"
-	CapabilityResolved    EventType = "capability.resolved"
-	CandidatesGenerated   EventType = "candidates.generated"
-	ProviderSelected      EventType = "provider.selected"
-	DecisionFinished      EventType = "decision.finished"
-	DecisionTraceCreated  EventType = "decision.trace.created"
+	DecisionStarted        EventType = "decision.started"
+	IntentResolved         EventType = "intent.resolved"
+	CapabilityResolved     EventType = "capability.resolved"
+	CandidatesGenerated    EventType = "candidates.generated"
+	ProviderSelected       EventType = "provider.selected"
+	DecisionFinished       EventType = "decision.finished"
+	DecisionTraceCreated   EventType = "decision.trace.created"
 	DecisionTraceCompleted EventType = "decision.trace.completed"
 
 	// Health events
@@ -58,15 +58,15 @@ const (
 	UsageRecorded EventType = "usage.recorded"
 
 	// System events
-	SystemShutdown       EventType = "system.shutdown"
-	SystemConfigReload   EventType = "system.config.reload"
+	SystemShutdown     EventType = "system.shutdown"
+	SystemConfigReload EventType = "system.config.reload"
 )
 
 // Event represents a single message in the bus.
 type Event struct {
-	Type     EventType
-	Payload  any
-	Context  context.Context
+	Type      EventType
+	Payload   any
+	Context   context.Context
 	Timestamp int64
 }
 
@@ -75,14 +75,14 @@ type Subscriber func(Event)
 
 // EventBus is a lightweight in-process pub/sub bus.
 type EventBus struct {
-	mu      sync.RWMutex
+	mu            sync.RWMutex
 	subscriptions map[EventType][]subscriberEntry
 }
 
 type subscriberEntry struct {
-	id        uint64
+	id         uint64
 	subscriber Subscriber
-	priority  int
+	priority   int
 }
 
 var nextID uint64

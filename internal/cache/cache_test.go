@@ -140,7 +140,7 @@ func TestLRUCacheConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(id int) {
 			for j := 0; j < 100; j++ {
-				key := string(rune('a' + id)) + strconv.Itoa(j)
+				key := string(rune('a'+id)) + strconv.Itoa(j)
 				c.Set(key, []byte("value"), 5*time.Minute)
 				c.Get(key)
 			}
@@ -344,7 +344,7 @@ func TestAtomicCache(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, []byte("value1"), val)
 
-	val, ok = c.GetWithAtomic("missing")
+	_, ok = c.GetWithAtomic("missing")
 	assert.False(t, ok)
 
 	assert.Equal(t, int64(1), c.GetHits())

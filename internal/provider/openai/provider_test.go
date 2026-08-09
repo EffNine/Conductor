@@ -354,10 +354,10 @@ func TestChatCompletionToolChoiceAndResult(t *testing.T) {
 		var req struct {
 			ToolChoice interface{} `json:"tool_choice"`
 			Messages   []struct {
-				Role        string `json:"role"`
-				Content     string `json:"content"`
-				ToolCallID  string `json:"tool_call_id"`
-				ToolCalls   []struct {
+				Role       string `json:"role"`
+				Content    string `json:"content"`
+				ToolCallID string `json:"tool_call_id"`
+				ToolCalls  []struct {
 					ID       string `json:"id"`
 					Function struct {
 						Name      string `json:"name"`
@@ -466,7 +466,7 @@ func TestChatCompletionStructuredOutput(t *testing.T) {
 		ResponseFormat: map[string]interface{}{
 			"type": "json_schema",
 			"json_schema": map[string]interface{}{
-				"name": "answer",
+				"name":   "answer",
 				"strict": true,
 				"schema": map[string]interface{}{"type": "object"},
 			},
@@ -483,7 +483,7 @@ func TestChatCompletionStructuredOutput(t *testing.T) {
 func TestChatCompletionReasoning(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			ReasoningEffort string `json:"reasoning_effort"`
+			ReasoningEffort string                 `json:"reasoning_effort"`
 			Reasoning       map[string]interface{} `json:"reasoning"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -504,9 +504,9 @@ func TestChatCompletionReasoning(t *testing.T) {
 			"choices": []map[string]any{{
 				"index": 0,
 				"message": map[string]any{
-					"role":             "assistant",
-					"content":          "The answer is 42",
-					"reasoning":        "Let me think carefully.",
+					"role":              "assistant",
+					"content":           "The answer is 42",
+					"reasoning":         "Let me think carefully.",
 					"reasoning_content": "Let me think carefully.",
 				},
 				"finish_reason": "stop",
@@ -538,10 +538,10 @@ func TestChatCompletionReasoning(t *testing.T) {
 
 func TestMapRequestBasic(t *testing.T) {
 	req := &apitypes.ChatCompletionRequest{
-		Model:      "gpt-4o",
+		Model:       "gpt-4o",
 		Temperature: float64Ptr(0.7),
-		MaxTokens:  intPtr(1024),
-		Messages:   []apitypes.Message{{Role: "user", Content: "Hi"}},
+		MaxTokens:   intPtr(1024),
+		Messages:    []apitypes.Message{{Role: "user", Content: "Hi"}},
 	}
 	mapped := MapRequest(req)
 	if mapped.Model != "gpt-4o" {
@@ -1225,7 +1225,7 @@ func TestMapStreamChunkPreservesOrder(t *testing.T) {
 		Choices: []apitypes.Choice{{
 			Index: 0,
 			Delta: &apitypes.Message{
-				Role:      "assistant",
+				Role: "assistant",
 				ToolCalls: []apitypes.ToolCall{
 					{ID: "call_01", Type: "function", Function: apitypes.FunctionCall{Name: "get_weather", Arguments: `{"city":"London"}`}},
 					{ID: "call_02", Type: "function", Function: apitypes.FunctionCall{Name: "get_time", Arguments: `{"city":"London"}`}},

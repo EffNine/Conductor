@@ -29,7 +29,7 @@ func TestIntent(t *testing.T) {
 		Confidence:  0.95,
 		Description: "General chat assistance",
 		Metadata: map[string]any{
-			"language": "en",
+			"language":   "en",
 			"complexity": "medium",
 		},
 	}
@@ -71,7 +71,7 @@ func TestCapabilityRequirement(t *testing.T) {
 func TestPolicyResult(t *testing.T) {
 	result := PolicyResult{
 		Allowed: true,
-		Reason: "policy passed",
+		Reason:  "policy passed",
 	}
 
 	if !result.Allowed {

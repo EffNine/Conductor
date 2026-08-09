@@ -4,9 +4,9 @@ import "sync"
 
 // Weights holds the configured (and normalized) scoring weights for the routing engine.
 type Weights struct {
-	Health    float64
-	Latency   float64
-	Cost      float64
+	Health     float64
+	Latency    float64
+	Cost       float64
 	Capability float64
 }
 
@@ -18,18 +18,18 @@ func Normalize(raw RawWeights) Weights {
 		return Weights{0.25, 0.25, 0.25, 0.25}
 	}
 	return Weights{
-		Health:    raw.Health / total,
-		Latency:   raw.Latency / total,
-		Cost:      raw.Cost / total,
+		Health:     raw.Health / total,
+		Latency:    raw.Latency / total,
+		Cost:       raw.Cost / total,
 		Capability: raw.Capability / total,
 	}
 }
 
 // RawWeights holds the un-normalized weight values from configuration.
 type RawWeights struct {
-	Health    float64
-	Latency   float64
-	Cost      float64
+	Health     float64
+	Latency    float64
+	Cost       float64
 	Capability float64
 }
 

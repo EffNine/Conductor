@@ -134,8 +134,8 @@ func TestRuntimeSnapshotClone(t *testing.T) {
 func TestDecisionContextBuilder(t *testing.T) {
 	builder := contracts.NewDecisionContextBuilder()
 	builder.SetRequest(contracts.RequestSpec{
-		Model:       "gpt-4o",
-		Stream:      true,
+		Model:        "gpt-4o",
+		Stream:       true,
 		MessageCount: 2,
 		Messages: []contracts.MessageSpec{
 			{Role: "user", Content: "hello"},
@@ -257,9 +257,9 @@ func TestDecisionResultBuilder(t *testing.T) {
 		Selected:        true,
 	})
 	builder.SetDecision(contracts.RoutingDecision{
-		SelectedProvider:   "openai",
-		SelectedModelID:    "gpt-4o",
-		RoutingDurationMs:  15,
+		SelectedProvider:  "openai",
+		SelectedModelID:   "gpt-4o",
+		RoutingDurationMs: 15,
 	})
 	builder.SetConfidence(0.95)
 

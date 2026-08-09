@@ -483,7 +483,7 @@ func TestStreamingBasic(t *testing.T) {
 		t.Fatalf("ChatCompletionStream: %v", err)
 	}
 
-	var chunks []apitypes.StreamChunk
+	chunks := make([]apitypes.StreamChunk, 0, 4)
 	for c := range ch {
 		chunks = append(chunks, c)
 	}
@@ -547,7 +547,7 @@ func TestStreamingWithToolUse(t *testing.T) {
 		t.Fatalf("ChatCompletionStream: %v", err)
 	}
 
-	var chunks []apitypes.StreamChunk
+	chunks := make([]apitypes.StreamChunk, 0, 4)
 	for c := range ch {
 		chunks = append(chunks, c)
 	}
@@ -611,7 +611,7 @@ func TestStreamingWithThinking(t *testing.T) {
 		t.Fatalf("ChatCompletionStream: %v", err)
 	}
 
-	var chunks []apitypes.StreamChunk
+	chunks := make([]apitypes.StreamChunk, 0, 4)
 	for c := range ch {
 		chunks = append(chunks, c)
 	}
@@ -907,7 +907,6 @@ func TestStreamAccumulator(t *testing.T) {
 	}
 }
 
-
 func TestStreamingWithParallelTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -944,7 +943,7 @@ func TestStreamingWithParallelTools(t *testing.T) {
 		t.Fatalf("ChatCompletionStream: %v", err)
 	}
 
-	var chunks []apitypes.StreamChunk
+	chunks := make([]apitypes.StreamChunk, 0, 4)
 	for c := range ch {
 		chunks = append(chunks, c)
 	}
@@ -992,7 +991,7 @@ func TestMultiTurnAgentWorkflow(t *testing.T) {
 							"id": "msg_multiturn", "type": "message", "role": "assistant",
 							"model": "claude-3-5-sonnet-20241022", "stop_reason": "end_turn",
 							"content": []map[string]any{{"type": "text", "text": "It's sunny and 20°C in London"}},
-							"usage": map[string]int{"input_tokens": 30, "output_tokens": 8},
+							"usage":   map[string]int{"input_tokens": 30, "output_tokens": 8},
 						})
 						return
 					}
@@ -1096,7 +1095,7 @@ func TestStreamingInterleavedParallelTools(t *testing.T) {
 		events := []string{
 			`{"type":"message_start","message":{"id":"msg_int","type":"message","role":"assistant","model":"claude-3-7-sonnet-20250219","stop_reason":null,"usage":{"input_tokens":5,"output_tokens":0},"created":1}}`,
 			`{"type":"content_block_start","index":0,"start":{"type":"tool_use","id":"toolu_A","name":"first","input":{}}}`,
-			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1,\"c\":"}}`,  
+			`{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"a\":1,\"c\":"}}`,
 			`{"type":"content_block_start","index":1,"start":{"type":"tool_use","id":"toolu_B","name":"second","input":{}}}`,
 			`{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"b\":2}"}}`,
 			`{"type":"content_block_stop","index":1}`,
@@ -1223,7 +1222,7 @@ func TestMapResponseToolCallNoFabricatedText(t *testing.T) {
 
 func TestMapRequestRejectsResponseFormat(t *testing.T) {
 	req := &apitypes.ChatCompletionRequest{
-		Model: "claude-3-5-sonnet-20241022",
+		Model:    "claude-3-5-sonnet-20241022",
 		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
 		ResponseFormat: map[string]interface{}{
 			"type": "json_object",
@@ -1238,7 +1237,7 @@ func TestMapRequestRejectsResponseFormat(t *testing.T) {
 func TestProviderRejectsResponseFormat(t *testing.T) {
 	p := NewProvider("test-key", "https://api.anthropic.com", 10*time.Second)
 	_, err := p.ChatCompletion(context.Background(), &apitypes.ChatCompletionRequest{
-		Model: "claude-3-5-sonnet-20241022",
+		Model:    "claude-3-5-sonnet-20241022",
 		Messages: []apitypes.Message{{Role: "user", Content: "hi"}},
 		ResponseFormat: map[string]interface{}{
 			"type": "json_object",

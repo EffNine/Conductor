@@ -3,7 +3,6 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,14 +13,13 @@ import (
 
 // Engine is the response cache integrated into the request pipeline.
 type Engine struct {
-	mu       sync.RWMutex
-	cache    *LRUCache
-	config   CacheConfig
-	metrics  *metrics.Collector
-	logger   *zap.Logger
-	enabled  atomic.Bool
-	stopCh   chan struct{}
-	stopped  chan struct{}
+	cache   *LRUCache
+	config  CacheConfig
+	metrics *metrics.Collector
+	logger  *zap.Logger
+	enabled atomic.Bool
+	stopCh  chan struct{}
+	stopped chan struct{}
 }
 
 // CacheConfig holds the runtime configuration for the response cache.

@@ -12,7 +12,7 @@ import (
 )
 
 type routingStubProvider struct {
-	name       string
+	name        string
 	supportsAll bool
 }
 

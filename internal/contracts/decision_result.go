@@ -7,14 +7,14 @@ import (
 
 // DecisionResult is the immutable outcome of a routing decision.
 type DecisionResult struct {
-	SnapshotID SnapshotID       `json:"snapshot_id"`
-	Schema     SchemaMetadata   `json:"schema"`
-	DecisionID DecisionID       `json:"decision_id"`
-	Winner     *ResolvedRoute   `json:"winner"`
+	SnapshotID SnapshotID         `json:"snapshot_id"`
+	Schema     SchemaMetadata     `json:"schema"`
+	DecisionID DecisionID         `json:"decision_id"`
+	Winner     *ResolvedRoute     `json:"winner"`
 	Candidates []*CandidateRecord `json:"candidates"`
-	Confidence float64          `json:"confidence"`
-	Decision   RoutingDecision  `json:"decision"`
-	Timestamp  time.Time        `json:"timestamp"`
+	Confidence float64            `json:"confidence"`
+	Decision   RoutingDecision    `json:"decision"`
+	Timestamp  time.Time          `json:"timestamp"`
 }
 
 // ResolvedRoute is the resolved provider route for a decision.
@@ -26,26 +26,26 @@ type ResolvedRoute struct {
 
 // RoutingDecision is the result of the scoring and selection process.
 type RoutingDecision struct {
-	SelectedProvider    string            `json:"selected_provider"`
-	SelectedModelID     string            `json:"selected_model_id"`
-	SelectedProviderID  string            `json:"selected_provider_model_id"`
-	CandidateScores     []CandidateScore  `json:"candidate_scores"`
-	RejectionReasons    []RejectionReason `json:"rejection_reasons,omitempty"`
-	RoutingDurationMs   int64             `json:"routing_duration_ms"`
+	SelectedProvider   string            `json:"selected_provider"`
+	SelectedModelID    string            `json:"selected_model_id"`
+	SelectedProviderID string            `json:"selected_provider_model_id"`
+	CandidateScores    []CandidateScore  `json:"candidate_scores"`
+	RejectionReasons   []RejectionReason `json:"rejection_reasons,omitempty"`
+	RoutingDurationMs  int64             `json:"routing_duration_ms"`
 }
 
 // CandidateScore is the score for one candidate provider.
 type CandidateScore struct {
-	Provider     string  `json:"provider"`
-	ProviderID   string  `json:"provider_model_id"`
-	TotalScore   float64 `json:"total_score"`
-	HealthScore  float64 `json:"health_score"`
-	LatencyScore float64 `json:"latency_score"`
-	CostScore    float64 `json:"cost_score"`
-	CapScore     float64 `json:"capability_score"`
-	Selected     bool    `json:"selected"`
-	Rejected     bool    `json:"rejected"`
-	RejectionReason string `json:"rejection_reason,omitempty"`
+	Provider        string  `json:"provider"`
+	ProviderID      string  `json:"provider_model_id"`
+	TotalScore      float64 `json:"total_score"`
+	HealthScore     float64 `json:"health_score"`
+	LatencyScore    float64 `json:"latency_score"`
+	CostScore       float64 `json:"cost_score"`
+	CapScore        float64 `json:"capability_score"`
+	Selected        bool    `json:"selected"`
+	Rejected        bool    `json:"rejected"`
+	RejectionReason string  `json:"rejection_reason,omitempty"`
 }
 
 // NewDecisionResultBuilder creates a builder for DecisionResult.
@@ -189,12 +189,12 @@ type UsageRecord struct {
 // NewExecutionResultBuilder creates a builder for ExecutionResult.
 func NewExecutionResultBuilder(decisionID DecisionID, traceID TraceID, snapID SnapshotID) *ExecutionResultBuilder {
 	return &ExecutionResultBuilder{
-		schema:     NewSchemaMetadata("execution_result"),
+		schema:      NewSchemaMetadata("execution_result"),
 		executionID: NewExecutionID(),
-		decisionID: decisionID,
-		traceID:    traceID,
-		snapshotID: snapID,
-		timestamp:  time.Now().UTC(),
+		decisionID:  decisionID,
+		traceID:     traceID,
+		snapshotID:  snapID,
+		timestamp:   time.Now().UTC(),
 	}
 }
 
@@ -339,15 +339,15 @@ func UnmarshalExecutionResult(data []byte) (*ExecutionResult, error) {
 
 // ProviderSnapshot is the immutable contract for a single provider's state.
 type ProviderSnapshot struct {
-	ProviderID  ProviderID       `json:"provider_id"`
-	SnapshotID  SnapshotID       `json:"snapshot_id"`
-	Schema      SchemaMetadata   `json:"schema"`
-	State       string           `json:"state"`
-	LatencyMs   int64            `json:"latency_ms"`
-	ErrorRate   float64          `json:"error_rate"`
-	Capacity    float64          `json:"capacity"`
-	IsHealthy   bool             `json:"is_healthy"`
-	Timestamp   time.Time        `json:"timestamp"`
+	ProviderID ProviderID     `json:"provider_id"`
+	SnapshotID SnapshotID     `json:"snapshot_id"`
+	Schema     SchemaMetadata `json:"schema"`
+	State      string         `json:"state"`
+	LatencyMs  int64          `json:"latency_ms"`
+	ErrorRate  float64        `json:"error_rate"`
+	Capacity   float64        `json:"capacity"`
+	IsHealthy  bool           `json:"is_healthy"`
+	Timestamp  time.Time      `json:"timestamp"`
 }
 
 // NewProviderSnapshotBuilder creates a builder for ProviderSnapshot.
@@ -457,18 +457,18 @@ func UnmarshalProviderSnapshot(data []byte) (*ProviderSnapshot, error) {
 
 // Candidate is the contract-level representation of a scoring candidate.
 type Candidate struct {
-	CandidateID     CandidateID  `json:"candidate_id"`
-	ProviderID      ProviderID   `json:"provider_id"`
-	ProviderModelID string       `json:"provider_model_id"`
+	CandidateID     CandidateID    `json:"candidate_id"`
+	ProviderID      ProviderID     `json:"provider_id"`
+	ProviderModelID string         `json:"provider_model_id"`
 	Schema          SchemaMetadata `json:"schema"`
-	HealthScore     float64      `json:"health_score"`
-	LatencyMs       int64        `json:"latency_ms"`
-	CostPerToken    *float64     `json:"cost_per_token,omitempty"`
-	Capabilities    Capabilities `json:"capabilities"`
-	IsAvailable     bool         `json:"is_available"`
-	TotalScore      float64      `json:"total_score"`
-	RejectionReason string       `json:"rejection_reason,omitempty"`
-	Timestamp       time.Time    `json:"timestamp"`
+	HealthScore     float64        `json:"health_score"`
+	LatencyMs       int64          `json:"latency_ms"`
+	CostPerToken    *float64       `json:"cost_per_token,omitempty"`
+	Capabilities    Capabilities   `json:"capabilities"`
+	IsAvailable     bool           `json:"is_available"`
+	TotalScore      float64        `json:"total_score"`
+	RejectionReason string         `json:"rejection_reason,omitempty"`
+	Timestamp       time.Time      `json:"timestamp"`
 }
 
 // NewCandidateBuilder creates a builder for Candidate.
@@ -484,18 +484,18 @@ func NewCandidateBuilder(providerID ProviderID, modelID string) *CandidateBuilde
 
 // CandidateBuilder incrementally constructs an immutable Candidate.
 type CandidateBuilder struct {
-	schema      SchemaMetadata
-	candidateID CandidateID
-	providerID  ProviderID
-	modelID     string
-	healthScore float64
-	latencyMs   int64
-	costPerToken *float64
-	capabilities Capabilities
-	isAvailable bool
-	totalScore  float64
+	schema          SchemaMetadata
+	candidateID     CandidateID
+	providerID      ProviderID
+	modelID         string
+	healthScore     float64
+	latencyMs       int64
+	costPerToken    *float64
+	capabilities    Capabilities
+	isAvailable     bool
+	totalScore      float64
 	rejectionReason string
-	timestamp   time.Time
+	timestamp       time.Time
 }
 
 // SetHealthScore sets the health score.

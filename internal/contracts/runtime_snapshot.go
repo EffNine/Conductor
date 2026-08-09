@@ -19,12 +19,12 @@ type ProviderInfo struct {
 
 // GlobalRuntimeState captures system-wide runtime state.
 type GlobalRuntimeState struct {
-	TotalProviders    int     `json:"total_providers"`
-	HealthyProviders  int     `json:"healthy_providers"`
-	DegradedProviders int     `json:"degraded_providers"`
-	UnhealthyProviders int    `json:"unhealthy_providers"`
-	AvgLatencyMs      int64   `json:"avg_latency_ms"`
-	TotalQPS          float64 `json:"total_qps"`
+	TotalProviders     int     `json:"total_providers"`
+	HealthyProviders   int     `json:"healthy_providers"`
+	DegradedProviders  int     `json:"degraded_providers"`
+	UnhealthyProviders int     `json:"unhealthy_providers"`
+	AvgLatencyMs       int64   `json:"avg_latency_ms"`
+	TotalQPS           float64 `json:"total_qps"`
 }
 
 // NewRuntimeSnapshotBuilder creates a builder for RuntimeSnapshot.

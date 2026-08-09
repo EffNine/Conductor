@@ -61,15 +61,15 @@ func DefaultConfig() Config {
 
 // Stats holds cache statistics.
 type Stats struct {
-	Hits            int64
-	Misses          int64
-	Evictions       int64
-	Expirations     int64
-	SetOperations   int64
-	GetOperations   int64
+	Hits             int64
+	Misses           int64
+	Evictions        int64
+	Expirations      int64
+	SetOperations    int64
+	GetOperations    int64
 	DeleteOperations int64
-	ClearOperations int64
-	CurrentEntries  int64
+	ClearOperations  int64
+	CurrentEntries   int64
 }
 
 // Cache is the interface all cache implementations must satisfy.

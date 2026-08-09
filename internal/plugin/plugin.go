@@ -62,22 +62,22 @@ type PluginConfig struct {
 
 // PluginHealth describes the health status of a plugin.
 type PluginHealth struct {
-	OK          bool      `json:"ok"`
-	Status      string    `json:"status"`
-	LastCheck   time.Time `json:"last_check"`
-	ErrorMessage string   `json:"error_message,omitempty"`
+	OK           bool      `json:"ok"`
+	Status       string    `json:"status"`
+	LastCheck    time.Time `json:"last_check"`
+	ErrorMessage string    `json:"error_message,omitempty"`
 }
 
 // PluginCategory identifies the category a plugin belongs to.
 type PluginCategory string
 
 const (
-	CategoryProvider    PluginCategory = "provider"
-	CategoryPolicy      PluginCategory = "policy"
-	CategoryLearning    PluginCategory = "learning"
-	CategoryScheduler   PluginCategory = "scheduler"
-	CategoryDashboard   PluginCategory = "dashboard"
-	CategoryTool        PluginCategory = "tool"
+	CategoryProvider  PluginCategory = "provider"
+	CategoryPolicy    PluginCategory = "policy"
+	CategoryLearning  PluginCategory = "learning"
+	CategoryScheduler PluginCategory = "scheduler"
+	CategoryDashboard PluginCategory = "dashboard"
+	CategoryTool      PluginCategory = "tool"
 )
 
 // String returns the string representation of a PluginCategory.

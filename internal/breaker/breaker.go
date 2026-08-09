@@ -53,8 +53,8 @@ func DefaultConfig() Config {
 type Result int
 
 const (
-	ResultAllowed   Result = 0
-	ResultRejected  Result = 1
+	ResultAllowed  Result = 0
+	ResultRejected Result = 1
 )
 
 // ErrOpen is returned when the breaker is open and the request is rejected.
@@ -177,7 +177,7 @@ func (b *Breaker) Stats() BreakerStats {
 	b.mu.Unlock()
 
 	return BreakerStats{
-		State:          state,
+		State:            state,
 		FailureThreshold: cfg.FailureThreshold,
 		SuccessThreshold: cfg.SuccessThreshold,
 		RecoveryTimeout:  cfg.RecoveryTimeout,

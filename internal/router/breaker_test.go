@@ -15,10 +15,10 @@ func TestEngineBreakerPool(t *testing.T) {
 
 	engine := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
-			Enabled:            true,
-			FailureThreshold:   3,
-			RecoveryTimeout:    10,
-			SuccessThreshold:   2,
+			Enabled:          true,
+			FailureThreshold: 3,
+			RecoveryTimeout:  10,
+			SuccessThreshold: 2,
 		},
 		Routes: map[string]config.RouteConfig{
 			"gpt-4o": {Provider: "openai"},

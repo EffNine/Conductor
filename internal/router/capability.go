@@ -31,7 +31,7 @@ func MergeCapabilities(provider Capabilities, req *apitypes.ChatCompletionReques
 	// Reasoning is inferred from request reasoning controls.
 	c.Reasoning = req.SupportsReasoningParams()
 	// Structured output is inferred from response_format.
-	c.Structured = req.ResponseFormat != nil && len(req.ResponseFormat) > 0
+	c.Structured = len(req.ResponseFormat) > 0
 	// Vision is inferred from multimodal content.
 	if c.Vision {
 		for _, m := range req.Messages {
@@ -66,7 +66,7 @@ func ExtractCapabilityHint(req *apitypes.ChatCompletionRequest) CapabilityHint {
 	h.Streaming = req.Stream
 	h.ToolCalling = len(req.Tools) > 0 || req.ToolChoice != nil
 	h.Reasoning = req.SupportsReasoningParams()
-	h.Structured = req.ResponseFormat != nil && len(req.ResponseFormat) > 0
+	h.Structured = len(req.ResponseFormat) > 0
 	for _, m := range req.Messages {
 		if m.HasContentParts() {
 			for _, p := range m.Content.([]apitypes.ContentPart) {

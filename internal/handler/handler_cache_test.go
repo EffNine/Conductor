@@ -25,12 +25,12 @@ import (
 )
 
 type cachingStubProvider struct {
-	name       string
-	response   *apitypes.ChatCompletionResponse
-	streamErr  error
-	chatErr    error
-	callCount  int
-	mu         sync.Mutex
+	name      string
+	response  *apitypes.ChatCompletionResponse
+	streamErr error
+	chatErr   error
+	callCount int
+	mu        sync.Mutex
 }
 
 func (s *cachingStubProvider) Name() string { return s.name }
@@ -427,12 +427,12 @@ func TestCacheEviction(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Authorization", "Bearer test-key")
 
-	resp, err := app.Test(req)
-	require.NoError(t, err)
-	body, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
-	}
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+		}
 	}
 
 	// Cache should have evicted some entries due to max_entries=2.

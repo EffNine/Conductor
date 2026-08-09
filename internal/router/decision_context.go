@@ -54,21 +54,45 @@ type Environment struct {
 }
 
 // DecisionContext is the mutable context that flows through every pipeline stage.
+//
+// # Lifecycle
+//
+//   - The context is created by NewDecisionContext, which also creates the
+//     pipeline-scoped Go context returned by Context().
+//   - Context() returns the pipeline-scoped context. It is a single deadline
+//     (contextTimeout) shared by every downstream call made during the decision.
+//   - Close() terminates the decision context by cancelling it. It is called by
+//     the pipeline (defer dc.Close()) and is safe to call more than once.
+//   - A DecisionContext must NOT be used after Execute returns / Close() has
+//     been called: Context() will observe the cancellation, so downstream work
+//     started from it will fail.
+//   - Asynchronous consumers must NOT retain the context returned by Context()
+//     beyond the lifetime of the DecisionContext. If asynchronous consumers
+//     become a requirement, the lifecycle semantics must be explicitly
+//     redesigned (e.g. a background-scoped context) before use.
+//
+// DecisionContext is not safe for concurrent use; treat it as single-goroutine.
 type DecisionContext struct {
-	id           DecisionID
-	timestamp    time.Time
-	request      *apitypes.ChatCompletionRequest
-	runtimeSnap  RuntimeSnapshot
-	configSnap   ConfigSnapshot
-	taskMeta     TaskMetadata
-	environment  Environment
-	intent       *policy.Intent
-	capability   *policy.CapabilityRequirement
-	selection    *SelectionResult
-	policyRef    string
-	logger       *zap.Logger
-	eventBus     *eventbus.EventBus
+	id          DecisionID
+	timestamp   time.Time
+	request     *apitypes.ChatCompletionRequest
+	runtimeSnap RuntimeSnapshot
+	configSnap  ConfigSnapshot
+	taskMeta    TaskMetadata
+	environment Environment
+	intent      *policy.Intent
+	capability  *policy.CapabilityRequirement
+	selection   *SelectionResult
+	policyRef   string
+	logger      *zap.Logger
+	eventBus    *eventbus.EventBus
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
+
+// contextTimeout bounds how long any single downstream call derived from a
+// decision may run before giving up.
+const contextTimeout = 30 * time.Second
 
 // TaskMetadata carries high-level metadata about the request.
 type TaskMetadata struct {
@@ -90,6 +114,7 @@ func NewDecisionContext(
 	logger *zap.Logger,
 	eventBus *eventbus.EventBus,
 ) *DecisionContext {
+	ctx, cancel := context.WithTimeout(context.Background(), contextTimeout)
 	return &DecisionContext{
 		id:          NewDecisionID(),
 		timestamp:   time.Now().UTC(),
@@ -101,6 +126,8 @@ func NewDecisionContext(
 		policyRef:   "default",
 		logger:      logger,
 		eventBus:    eventBus,
+		ctx:         ctx,
+		cancel:      cancel,
 	}
 }
 
@@ -153,9 +180,22 @@ func (c *DecisionContext) Logger() *zap.Logger { return c.logger }
 func (c *DecisionContext) EventBus() *eventbus.EventBus { return c.eventBus }
 
 // Context returns a Go context for downstream use.
+//
+// The returned context is valid only while the DecisionContext is alive: it is
+// cancelled by Close(), so callers must not use it after the decision has
+// finished (see the DecisionContext lifecycle docs).
 func (c *DecisionContext) Context() context.Context {
-	ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-	return ctx
+	return c.ctx
+}
+
+// Close releases the decision context, cancelling any in-flight downstream
+// calls. Safe to call multiple times. After Close, DecisionContext must not be
+// used again (see the lifecycle docs on the type).
+func (c *DecisionContext) Close() {
+	if c.cancel != nil {
+		c.cancel()
+		c.cancel = nil
+	}
 }
 
 // Publish publishes an event on the pipeline's event bus.

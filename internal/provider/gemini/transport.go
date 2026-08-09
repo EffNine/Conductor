@@ -49,11 +49,6 @@ func modelIDPath(modelID string) string {
 	return strings.TrimPrefix(modelID, "models/")
 }
 
-// mapError converts an HTTP error response to a normalized ProviderError.
-func (p *Provider) mapError(resp *http.Response) *provider.ProviderError {
-	return MapError(p.name, resp)
-}
-
 // handleErrorResponse reads the body and returns a normalized ProviderError.
 func (p *Provider) handleErrorResponse(resp *http.Response) *provider.ProviderError {
 	return MapError(p.name, resp)

@@ -200,18 +200,18 @@ type openaiStreamOptions struct {
 }
 
 type openaiMessage struct {
-	Role             string              `json:"role"`
-	Content          interface{}         `json:"content,omitempty"`
-	Name             string              `json:"name,omitempty"`
-	ToolCalls        []openaiToolCall    `json:"tool_calls,omitempty"`
-	ToolCallID       string              `json:"tool_call_id,omitempty"`
-	Reasoning        string              `json:"reasoning,omitempty"`
-	ReasoningContent string              `json:"reasoning_content,omitempty"`
+	Role             string           `json:"role"`
+	Content          interface{}      `json:"content,omitempty"`
+	Name             string           `json:"name,omitempty"`
+	ToolCalls        []openaiToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
+	Reasoning        string           `json:"reasoning,omitempty"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
 }
 
 type openaiContentPart struct {
-	Type     string                  `json:"type"`
-	Text     string                  `json:"text,omitempty"`
+	Type     string                    `json:"type"`
+	Text     string                    `json:"text,omitempty"`
 	ImageURL *apitypes.ImageURLContent `json:"image_url,omitempty"`
 }
 
@@ -248,10 +248,10 @@ type openaiChatResponse struct {
 }
 
 type openaiChoice struct {
-	Index        int           `json:"index"`
-	Message      openaiMessage `json:"message"`
-	Delta        openaiMessage `json:"delta"`
-	FinishReason *string       `json:"finish_reason,omitempty"`
+	Index        int             `json:"index"`
+	Message      openaiMessage   `json:"message"`
+	Delta        openaiMessage   `json:"delta"`
+	FinishReason *string         `json:"finish_reason,omitempty"`
 	LogProbs     *openaiLogProbs `json:"logprobs,omitempty"`
 }
 
@@ -263,33 +263,17 @@ type openaiLogProbs struct {
 }
 
 type openaiUsage struct {
-	PromptTokens              int                `json:"prompt_tokens"`
-	CompletionTokens          int                `json:"completion_tokens"`
-	TotalTokens               int                `json:"total_tokens"`
-	PromptTokensDetails       *openaiTokenDetails `json:"prompt_tokens_details,omitempty"`
-	CompletionTokensDetails   *openaiTokenDetails `json:"completion_tokens_details,omitempty"`
+	PromptTokens            int                 `json:"prompt_tokens"`
+	CompletionTokens        int                 `json:"completion_tokens"`
+	TotalTokens             int                 `json:"total_tokens"`
+	PromptTokensDetails     *openaiTokenDetails `json:"prompt_tokens_details,omitempty"`
+	CompletionTokensDetails *openaiTokenDetails `json:"completion_tokens_details,omitempty"`
 }
 
 type openaiTokenDetails struct {
-	CachedTokens               int `json:"cached_tokens,omitempty"`
-	AudioTokens                int `json:"audio_tokens,omitempty"`
-	ReasoningTokens            int `json:"reasoning_tokens,omitempty"`
-	AcceptedPredictionTokens   int `json:"accepted_prediction_tokens,omitempty"`
-	RejectedPredictionTokens   int `json:"rejected_prediction_tokens,omitempty"`
-}
-
-type openaiStreamChunk struct {
-	ID      string       `json:"id,omitempty"`
-	Object  string       `json:"object,omitempty"`
-	Created int64        `json:"created,omitempty"`
-	Model   string       `json:"model,omitempty"`
-	Choices []openaiChoice `json:"choices"`
-	Usage   *openaiUsage `json:"usage,omitempty"`
-}
-
-func ensureStreamUsage(req *openaiChatRequest) {
-	if req.StreamOptions == nil {
-		req.StreamOptions = &openaiStreamOptions{}
-	}
-	req.StreamOptions.IncludeUsage = true
+	CachedTokens             int `json:"cached_tokens,omitempty"`
+	AudioTokens              int `json:"audio_tokens,omitempty"`
+	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
+	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
+	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
 }

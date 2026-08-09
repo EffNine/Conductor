@@ -96,11 +96,11 @@ func (c *LRUCache) Set(key string, value []byte, ttl time.Duration) {
 
 	// Insert new item at front.
 	item := &cacheItem{
-		key:       key,
-		value:     value,
-		expiresAt: expiresAt,
+		key:         key,
+		value:       value,
+		expiresAt:   expiresAt,
 		accessCount: 1,
-		lastAccess: time.Now(),
+		lastAccess:  time.Now(),
 	}
 	elem := c.lru.PushFront(item)
 	c.items[key] = elem

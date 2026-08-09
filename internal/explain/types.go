@@ -33,46 +33,46 @@ const (
 
 // DecisionRationale captures the reasoning behind a routing decision.
 type DecisionRationale struct {
-	RequestID     string     `json:"request_id"`
-	SelectedModel string     `json:"selected_model"`
-	SelectedProvider string  `json:"selected_provider"`
-	DecisionReason Reason     `json:"decision_reason"`
-	Confidence    float64    `json:"confidence"`
-	Timestamp     time.Time  `json:"timestamp"`
-	Candidates    []CandidateRationale `json:"candidates,omitempty"`
-	Signals       []SignalEntry    `json:"signals,omitempty"`
-	Penalties     []PenaltyEntry   `json:"penalties,omitempty"`
-	Metadata      map[string]any   `json:"metadata,omitempty"`
+	RequestID        string               `json:"request_id"`
+	SelectedModel    string               `json:"selected_model"`
+	SelectedProvider string               `json:"selected_provider"`
+	DecisionReason   Reason               `json:"decision_reason"`
+	Confidence       float64              `json:"confidence"`
+	Timestamp        time.Time            `json:"timestamp"`
+	Candidates       []CandidateRationale `json:"candidates,omitempty"`
+	Signals          []SignalEntry        `json:"signals,omitempty"`
+	Penalties        []PenaltyEntry       `json:"penalties,omitempty"`
+	Metadata         map[string]any       `json:"metadata,omitempty"`
 }
 
 // CandidateRationale captures the reasoning for each candidate considered.
 type CandidateRationale struct {
-	Provider      string         `json:"provider"`
-	Model         string         `json:"model"`
-	Score         float64        `json:"score"`
-	Rank          int            `json:"rank"`
-	Reasons       []Reason       `json:"reasons,omitempty"`
-	Signals       []SignalEntry  `json:"signals,omitempty"`
-	Penalties     []PenaltyEntry `json:"penalties,omitempty"`
-	Rejected      bool           `json:"rejected,omitempty"`
-	RejectionReason string       `json:"rejection_reason,omitempty"`
+	Provider        string         `json:"provider"`
+	Model           string         `json:"model"`
+	Score           float64        `json:"score"`
+	Rank            int            `json:"rank"`
+	Reasons         []Reason       `json:"reasons,omitempty"`
+	Signals         []SignalEntry  `json:"signals,omitempty"`
+	Penalties       []PenaltyEntry `json:"penalties,omitempty"`
+	Rejected        bool           `json:"rejected,omitempty"`
+	RejectionReason string         `json:"rejection_reason,omitempty"`
 }
 
 // SignalEntry represents a positive signal that influenced the decision.
 type SignalEntry struct {
-	Type      string `json:"type"`
-	Value     float64 `json:"value"`
-	Weight    float64 `json:"weight"`
-	Source    string `json:"source"`
+	Type      string    `json:"type"`
+	Value     float64   `json:"value"`
+	Weight    float64   `json:"weight"`
+	Source    string    `json:"source"`
 	Timestamp time.Time `json:"timestamp"`
 }
 
 // PenaltyEntry represents a negative signal that reduced a candidate's score.
 type PenaltyEntry struct {
-	Type      string  `json:"type"`
-	Value     float64 `json:"value"`
-	Reason    string  `json:"reason"`
-	Source    string  `json:"source"`
+	Type      string    `json:"type"`
+	Value     float64   `json:"value"`
+	Reason    string    `json:"reason"`
+	Source    string    `json:"source"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

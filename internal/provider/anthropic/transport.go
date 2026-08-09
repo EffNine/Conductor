@@ -35,11 +35,6 @@ func (p *Provider) newRequest(ctx context.Context, method, path string, body []b
 	return httpReq, nil
 }
 
-// mapError converts an HTTP error response to a normalized ProviderError.
-func (p *Provider) mapError(resp *http.Response) *provider.ProviderError {
-	return MapError(p.name, resp)
-}
-
 // handleErrorResponse reads the body and returns a normalized ProviderError.
 func (p *Provider) handleErrorResponse(resp *http.Response) *provider.ProviderError {
 	return MapError(p.name, resp)

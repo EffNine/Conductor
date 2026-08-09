@@ -2,7 +2,6 @@ package gemini
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/EffNine/conductor/internal/provider"
 )
@@ -54,18 +53,4 @@ func isRetryableError(err *provider.ProviderError) bool {
 	default:
 		return false
 	}
-}
-
-// isGeminiContextExceeded detects context-length errors by message keyword.
-func isGeminiContextExceeded(err *provider.ProviderError) bool {
-	if err == nil {
-		return false
-	}
-	lower := strings.ToLower(err.Message)
-	return strings.Contains(lower, "token limit") ||
-		strings.Contains(lower, "context length") ||
-		strings.Contains(lower, "context_length") ||
-		strings.Contains(lower, "too many tokens") ||
-		strings.Contains(lower, "maximum input") ||
-		strings.Contains(lower, "input is too long")
 }

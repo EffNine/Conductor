@@ -22,10 +22,10 @@ type mockPlugin struct {
 	config      PluginConfig
 }
 
-func (m *mockPlugin) ID() string { return m.id }
-func (m *mockPlugin) Name() string { return m.name }
+func (m *mockPlugin) ID() string               { return m.id }
+func (m *mockPlugin) Name() string             { return m.name }
 func (m *mockPlugin) Category() PluginCategory { return m.category }
-func (m *mockPlugin) Version() string { return m.version }
+func (m *mockPlugin) Version() string          { return m.version }
 func (m *mockPlugin) Metadata() PluginMetadata { return m.metadata }
 func (m *mockPlugin) Init(ctx context.Context, cfg PluginConfig) error {
 	m.initCalled = true
@@ -166,10 +166,10 @@ func TestPluginManager_ListByCategory(t *testing.T) {
 func TestPluginManager_StartStop(t *testing.T) {
 	mgr := NewPluginManager().(*pluginManager)
 	p := &mockPlugin{
-		id:     "p1",
-		name:   "Plugin1",
+		id:       "p1",
+		name:     "Plugin1",
 		category: CategoryPolicy,
-		health: PluginHealth{OK: true},
+		health:   PluginHealth{OK: true},
 	}
 	require.NoError(t, mgr.Register(context.Background(), p))
 

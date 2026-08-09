@@ -93,12 +93,12 @@ func TestRuntimeSnapshot(t *testing.T) {
 	snap := RuntimeSnapshot{
 		Timestamp: time.Now(),
 		Providers: map[string]ProviderStateSnapshot{
-			"openai": {State: StateHealthy, LatencyMs: 100},
+			"openai":    {State: StateHealthy, LatencyMs: 100},
 			"anthropic": {State: StateDegraded, LatencyMs: 500},
 		},
 		GlobalState: GlobalRuntimeState{
-			TotalProviders:   2,
-			HealthyProviders: 1,
+			TotalProviders:    2,
+			HealthyProviders:  1,
 			DegradedProviders: 1,
 		},
 	}

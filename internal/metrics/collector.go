@@ -268,10 +268,10 @@ type Collector struct {
 	cacheStoreLatency  *Histogram
 
 	// Provider registry counters
-	providerRegistrations *Counter
+	providerRegistrations   *Counter
 	providerUnregistrations *Counter
-	providerLookups       *Counter
-	providerLookupLatency *Histogram
+	providerLookups         *Counter
+	providerLookupLatency   *Histogram
 
 	// Uptime
 	startTime time.Time
@@ -280,43 +280,43 @@ type Collector struct {
 // NewCollector creates a new metrics collector.
 func NewCollector() *Collector {
 	return &Collector{
-		requestsTotal:         &Counter{},
-		errorsTotal:           &Counter{},
-		streamsTotal:          &Counter{},
-		streamErrorsTotal:     &Counter{},
-		streamStarted:         &Counter{},
-		streamCompleted:       &Counter{},
-		streamCancelled:       &Counter{},
-		streamTimeout:         &Counter{},
-		streamChunksTotal:     &Counter{},
-		streamBytesTotal:      &Counter{},
-		streamDurationMs:      NewHistogram([]float64{50, 100, 250, 500, 1000, 2500, 5000, 10000}),
-		activeStreams:         &Counter{},
-		streamChunks:          NewHistogram([]float64{1, 5, 10, 25, 50, 100, 250, 500, 1000}),
-		streamBytes:           NewHistogram([]float64{1024, 4096, 16384, 65536, 262144, 1048576}),
-		providerLatency:       NewHistogram([]float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}),
-		probesTotal:           &Counter{},
-		probeSuccess:          &Counter{},
-		probeFailure:          &Counter{},
-		breakerRejections:     &Counter{},
-		breakerOpens:          &Counter{},
-		promptTokensTotal:     &Counter{},
-		completionTokensTotal: &Counter{},
-		totalTokensTotal:      &Counter{},
-		retriesTotal:          &Counter{},
-		routingDecisions:      &Counter{},
-		routingLatency:        NewHistogram([]float64{1, 5, 10, 25, 50, 100, 250}),
-		cacheHits:             &Counter{},
-		cacheMisses:           &Counter{},
-		cacheStores:           &Counter{},
-		cacheEvictions:        &Counter{},
-		cacheLookupLatency:    NewHistogram([]float64{1, 2, 5, 10, 25, 50, 100}),
-		cacheStoreLatency:     NewHistogram([]float64{1, 2, 5, 10, 25, 50, 100}),
-		providerRegistrations: &Counter{},
+		requestsTotal:           &Counter{},
+		errorsTotal:             &Counter{},
+		streamsTotal:            &Counter{},
+		streamErrorsTotal:       &Counter{},
+		streamStarted:           &Counter{},
+		streamCompleted:         &Counter{},
+		streamCancelled:         &Counter{},
+		streamTimeout:           &Counter{},
+		streamChunksTotal:       &Counter{},
+		streamBytesTotal:        &Counter{},
+		streamDurationMs:        NewHistogram([]float64{50, 100, 250, 500, 1000, 2500, 5000, 10000}),
+		activeStreams:           &Counter{},
+		streamChunks:            NewHistogram([]float64{1, 5, 10, 25, 50, 100, 250, 500, 1000}),
+		streamBytes:             NewHistogram([]float64{1024, 4096, 16384, 65536, 262144, 1048576}),
+		providerLatency:         NewHistogram([]float64{5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}),
+		probesTotal:             &Counter{},
+		probeSuccess:            &Counter{},
+		probeFailure:            &Counter{},
+		breakerRejections:       &Counter{},
+		breakerOpens:            &Counter{},
+		promptTokensTotal:       &Counter{},
+		completionTokensTotal:   &Counter{},
+		totalTokensTotal:        &Counter{},
+		retriesTotal:            &Counter{},
+		routingDecisions:        &Counter{},
+		routingLatency:          NewHistogram([]float64{1, 5, 10, 25, 50, 100, 250}),
+		cacheHits:               &Counter{},
+		cacheMisses:             &Counter{},
+		cacheStores:             &Counter{},
+		cacheEvictions:          &Counter{},
+		cacheLookupLatency:      NewHistogram([]float64{1, 2, 5, 10, 25, 50, 100}),
+		cacheStoreLatency:       NewHistogram([]float64{1, 2, 5, 10, 25, 50, 100}),
+		providerRegistrations:   &Counter{},
 		providerUnregistrations: &Counter{},
-		providerLookups:       &Counter{},
-		providerLookupLatency: NewHistogram([]float64{1, 2, 5, 10, 25, 50}),
-		startTime:             time.Now().UTC(),
+		providerLookups:         &Counter{},
+		providerLookupLatency:   NewHistogram([]float64{1, 2, 5, 10, 25, 50}),
+		startTime:               time.Now().UTC(),
 	}
 }
 
@@ -694,9 +694,9 @@ func (c *Collector) Snapshot() MetricSnapshot {
 			Buckets: c.cacheStoreLatency.Buckets(),
 			Counts:  c.cacheStoreLatency.Counts(),
 		},
-		ProviderRegistrations:    c.providerRegistrations.Get(),
-		ProviderUnregistrations:  c.providerUnregistrations.Get(),
-		ProviderLookups:          c.providerLookups.Get(),
+		ProviderRegistrations:   c.providerRegistrations.Get(),
+		ProviderUnregistrations: c.providerUnregistrations.Get(),
+		ProviderLookups:         c.providerLookups.Get(),
 		ProviderLookupLatency: MetricHistogram{
 			Sum:     c.providerLookupLatency.Sum(),
 			Count:   c.providerLookupLatency.Count(),

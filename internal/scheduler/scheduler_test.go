@@ -81,15 +81,15 @@ func TestJobRegistryList(t *testing.T) {
 	registry := NewJobRegistry()
 
 	_ = registry.Register(&Job{
-		ID:      "job-1",
-		Type:    JobTypeHealthProbe,
-		Handler: func(ctx context.Context, job *Job) error { return nil },
+		ID:       "job-1",
+		Type:     JobTypeHealthProbe,
+		Handler:  func(ctx context.Context, job *Job) error { return nil },
 		Schedule: FixedIntervalSchedule{Interval: 1 * time.Minute},
 	})
 	_ = registry.Register(&Job{
-		ID:      "job-2",
-		Type:    JobTypeCleanup,
-		Handler: func(ctx context.Context, job *Job) error { return nil },
+		ID:       "job-2",
+		Type:     JobTypeCleanup,
+		Handler:  func(ctx context.Context, job *Job) error { return nil },
 		Schedule: FixedIntervalSchedule{Interval: 5 * time.Minute},
 	})
 
@@ -103,11 +103,11 @@ func TestJobRegistryDisable(t *testing.T) {
 	registry := NewJobRegistry()
 
 	job := &Job{
-		ID:      "test-job",
-		Type:    JobTypeCleanup,
-		Handler: func(ctx context.Context, job *Job) error { return nil },
+		ID:       "test-job",
+		Type:     JobTypeCleanup,
+		Handler:  func(ctx context.Context, job *Job) error { return nil },
 		Schedule: FixedIntervalSchedule{Interval: 1 * time.Hour},
-		Enabled: true,
+		Enabled:  true,
 	}
 	_ = registry.Register(job)
 
@@ -126,9 +126,9 @@ func TestJobRegistryUnregister(t *testing.T) {
 	registry := NewJobRegistry()
 
 	job := &Job{
-		ID:      "to-remove",
-		Type:    JobTypeCleanup,
-		Handler: func(ctx context.Context, job *Job) error { return nil },
+		ID:       "to-remove",
+		Type:     JobTypeCleanup,
+		Handler:  func(ctx context.Context, job *Job) error { return nil },
 		Schedule: FixedIntervalSchedule{Interval: 1 * time.Hour},
 	}
 	_ = registry.Register(job)
@@ -149,8 +149,8 @@ func TestSchedulerErrors(t *testing.T) {
 
 	// Missing ID
 	err := registry.Register(&Job{
-		Type:    JobTypeCleanup,
-		Handler: func(ctx context.Context, job *Job) error { return nil },
+		Type:     JobTypeCleanup,
+		Handler:  func(ctx context.Context, job *Job) error { return nil },
 		Schedule: FixedIntervalSchedule{Interval: 1 * time.Hour},
 	})
 	if err == nil {

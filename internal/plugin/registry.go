@@ -32,10 +32,10 @@ type PluginRegistry interface {
 }
 
 type registry struct {
-	mu      sync.RWMutex
-	byId    map[string]Plugin
-	byName  map[string]Plugin
-	byCat   map[PluginCategory][]Plugin
+	mu     sync.RWMutex
+	byId   map[string]Plugin
+	byName map[string]Plugin
+	byCat  map[PluginCategory][]Plugin
 }
 
 // NewPluginRegistry creates a new PluginRegistry.
@@ -56,35 +56,6 @@ func (r *registry) add(p Plugin) {
 		r.byName[p.Name()] = p
 	}
 	r.byCat[p.Category()] = append(r.byCat[p.Category()], p)
-}
-
-func (r *registry) remove(id string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	p, ok := r.byId[id]
-	if !ok {
-		return
-	}
-
-	delete(r.byId, id)
-
-	if r.byName[p.Name()] == p {
-		delete(r.byName, p.Name())
-	}
-
-	categories := r.byCat[p.Category()]
-	filtered := make([]Plugin, 0, len(categories)-1)
-	for _, cp := range categories {
-		if cp.ID() != id {
-			filtered = append(filtered, cp)
-		}
-	}
-	if len(filtered) > 0 {
-		r.byCat[p.Category()] = filtered
-	} else {
-		delete(r.byCat, p.Category())
-	}
 }
 
 func (r *registry) ById(id string) (Plugin, bool) {

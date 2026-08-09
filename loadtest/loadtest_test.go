@@ -69,7 +69,7 @@ func runLoadTest(t testing.TB, cfg LoadTestConfig) (*LoadTestResult, error) {
 		minMs     atomic.Int64
 		maxMs     atomic.Int64
 	)
-	minMs.Store(int64(1<<62))
+	minMs.Store(int64(1 << 62))
 	maxMs.Store(0)
 
 	startTime := time.Now()
@@ -151,13 +151,13 @@ func runLoadTest(t testing.TB, cfg LoadTestConfig) (*LoadTestResult, error) {
 	totalDuration := time.Since(startTime)
 
 	result := &LoadTestResult{
-		TotalRequests: cfg.TotalRequests,
-		Successful:    int(successes.Load()),
-		Failed:        int(failures.Load()),
-		TotalDuration: totalDuration,
-		AvgLatency:    time.Duration(totalMs.Load() / int64(cfg.TotalRequests)) * time.Millisecond,
-		MinLatency:    time.Duration(minMs.Load()) * time.Millisecond,
-		MaxLatency:    time.Duration(maxMs.Load()) * time.Millisecond,
+		TotalRequests:  cfg.TotalRequests,
+		Successful:     int(successes.Load()),
+		Failed:         int(failures.Load()),
+		TotalDuration:  totalDuration,
+		AvgLatency:     time.Duration(totalMs.Load()/int64(cfg.TotalRequests)) * time.Millisecond,
+		MinLatency:     time.Duration(minMs.Load()) * time.Millisecond,
+		MaxLatency:     time.Duration(maxMs.Load()) * time.Millisecond,
 		RequestsPerSec: float64(cfg.TotalRequests) / totalDuration.Seconds(),
 		ErrorRate:      float64(failures.Load()) / float64(cfg.TotalRequests),
 	}
@@ -227,7 +227,7 @@ func MakeStreamChatRequest(model, content string) ([]byte, error) {
 		"messages": []map[string]string{
 			{"role": "user", "content": content},
 		},
-		"stream":  true,
+		"stream":     true,
 		"max_tokens": 64,
 	}
 	return json.Marshal(req)

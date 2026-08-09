@@ -34,15 +34,15 @@ const (
 
 // Job represents a scheduled task.
 type Job struct {
-	ID          string
-	Type        JobType
-	Name        string
-	Handler     JobHandler
-	Schedule    Schedule
-	Enabled     bool
-	Metadata    map[string]any
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        string
+	Type      JobType
+	Name      string
+	Handler   JobHandler
+	Schedule  Schedule
+	Enabled   bool
+	Metadata  map[string]any
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // JobHandler is the function executed when a job runs.
@@ -190,10 +190,10 @@ type Scheduler interface {
 
 // Errors
 var (
-	ErrInvalidJobID        = &SchedulerError{Code: "invalid_job_id", Message: "job ID is required"}
-	ErrInvalidJobHandler   = &SchedulerError{Code: "invalid_job_handler", Message: "job handler is required"}
-	ErrInvalidJobSchedule  = &SchedulerError{Code: "invalid_job_schedule", Message: "job schedule is required"}
-	ErrJobNotFound         = &SchedulerError{Code: "job_not_found", Message: "job not found"}
+	ErrInvalidJobID       = &SchedulerError{Code: "invalid_job_id", Message: "job ID is required"}
+	ErrInvalidJobHandler  = &SchedulerError{Code: "invalid_job_handler", Message: "job handler is required"}
+	ErrInvalidJobSchedule = &SchedulerError{Code: "invalid_job_schedule", Message: "job schedule is required"}
+	ErrJobNotFound        = &SchedulerError{Code: "job_not_found", Message: "job not found"}
 )
 
 // SchedulerError represents an error from the scheduler.

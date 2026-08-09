@@ -22,8 +22,6 @@ type Evictor interface {
 
 // cacheEntry holds a cache entry for eviction purposes.
 type cacheEntry struct {
-	key         string
-	value       []byte
 	expiresAt   int64 // unix nanoseconds, 0 = no expiry
 	accessCount int64
 	insertOrder int64

@@ -24,16 +24,16 @@ type DecisionPipeline struct {
 
 // PipelineConfig holds configuration for the decision pipeline.
 type PipelineConfig struct {
-	Registry           *provider.Registry
-	HealthStore        *health.ModelStatusStore
-	MetricsStore       *MetricsStore
-	BreakerPool        *BreakerPool
-	Logger             *zap.Logger
-	EventBus           *eventbus.EventBus
-	Weights            config.RoutingWeights
-	CostCeiling        float64
-	HealthyLatencyMs   int64
-	TraceStore         TraceStore
+	Registry         *provider.Registry
+	HealthStore      *health.ModelStatusStore
+	MetricsStore     *MetricsStore
+	BreakerPool      *BreakerPool
+	Logger           *zap.Logger
+	EventBus         *eventbus.EventBus
+	Weights          config.RoutingWeights
+	CostCeiling      float64
+	HealthyLatencyMs int64
+	TraceStore       TraceStore
 }
 
 // NewDecisionPipeline creates a pipeline with the default stage ordering:
@@ -116,6 +116,7 @@ func (p *DecisionPipeline) Execute(
 
 	// Create decision context.
 	dc := NewDecisionContext(req, rSnap, cfgSnap, taskMeta, env, p.logger, p.eventBus)
+	defer dc.Close()
 
 	// Create trace builder.
 	builder := NewDecisionTraceBuilder(dc.ID(), 1, rSnap)

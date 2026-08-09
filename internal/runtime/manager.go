@@ -157,12 +157,12 @@ func (m *ManagerImpl) AggregateStats() AggregateStats {
 	}
 
 	return AggregateStats{
-		TotalProviders:  snap.GlobalState.TotalProviders,
+		TotalProviders:   snap.GlobalState.TotalProviders,
 		HealthyProviders: snap.GlobalState.HealthyProviders,
-		AvgLatencyMs:    snap.GlobalState.AvgLatencyMs,
-		TotalRequests:   totalRequests,
-		TotalSuccess:    totalSuccess,
-		TotalFailure:    totalFailure,
+		AvgLatencyMs:     snap.GlobalState.AvgLatencyMs,
+		TotalRequests:    totalRequests,
+		TotalSuccess:     totalSuccess,
+		TotalFailure:     totalFailure,
 	}
 }
 

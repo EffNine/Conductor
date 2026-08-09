@@ -92,15 +92,15 @@ type EventRecord struct {
 
 // DecisionTrace is an immutable record of a single routing decision.
 type DecisionTrace struct {
-	DecisionID         DecisionID      `json:"decision_id"`
-	RuntimeSnapshotVer int64           `json:"runtime_snapshot_ver"`
-	RuntimeHash        string          `json:"runtime_hash"`
-	StageResults       []*StageResult  `json:"stage_results"`
-	Events             []EventRecord   `json:"events"`
-	CandidateList      []Candidate     `json:"candidate_list,omitempty"`
-	Winner             *ResolvedRoute  `json:"winner,omitempty"`
+	DecisionID         DecisionID        `json:"decision_id"`
+	RuntimeSnapshotVer int64             `json:"runtime_snapshot_ver"`
+	RuntimeHash        string            `json:"runtime_hash"`
+	StageResults       []*StageResult    `json:"stage_results"`
+	Events             []EventRecord     `json:"events"`
+	CandidateList      []Candidate       `json:"candidate_list,omitempty"`
+	Winner             *ResolvedRoute    `json:"winner,omitempty"`
 	RejectionReasons   []RejectionReason `json:"rejection_reasons,omitempty"`
-	Timestamp          time.Time       `json:"timestamp"`
+	Timestamp          time.Time         `json:"timestamp"`
 }
 
 // DecisionTraceBuilder incrementally constructs a DecisionTrace.

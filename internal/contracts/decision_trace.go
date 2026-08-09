@@ -8,18 +8,18 @@ import (
 // DecisionTrace is an immutable record of a single routing decision's full
 // execution timeline.
 type DecisionTrace struct {
-	TraceID            TraceID             `json:"trace_id"`
-	DecisionID         DecisionID          `json:"decision_id"`
-	SnapshotID         SnapshotID          `json:"snapshot_id"`
-	RuntimeSnapshotVer int64               `json:"runtime_snapshot_ver"`
-	RuntimeHash        string              `json:"runtime_hash"`
-	Schema             SchemaMetadata      `json:"schema"`
-	StageResults       []*StageResult      `json:"stage_results"`
-	Events             []EventRecord       `json:"events"`
-	CandidateList      []*CandidateRecord  `json:"candidate_list,omitempty"`
-	Winner             *WinnerRecord       `json:"winner,omitempty"`
-	RejectionReasons   []RejectionReason   `json:"rejection_reasons,omitempty"`
-	Timestamp          time.Time           `json:"timestamp"`
+	TraceID            TraceID            `json:"trace_id"`
+	DecisionID         DecisionID         `json:"decision_id"`
+	SnapshotID         SnapshotID         `json:"snapshot_id"`
+	RuntimeSnapshotVer int64              `json:"runtime_snapshot_ver"`
+	RuntimeHash        string             `json:"runtime_hash"`
+	Schema             SchemaMetadata     `json:"schema"`
+	StageResults       []*StageResult     `json:"stage_results"`
+	Events             []EventRecord      `json:"events"`
+	CandidateList      []*CandidateRecord `json:"candidate_list,omitempty"`
+	Winner             *WinnerRecord      `json:"winner,omitempty"`
+	RejectionReasons   []RejectionReason  `json:"rejection_reasons,omitempty"`
+	Timestamp          time.Time          `json:"timestamp"`
 }
 
 // StageResult captures the outcome of a single pipeline stage.
@@ -200,9 +200,7 @@ func (t *DecisionTrace) Clone() *DecisionTrace {
 		}
 		cp.StageResults[i] = &s
 	}
-	for i, e := range t.Events {
-		cp.Events[i] = e
-	}
+	copy(cp.Events, t.Events)
 	for i, c := range t.CandidateList {
 		cc := *c
 		cp.CandidateList[i] = &cc

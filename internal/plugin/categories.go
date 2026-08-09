@@ -61,9 +61,9 @@ type CapabilityResult struct {
 
 // PolicyResult represents the outcome of policy execution.
 type PolicyResult struct {
-	Allowed         bool
-	Modifications   *RequestModifications
-	Reason          string
+	Allowed       bool
+	Modifications *RequestModifications
+	Reason        string
 }
 
 // RequestModifications holds changes a policy wants to make to a request.
@@ -92,25 +92,25 @@ type LearningPlugin interface {
 
 // DecisionRecord captures a single routing decision for learning.
 type DecisionRecord struct {
-	RequestHash     string
-	ModelID         string
+	RequestHash      string
+	ModelID          string
 	SelectedProvider string
-	CandidateScores map[string]float64
-	Success         bool
-	LatencyMs       int64
-	Cost            float64
-	Timestamp       int64
+	CandidateScores  map[string]float64
+	Success          bool
+	LatencyMs        int64
+	Cost             float64
+	Timestamp        int64
 }
 
 // CandidateScore holds scoring data for a single candidate.
 type CandidateScore struct {
-	ProviderName  string
-	ModelID       string
-	HealthScore   float64
-	LatencyMs     int64
-	CostPerToken  *float64
-	Capabilities  map[string]bool
-	TotalScore    float64
+	ProviderName string
+	ModelID      string
+	HealthScore  float64
+	LatencyMs    int64
+	CostPerToken *float64
+	Capabilities map[string]bool
+	TotalScore   float64
 }
 
 // SchedulerPlugin extends the base Plugin interface with scheduling capabilities.

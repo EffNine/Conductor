@@ -190,10 +190,11 @@ func (m *pluginManager) Stop(ctx context.Context) error {
 
 	for _, p := range sorted {
 		stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		if err := p.Stop(stopCtx); err != nil {
+		err := p.Stop(stopCtx)
+		cancel()
+		if err != nil {
 			return fmt.Errorf("plugin: stop failed for %q: %w", p.ID(), err)
 		}
-		cancel()
 	}
 	return nil
 }

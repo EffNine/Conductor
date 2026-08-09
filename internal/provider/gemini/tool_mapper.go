@@ -26,9 +26,9 @@ type toolState struct {
 	buf       *strings.Builder // legacy: concatenated raw args fragments
 	completed bool             // legacy args assembled OR part-closed
 
-	args  map[string]string // jsonPath -> accumulated string value
-	order []string          // jsonPath publication order for deterministic output
-	opened bool             // name confirmed for fine-grained streaming
+	args   map[string]string // jsonPath -> accumulated string value
+	order  []string          // jsonPath publication order for deterministic output
+	opened bool              // name confirmed for fine-grained streaming
 }
 
 // newToolState creates a fresh tool accumulator.
@@ -66,11 +66,6 @@ func (t *toolState) appendPartial(path, value string, willContinue bool) {
 	_ = willContinue
 }
 
-// completePartial marks a fine-grained call as ready to assemble its args.
-func (t *toolState) completePartial() {
-	t.completed = true
-}
-
 // hasPartial reports whether any fine-grained partial fragments were seen.
 func (t *toolState) hasPartial() bool {
 	return len(t.args) > 0
@@ -87,13 +82,6 @@ func (t *toolState) finalize() string {
 		return ""
 	}
 	return t.buf.String()
-}
-
-// isComplete reports whether the tool call is ready to emit a tool_call delta,
-// either because legacy raw args parsed to valid JSON or because fine-grained
-// partials were closed.
-func (t *toolState) isComplete() bool {
-	return t.completed
 }
 
 // buildPartialObject assembles fine-grained partial args into a JSON object.

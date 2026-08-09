@@ -20,10 +20,10 @@ type TraceStore interface {
 
 // TraceFilters constrains a Search query.
 type TraceFilters struct {
-	Provider     string
-	ModelID      string
-	After        int64 // Unix nano timestamp
-	Before       int64 // Unix nano timestamp
-	Limit        int
-	Offset       int
+	Provider string
+	ModelID  string
+	After    int64 // Unix nano timestamp
+	Before   int64 // Unix nano timestamp
+	Limit    int
+	Offset   int
 }

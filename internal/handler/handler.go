@@ -299,11 +299,11 @@ miss:
 		h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 		h.logRequestComplete(correlationID, requestID, resolved, latency, fiber.StatusOK, false, nil)
 		if h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
-			if err := h.cacheEngine.CacheResponse(cacheKey, resp); err != nil {
+			if cacheErr := h.cacheEngine.CacheResponse(cacheKey, resp); cacheErr != nil {
 				h.logger.Warn("cache:store_failed",
 					zap.String("correlation_id", correlationID),
 					zap.String("request_id", requestID),
-					zap.Error(err),
+					zap.Error(cacheErr),
 				)
 			} else {
 				h.logger.Info("cache_store",

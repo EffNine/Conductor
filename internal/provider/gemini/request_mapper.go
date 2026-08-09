@@ -11,10 +11,10 @@ import (
 // never escapes the adapter package; the canonical contract stays untouched.
 
 type generateContentRequest struct {
-	Contents          []geminiContent       `json:"contents,omitempty"`
-	SystemInstruction *geminiContent        `json:"systemInstruction,omitempty"`
-	Tools             []geminiTool          `json:"tools,omitempty"`
-	ToolConfig        *geminiToolConfig     `json:"toolConfig,omitempty"`
+	Contents          []geminiContent         `json:"contents,omitempty"`
+	SystemInstruction *geminiContent          `json:"systemInstruction,omitempty"`
+	Tools             []geminiTool            `json:"tools,omitempty"`
+	ToolConfig        *geminiToolConfig       `json:"toolConfig,omitempty"`
 	GenerationConfig  *geminiGenerationConfig `json:"generationConfig,omitempty"`
 }
 
@@ -44,10 +44,10 @@ type geminiFileData struct {
 }
 
 type geminiFunctionCall struct {
-	Name         string                 `json:"name,omitempty"`
-	Args         json.RawMessage        `json:"args,omitempty"`
-	PartialArgs  []geminiPartialArg     `json:"partialArgs,omitempty"`
-	WillContinue bool                   `json:"willContinue,omitempty"`
+	Name         string             `json:"name,omitempty"`
+	Args         json.RawMessage    `json:"args,omitempty"`
+	PartialArgs  []geminiPartialArg `json:"partialArgs,omitempty"`
+	WillContinue bool               `json:"willContinue,omitempty"`
 }
 
 // geminiPartialArg is one fragment of a fine-grained, streamed function-call
@@ -62,7 +62,7 @@ type geminiPartialArg struct {
 }
 
 type geminiFunctionResponse struct {
-	Name     string `json:"name"`
+	Name     string          `json:"name"`
 	Response json.RawMessage `json:"response,omitempty"`
 }
 
@@ -86,18 +86,18 @@ type geminiFunctionCallingConfig struct {
 }
 
 type geminiGenerationConfig struct {
-	Temperature      *float64                `json:"temperature,omitempty"`
-	TopP             *float64                `json:"topP,omitempty"`
-	TopK             *int                    `json:"topK,omitempty"`
-	MaxOutputTokens  *int                    `json:"maxOutputTokens,omitempty"`
-	CandidateCount   *int                    `json:"candidateCount,omitempty"`
-	StopSequences    []string                `json:"stopSequences,omitempty"`
-	ResponseMimeType string                  `json:"responseMimeType,omitempty"`
-	ResponseSchema   map[string]interface{}  `json:"responseSchema,omitempty"`
-	Seed             *int                    `json:"seed,omitempty"`
-	PresencePenalty  *float64                `json:"presencePenalty,omitempty"`
-	FrequencyPenalty *float64                `json:"frequencyPenalty,omitempty"`
-	ThinkingConfig   map[string]interface{}  `json:"thinkingConfig,omitempty"`
+	Temperature      *float64               `json:"temperature,omitempty"`
+	TopP             *float64               `json:"topP,omitempty"`
+	TopK             *int                   `json:"topK,omitempty"`
+	MaxOutputTokens  *int                   `json:"maxOutputTokens,omitempty"`
+	CandidateCount   *int                   `json:"candidateCount,omitempty"`
+	StopSequences    []string               `json:"stopSequences,omitempty"`
+	ResponseMimeType string                 `json:"responseMimeType,omitempty"`
+	ResponseSchema   map[string]interface{} `json:"responseSchema,omitempty"`
+	Seed             *int                   `json:"seed,omitempty"`
+	PresencePenalty  *float64               `json:"presencePenalty,omitempty"`
+	FrequencyPenalty *float64               `json:"frequencyPenalty,omitempty"`
+	ThinkingConfig   map[string]interface{} `json:"thinkingConfig,omitempty"`
 }
 
 // MapRequest converts a canonical ChatCompletionRequest into a Gemini

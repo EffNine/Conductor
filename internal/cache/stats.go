@@ -1,29 +1,27 @@
 package cache
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 )
 
 // StatsCollector tracks cache statistics with thread-safe access.
 type StatsCollector struct {
-	mu                sync.RWMutex
-	hits              atomic.Int64
-	misses            atomic.Int64
-	evictions         atomic.Int64
-	expirations       atomic.Int64
-	setOperations     atomic.Int64
-	getOperations     atomic.Int64
-	deleteOperations  atomic.Int64
-	clearOperations   atomic.Int64
-	currentEntries    atomic.Int64
-	latencySum        atomic.Int64 // cumulative latency in nanoseconds
-	latencyCount      atomic.Int64
-	maxLatency        atomic.Int64 // max latency in nanoseconds
-	minLatency        atomic.Int64 // min latency in nanoseconds (stored as nanoseconds, initialized to max int64)
-	minLatencySet     atomic.Bool
-	lastAccessTime    atomic.Int64 // unix nanoseconds
+	hits             atomic.Int64
+	misses           atomic.Int64
+	evictions        atomic.Int64
+	expirations      atomic.Int64
+	setOperations    atomic.Int64
+	getOperations    atomic.Int64
+	deleteOperations atomic.Int64
+	clearOperations  atomic.Int64
+	currentEntries   atomic.Int64
+	latencySum       atomic.Int64 // cumulative latency in nanoseconds
+	latencyCount     atomic.Int64
+	maxLatency       atomic.Int64 // max latency in nanoseconds
+	minLatency       atomic.Int64 // min latency in nanoseconds (stored as nanoseconds, initialized to max int64)
+	minLatencySet    atomic.Bool
+	lastAccessTime   atomic.Int64 // unix nanoseconds
 }
 
 // NewStatsCollector creates a new statistics collector.

@@ -23,8 +23,6 @@ type ProviderRuntimeImpl struct {
 	state           ProviderState
 	lastHealthCheck time.Time
 	latencyMs       atomic.Int64
-	errorRateNum    atomic.Int64 // numerator for error rate
-	errorRateDenom  atomic.Int64 // denominator for error rate
 	capacity        atomic.Int64 // stored as percentage (0-100)
 	successCount    atomic.Int64
 	failureCount    atomic.Int64
@@ -214,7 +212,7 @@ func (r *ProviderRuntimeImpl) GetStats() ProviderStats {
 		TotalRequests: total,
 		SuccessCount:  success,
 		FailureCount:  failure,
-		SuccessRate:   func() float64 {
+		SuccessRate: func() float64 {
 			if total == 0 {
 				return 1.0
 			}
@@ -265,11 +263,11 @@ type ProviderStats struct {
 
 // RuntimeStore manages provider runtime instances.
 type RuntimeStore struct {
-	mu              sync.RWMutex
-	runtimes        map[string]*ProviderRuntimeImpl
-	eventBus        *eventbus.EventBus
-	watchers        map[uint64]watcherEntry
-	nextWatcherID   atomic.Uint64
+	mu            sync.RWMutex
+	runtimes      map[string]*ProviderRuntimeImpl
+	eventBus      *eventbus.EventBus
+	watchers      map[uint64]watcherEntry
+	nextWatcherID atomic.Uint64
 }
 
 type watcherEntry struct {
@@ -447,17 +445,17 @@ func (s *RuntimeStore) Update(name string, updater func(ProviderRuntime) error) 
 
 // Watch subscribes to provider state changes.
 func (s *RuntimeStore) Watch(providerName string, callback func(ProviderStateSnapshot)) uint64 {
-	id := int(s.nextWatcherID.Add(1))
+	id := s.nextWatcherID.Add(1)
 
 	s.mu.Lock()
-	s.watchers[uint64(id)] = watcherEntry{
-		id:           uint64(id),
+	s.watchers[id] = watcherEntry{
+		id:           id,
 		providerName: providerName,
 		callback:     callback,
 	}
 	s.mu.Unlock()
 
-	return uint64(id)
+	return id
 }
 
 // Unwatch unsubscribes from provider state changes.

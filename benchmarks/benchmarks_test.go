@@ -303,7 +303,7 @@ func BenchmarkCacheEngineCacheResponse(b *testing.B) {
 	resp := &apitypes.ChatCompletionResponse{
 		ID: "bench", Object: "chat.completion", Created: time.Now().Unix(), Model: "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Role: "assistant", Content: "bench"}}},
-		Usage: &apitypes.Usage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
+		Usage:   &apitypes.Usage{PromptTokens: 5, CompletionTokens: 10, TotalTokens: 15},
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -479,7 +479,7 @@ func BenchmarkRouterEngineSelectBestProvider(b *testing.B) {
 	})
 
 	req := &apitypes.ChatCompletionRequest{
-		Model: "gpt-4o",
+		Model:    "gpt-4o",
 		Messages: []apitypes.Message{{Role: "user", Content: "Hello"}},
 	}
 	b.ResetTimer()

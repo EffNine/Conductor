@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+// testContextKey is a dedicated key type so context values don't collide with
+// stdlib or other packages using the built-in string type.
+type testContextKey string
+
 func TestEventBusSubscribeUnsubscribe(t *testing.T) {
 	bus := NewEventBus()
 	var received []Event
@@ -43,7 +47,7 @@ func TestEventBusContextPropagation(t *testing.T) {
 	})
 	defer bus.Unsubscribe(ModelStatusChanged, id)
 
-	parentCtx := context.WithValue(context.Background(), "key", "value")
+	parentCtx := context.WithValue(context.Background(), testContextKey("key"), "value")
 	bus.PublishSync(parentCtx, Event{
 		Type:    ModelStatusChanged,
 		Payload: "test",

@@ -22,14 +22,14 @@ type Intent struct {
 type TaskType string
 
 const (
-	TaskTypeChat         TaskType = "chat"
-	TaskTypeCompletion   TaskType = "completion"
-	TaskTypeEmbedding    TaskType = "embedding"
-	TaskTypeVision       TaskType = "vision"
-	TaskTypeReasoning    TaskType = "reasoning"
-	TaskTypeToolCalling  TaskType = "tool_calling"
-	TaskTypeCode         TaskType = "code"
-	TaskTypeCreative     TaskType = "creative"
+	TaskTypeChat        TaskType = "chat"
+	TaskTypeCompletion  TaskType = "completion"
+	TaskTypeEmbedding   TaskType = "embedding"
+	TaskTypeVision      TaskType = "vision"
+	TaskTypeReasoning   TaskType = "reasoning"
+	TaskTypeToolCalling TaskType = "tool_calling"
+	TaskTypeCode        TaskType = "code"
+	TaskTypeCreative    TaskType = "creative"
 )
 
 // IntentResolver determines the intent of a request.
@@ -73,9 +73,9 @@ type Policy interface {
 
 // PolicyResult represents the outcome of a policy execution.
 type PolicyResult struct {
-	Allowed     bool
+	Allowed       bool
 	Modifications *RequestModifications
-	Reason      string
+	Reason        string
 }
 
 // RequestModifications holds changes a policy wants to make to a request.

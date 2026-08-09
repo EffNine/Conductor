@@ -291,10 +291,10 @@ func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error)
 
 	var catalog struct {
 		Models []struct {
-			Name          string `json:"name"`
-			DisplayName   string `json:"displayName,omitempty"`
-			Version       string `json:"version,omitempty"`
-			SupportedGen  []string `json:"supportedGenerationMethods,omitempty"`
+			Name         string   `json:"name"`
+			DisplayName  string   `json:"displayName,omitempty"`
+			Version      string   `json:"version,omitempty"`
+			SupportedGen []string `json:"supportedGenerationMethods,omitempty"`
 		} `json:"models"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&catalog); err != nil {

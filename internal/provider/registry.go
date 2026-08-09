@@ -189,7 +189,7 @@ func (r *Registry) ForEach(fn func(name string, p Provider, meta Metadata)) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for name, p := range r.providers {
-		meta, _ := r.metadata[name]
+		meta := r.metadata[name]
 		fn(name, p, meta)
 	}
 }

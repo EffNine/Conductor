@@ -21,25 +21,25 @@ type Metadata struct {
 
 // Capabilities describes what a provider supports.
 type Capabilities struct {
-	Streaming      bool
-	Vision         bool
-	Reasoning      bool
-	ToolCalling    bool
-	Structured     bool
-	LongContext    bool
-	Embeddings     bool
-	Images         bool
-	Audio          bool
-	Functions      bool
+	Streaming   bool
+	Vision      bool
+	Reasoning   bool
+	ToolCalling bool
+	Structured  bool
+	LongContext bool
+	Embeddings  bool
+	Images      bool
+	Audio       bool
+	Functions   bool
 }
 
 // NewMetadata creates a Metadata with the given name and capabilities.
 func NewMetadata(name string, caps Capabilities) Metadata {
 	return Metadata{
-		Name:         name,
-		Capabilities: caps,
+		Name:             name,
+		Capabilities:     caps,
 		RegistrationTime: time.Now().UTC(),
-		Enabled:        true,
+		Enabled:          true,
 	}
 }
 

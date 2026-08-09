@@ -27,14 +27,14 @@ func TestReasonConstants(t *testing.T) {
 func TestDecisionRationale(t *testing.T) {
 	now := time.Now()
 	rationale := DecisionRationale{
-		RequestID:      "req-123",
-		SelectedModel:  "gpt-4o",
+		RequestID:        "req-123",
+		SelectedModel:    "gpt-4o",
 		SelectedProvider: "openai",
-		DecisionReason: ReasonHealth,
-		Confidence:     0.95,
-		Timestamp:      now,
+		DecisionReason:   ReasonHealth,
+		Confidence:       0.95,
+		Timestamp:        now,
 		Metadata: map[string]any{
-			"weight_health": 0.4,
+			"weight_health":  0.4,
 			"weight_latency": 0.25,
 		},
 	}
@@ -55,12 +55,12 @@ func TestDecisionRationale(t *testing.T) {
 
 func TestCandidateRationale(t *testing.T) {
 	candidate := CandidateRationale{
-		Provider:      "anthropic",
-		Model:         "claude-3-sonnet",
-		Score:         0.85,
-		Rank:          2,
-		Reasons:       []Reason{ReasonCost, ReasonCapability},
-		Rejected:      false,
+		Provider:        "anthropic",
+		Model:           "claude-3-sonnet",
+		Score:           0.85,
+		Rank:            2,
+		Reasons:         []Reason{ReasonCost, ReasonCapability},
+		Rejected:        false,
 		RejectionReason: "",
 	}
 
@@ -94,10 +94,10 @@ func TestSignalEntry(t *testing.T) {
 
 func TestPenaltyEntry(t *testing.T) {
 	penalty := PenaltyEntry{
-		Type:     "circuit_breaker_open",
-		Value:    1.0,
-		Reason:   "provider openai has open circuit breaker",
-		Source:   "breaker_pool",
+		Type:      "circuit_breaker_open",
+		Value:     1.0,
+		Reason:    "provider openai has open circuit breaker",
+		Source:    "breaker_pool",
 		Timestamp: time.Now(),
 	}
 
@@ -112,12 +112,12 @@ func TestPenaltyEntry(t *testing.T) {
 func TestDecisionRationaleWithCandidates(t *testing.T) {
 	now := time.Now()
 	rationale := DecisionRationale{
-		RequestID:      "req-456",
-		SelectedModel:  "gpt-4o",
+		RequestID:        "req-456",
+		SelectedModel:    "gpt-4o",
 		SelectedProvider: "openai",
-		DecisionReason: ReasonCost,
-		Confidence:     0.88,
-		Timestamp:      now,
+		DecisionReason:   ReasonCost,
+		Confidence:       0.88,
+		Timestamp:        now,
 		Candidates: []CandidateRationale{
 			{
 				Provider: "openai",
