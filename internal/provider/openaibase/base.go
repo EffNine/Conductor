@@ -20,12 +20,13 @@ import (
 // Base implements provider.Provider for OpenAI-compatible upstreams.
 // It forwards chat completions, embeddings, and model listing, plus SSE streaming.
 type Base struct {
-	name        string
-	apiKey      string
-	baseURL     string
-	client      *http.Client
-	pricingFunc func(ctx context.Context) (map[string]provider.PricingInfo, error)
-	healthPath  string
+	name         string
+	apiKey       string
+	baseURL      string
+	client       *http.Client
+	pricingFunc  func(ctx context.Context) (map[string]provider.PricingInfo, error)
+	healthPath   string
+	capabilities provider.Capabilities
 }
 
 // Option configures a Base provider.
@@ -39,6 +40,11 @@ func WithPricing(fn func(ctx context.Context) (map[string]provider.PricingInfo, 
 // WithHealthPath sets the path used for health checks. Defaults to "/models".
 func WithHealthPath(path string) Option {
 	return func(b *Base) { b.healthPath = path }
+}
+
+// WithCapabilities sets the provider capabilities metadata.
+func WithCapabilities(caps provider.Capabilities) Option {
+	return func(b *Base) { b.capabilities = caps }
 }
 
 // New creates a reusable OpenAI-compatible provider base.
@@ -61,6 +67,20 @@ func New(name, apiKey, baseURL string, timeout time.Duration, opts ...Option) *B
 
 // Name returns the provider name.
 func (b *Base) Name() string { return b.name }
+
+// GetMetadata returns metadata for this provider.
+func (b *Base) GetMetadata() provider.Metadata {
+	meta := provider.DefaultMetadata(b.name)
+	meta.BaseURL = b.baseURL
+	if !zeroCapabilities(b.capabilities) {
+		meta.Capabilities = b.capabilities
+	}
+	return meta
+}
+
+func zeroCapabilities(c provider.Capabilities) bool {
+	return c == (provider.Capabilities{})
+}
 
 // ChatCompletion sends a non-streaming chat completion request.
 func (b *Base) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {

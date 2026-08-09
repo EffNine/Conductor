@@ -64,6 +64,9 @@ type Provider interface {
 
 	// SupportsModel returns true if this provider can handle the given model ID
 	SupportsModel(modelID string) bool
+
+	// GetMetadata returns metadata about this provider including capabilities
+	GetMetadata() Metadata
 }
 
 // HealthStatus represents the health status of a provider

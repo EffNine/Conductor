@@ -423,6 +423,78 @@ If `task_profiles` is omitted, the gateway uses built-in profiles derived from t
 
 Auto mode respects `catalog.curated_only`: only models advertised in `/v1/models` are candidates. Status is exposed on `GET /api/auto/status`. You can also configure an `aliases` entry such as `"nim-auto": "auto"` to expose a friendlier model name.
 
+### Intelligent Routing Engine
+
+When `routing.enabled: true`, Conductor selects the best provider for every request using a dynamic scoring engine. Providers are scored along four dimensions and the highest-scoring available provider is chosen.
+
+```yaml
+routing:
+  enabled: true
+  weights:
+    health: 40
+    latency: 25
+    cost: 15
+    capability: 20
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Turn on dynamic provider scoring | `false` |
+| `weights.health` | Weight for provider health / probe status | `40` |
+| `weights.latency` | Weight for rolling average response latency | `25` |
+| `weights.cost` | Weight for estimated token cost (lower is better) | `15` |
+| `weights.capability` | Weight for capability match (vision, reasoning, tool calling, etc.) | `20` |
+
+Weights are normalized internally; only relative values matter. Change them at runtime via config reload — no code changes required.
+
+Scoring pipeline:
+1. **Capability filter** — providers that cannot handle the request type are excluded.
+2. **Circuit breaker filter** — providers with an open breaker are penalized to 0.
+3. **Health filter** — probe status (healthy / degraded / recovering / unhealthy) maps to a health score.
+4. **Score engine** — weighted combination of health, latency, cost, and capability.
+5. **Best provider** — highest composite score wins.
+
+Dashboard: `GET /api/routing` returns current scores per provider and active weights.
+
+Metrics: `conductor_routing_decisions_total` and `conductor_routing_latency_ms` histogram are exported at `/api/metrics`.
+
+Logging: routing decisions are emitted as structured `routing_decision` logs with `selected_provider`, `candidate_scores`, `rejection_reasons`, and `routing_duration_ms`.
+
+### Streaming
+
+Streaming responses are hardened for reliability under load: client
+disconnects, provider disconnects, provider stalls and partial failures are
+all detected and cleaned up deterministically.
+
+```yaml
+stream:
+  idle_timeout: 5m
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `idle_timeout` | Maximum time a stream may go without producing a chunk before it is ended as a provider timeout. Generous by default so long-reasoning models are never cut off while making progress. `<= 0` disables the timeout. | `5m` |
+
+Dashboard: `GET /api/streams` returns active/completed/cancelled/timeout
+counts, average duration/chunks/bytes, and per-provider stream statistics.
+
+Metrics exported at `/api/metrics`:
+
+- `conductor_stream_active` — gauge of in-flight streams
+- `conductor_stream_started_total`
+- `conductor_stream_completed_total`
+- `conductor_stream_cancelled_total` — client disconnect / request cancellation
+- `conductor_stream_timeout_total` — provider idle timeout
+- `conductor_stream_errors_total` — partial failures, provider disconnects
+- `conductor_stream_chunks_total`, `conductor_stream_bytes_total`
+- `conductor_stream_duration_ms` — histogram (plus per-provider label)
+
+Logging: structured `stream_start`, `stream_chunk` (debug), `stream_complete`,
+`stream_cancel`, `stream_timeout`, `stream_provider_disconnect`,
+`stream_client_disconnect` and `stream_write_error` events, each carrying
+`correlation_id`, `request_id`, `provider`, `model`, `stream_duration_ms`,
+`chunk_count` and `bytes_sent`.
+
 ## Minimal Configuration
 
 For the simplest setup, a provider key is enough — the gateway key can be omitted locally:

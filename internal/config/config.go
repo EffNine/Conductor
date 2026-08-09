@@ -55,6 +55,10 @@ type Config struct {
 	Health    HealthConfig                `mapstructure:"health"`
 	Usage     UsageConfig                 `mapstructure:"usage"`
 	Cost      CostConfig                  `mapstructure:"cost"`
+	Routing   RoutingConfig               `mapstructure:"routing"`
+	Circuit   CircuitBreakerConfig        `mapstructure:"circuit_breaker"`
+	Cache     CacheConfig                 `mapstructure:"cache"`
+	Stream    StreamConfig                `mapstructure:"stream"`
 
 	// APIKeyJustGenerated is true when Load created and persisted a new gateway key
 	// because none was configured via env, YAML, or an existing key file.
@@ -281,6 +285,68 @@ type CostConfig struct {
 	Rates    []ManualCostRate `mapstructure:"rates"`
 }
 
+// CircuitBreakerConfig holds global circuit breaker settings.
+type CircuitBreakerConfig struct {
+	Enabled          bool          `mapstructure:"enabled"`
+	FailureThreshold int           `mapstructure:"failure_threshold"`
+	RecoveryTimeout  time.Duration `mapstructure:"recovery_timeout"`
+	SuccessThreshold int           `mapstructure:"success_threshold"`
+}
+
+// RoutingConfig controls the intelligent routing engine.
+type RoutingConfig struct {
+	// Enabled turns on dynamic provider scoring. Default false (legacy static routing).
+	Enabled bool `mapstructure:"enabled"`
+	// Weights defines how much each scoring dimension contributes to the final score.
+	Weights RoutingWeights `mapstructure:"weights"`
+}
+
+// RoutingWeights defines the relative importance of each scoring dimension.
+// Higher weight makes that signal more influential. Weights are normalized
+// internally, so absolute scale does not matter.
+type RoutingWeights struct {
+	Health     float64 `mapstructure:"health"`
+	Latency    float64 `mapstructure:"latency"`
+	Cost       float64 `mapstructure:"cost"`
+	Capability float64 `mapstructure:"capability"`
+}
+
+// DefaultRoutingWeights returns the default routing weights.
+func DefaultRoutingWeights() RoutingWeights {
+	return RoutingWeights{
+		Health:     40,
+		Latency:    25,
+		Cost:       15,
+		Capability: 20,
+	}
+}
+
+// Normalized returns weights normalized to sum to 1.
+func (w RoutingWeights) Normalized() (health, latency, cost, capability float64) {
+	total := w.Health + w.Latency + w.Cost + w.Capability
+	if total <= 0 {
+		return 0.25, 0.25, 0.25, 0.25
+	}
+	return w.Health / total, w.Latency / total, w.Cost / total, w.Capability / total
+}
+
+// CacheConfig controls response caching behaviour.
+type CacheConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	TTL            time.Duration `mapstructure:"ttl"`
+	MaxEntries     int           `mapstructure:"max_entries"`
+	EvictionPolicy string        `mapstructure:"eviction_policy"`
+}
+
+// StreamConfig controls streaming behaviour.
+type StreamConfig struct {
+	// IdleTimeout is the maximum time a stream may go without producing a
+	// chunk before it is ended as a provider timeout. It is deliberately
+	// generous so long-reasoning models are never cut off while making
+	// progress. Values <= 0 disable the timeout entirely.
+	IdleTimeout time.Duration `mapstructure:"idle_timeout"`
+}
+
 // ManualCostRate is a configured fallback Cost Rate.
 type ManualCostRate struct {
 	Provider        string  `mapstructure:"provider"`
@@ -485,6 +551,28 @@ func setDefaults(v *viper.Viper) {
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)
+
+	// Circuit breaker defaults
+	v.SetDefault("circuit_breaker.enabled", true)
+	v.SetDefault("circuit_breaker.failure_threshold", 5)
+	v.SetDefault("circuit_breaker.recovery_timeout", 30*time.Second)
+	v.SetDefault("circuit_breaker.success_threshold", 2)
+
+	// Routing defaults
+	v.SetDefault("routing.enabled", false)
+	v.SetDefault("routing.weights.health", 40.0)
+	v.SetDefault("routing.weights.latency", 25.0)
+	v.SetDefault("routing.weights.cost", 15.0)
+	v.SetDefault("routing.weights.capability", 20.0)
+
+	// Cache defaults
+	v.SetDefault("cache.enabled", true)
+	v.SetDefault("cache.ttl", 10*time.Minute)
+	v.SetDefault("cache.max_entries", 10000)
+	v.SetDefault("cache.eviction_policy", "lru")
+
+	// Streaming defaults
+	v.SetDefault("stream.idle_timeout", 5*time.Minute)
 
 	// Cost defaults
 	v.SetDefault("cost.enabled", true)

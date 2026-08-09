@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,6 +137,47 @@ func TestHandleDashboardModelsReturnsMergedCatalog(t *testing.T) {
 	}
 }
 
+func TestHandleMetricsReturnsPrometheusFormat(t *testing.T) {
+	app, _ := setupTestApp(t)
+	req, _ := http.NewRequest("GET", "/api/metrics", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "text/plain; version=0.0.4; charset=utf-8" {
+		t.Fatalf("Content-Type = %q, want text/plain; version=0.0.4; charset=utf-8", contentType)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	output := string(body)
+
+	// Verify key metrics are present
+	if !strings.Contains(output, "conductor_requests_total") {
+		t.Fatal("missing conductor_requests_total in metrics output")
+	}
+	if !strings.Contains(output, "conductor_errors_total") {
+		t.Fatal("missing conductor_errors_total in metrics output")
+	}
+	if !strings.Contains(output, "conductor_provider_latency_ms") {
+		t.Fatal("missing conductor_provider_latency_ms in metrics output")
+	}
+	if !strings.Contains(output, "conductor_uptime_seconds") {
+		t.Fatal("missing conductor_uptime_seconds in metrics output")
+	}
+	if !strings.Contains(output, "conductor_build_info") {
+		t.Fatal("missing conductor_build_info in metrics output")
+	}
+}
+
 func setupTestApp(t *testing.T) (*fiber.App, *database.Database) {
 	t.Helper()
 	cfg := &config.Config{APIKey: "test-key"}
@@ -152,6 +194,8 @@ func setupTestApp(t *testing.T) (*fiber.App, *database.Database) {
 	app := fiber.New()
 	authService := auth.NewService("test-key")
 	app.Use(func(c *fiber.Ctx) error {
+		c.Locals("correlation_id", "test-corr-"+uuid.New().String()[:8])
+		c.Locals("request_id", "test-req-"+uuid.New().String()[:8])
 		key := c.Get("Authorization")
 		if len(key) > 7 && key[:7] == "Bearer " {
 			key = key[7:]
@@ -179,7 +223,7 @@ func seedUsage(db *database.Database) {
 	}
 }
 
-func openTestDB(t *testing.T) *database.Database {
+func openTestDB(t testing.TB) *database.Database {
 	t.Helper()
 	db, err := database.Connect(&config.DatabaseConfig{
 		Driver:       "sqlite",
@@ -229,3 +273,7 @@ func (s *stubProvider) HealthCheck(context.Context) (*provider.HealthStatus, err
 }
 
 func (s *stubProvider) SupportsModel(string) bool { return false }
+
+func (s *stubProvider) GetMetadata() provider.Metadata {
+	return provider.DefaultMetadata(s.name)
+}

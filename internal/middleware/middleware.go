@@ -19,6 +19,12 @@ func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, log
 	// Request ID
 	app.Use(requestid.New())
 
+	// Correlation ID (for external tracing)
+	app.Use(CorrelationID())
+
+	// Request context ID (for internal tracing, reuses requestid if present)
+	app.Use(RequestContextID())
+
 	// CORS
 	if cfg.Server.CORS.Enabled {
 		allowOrigins := joinStrings(cfg.Server.CORS.Origins)
@@ -95,7 +101,8 @@ func Logging(logger *zap.Logger) fiber.Handler {
 			zap.String("path", c.Path()),
 			zap.Int("status", c.Response().StatusCode()),
 			zap.Duration("duration", duration),
-			zap.String("request_id", c.Locals("requestid").(string)),
+			zap.String("request_id", c.Locals("request_id").(string)),
+			zap.String("correlation_id", c.Locals("correlation_id").(string)),
 		)
 
 		return err

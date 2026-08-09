@@ -224,6 +224,14 @@ curl http://localhost:8080/api/usage/costs \
 # Recent request logs
 curl http://localhost:8080/api/logs \
   -H "Authorization: Bearer your-key"
+
+# Streaming pipeline stats (active/completed/cancelled/timeout, per-provider)
+curl http://localhost:8080/api/streams \
+  -H "Authorization: Bearer your-key"
+
+# Prometheus metrics
+curl http://localhost:8080/api/metrics \
+  -H "Authorization: Bearer your-key"
 ```
 
 Model online status (especially for NVIDIA NIM free vs unreachable endpoints) is documented in [Configuration](docs/configuration.md#model-reachability), [API](docs/api.md#model-reachability), and [Providers](docs/providers.md#model-reachability-nvidia-nim).

@@ -310,6 +310,9 @@ func (p *probeTestProvider) HealthCheck(context.Context) (*provider.HealthStatus
 }
 
 func (p *probeTestProvider) SupportsModel(string) bool { return true }
+func (p *probeTestProvider) GetMetadata() provider.Metadata {
+	return provider.DefaultMetadata(p.name)
+}
 
 // staticOnlyProvider is a provider whose catalog is built exclusively from the
 // configured static model list. ListModels always returns an error so the
@@ -343,6 +346,9 @@ func (p *staticOnlyProvider) HealthCheck(context.Context) (*provider.HealthStatu
 }
 
 func (p *staticOnlyProvider) SupportsModel(string) bool { return true }
+func (p *staticOnlyProvider) GetMetadata() provider.Metadata {
+	return provider.DefaultMetadata(p.name)
+}
 
 func TestModelProberOmitsThinkingBudget(t *testing.T) {
 	var gotBody map[string]any

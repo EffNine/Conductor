@@ -286,6 +286,16 @@ logging:
   log_prompts: false
   log_responses: false
 
+# Observability
+# Correlation IDs are auto-generated per request (X-Correlation-ID header).
+# Metrics are exported at GET /api/metrics in Prometheus exposition format.
+# Structured request lifecycle logs include correlation_id, request_id,
+# provider, latency_ms, and stream flags.
+observability:
+  # Enable structured request lifecycle logging (request:start, request:complete).
+  # Default true.
+  request_logging: true
+
 # Rate limiting
 rate_limit:
   enabled: true
@@ -344,4 +354,44 @@ cost:
       unit_size: 1000
       input_price: 0.0
       output_price: 0.0
+
+# Circuit breaker (per-provider)
+# When enabled, each provider gets a breaker that opens after consecutive failures,
+# waits for recovery_timeout, then allows a probe in half-open; successes close it,
+# failures reopen it.
+circuit_breaker:
+  enabled: true
+  failure_threshold: 5
+  recovery_timeout: 30s
+  success_threshold: 2
+
+# Intelligent routing engine (optional)
+# When enabled, the gateway scores all registered providers on every request
+# using configurable weights for health, latency, cost, and capability match.
+# The highest-scoring available provider is selected.
+# Disabled by default to preserve legacy static routing behaviour.
+routing:
+  enabled: false
+  weights:
+    health: 40
+    latency: 25
+    cost: 15
+    capability: 20
+
+# Response cache (optional)
+# Caches successful non-streaming chat completions by request hash.
+# Disabled requests, streaming, errors, and rate limits are never cached.
+cache:
+  enabled: true
+  ttl: 10m
+  max_entries: 10000
+  eviction_policy: "lru"
+
+# Streaming behaviour.
+# idle_timeout is the maximum time a stream may go without producing a chunk
+# before it is ended as a provider timeout. Generous by default so long
+# reasoning models are never cut off while making progress. Values <= 0
+# disable the timeout.
+stream:
+  idle_timeout: 5m
 

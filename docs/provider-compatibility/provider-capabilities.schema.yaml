@@ -1,0 +1,444 @@
+# Provider Capabilities Schema
+#
+# Version: 1.0.0
+# Last updated: 2026-08-08
+#
+# Machine-readable schema for provider capability metadata.
+# Used by Conductor's routing engine, dashboard API, and scorecard system.
+#
+# See also:
+#   - docs/provider-compatibility/compatibility-matrix.md
+#   - docs/provider-compatibility/provider-scorecard.md
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ProviderCapabilities
+description: >
+  Defines the capability surface of an AI provider as recognized by Conductor.
+  Each field indicates whether the provider supports a specific capability
+  and provides metadata about the nature of that support.
+type: object
+required:
+  - provider
+  - model_id
+properties:
+  provider:
+    type: string
+    description: "Provider identifier (e.g. 'openai', 'anthropic', 'nvidia_nim')"
+    example: "openai"
+
+  model_id:
+    type: string
+    description: "Model identifier as used in Conductor routes (e.g. 'gpt-4o')"
+    example: "gpt-4o"
+
+  provider_model_id:
+    type: string
+    description: "Exact model ID sent to the upstream provider API"
+    example: "gpt-4o-2024-05-13"
+
+  chat:
+    type: object
+    description: "Non-streaming chat completion support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports chat completions"
+        example: true
+      native_endpoint:
+        type: string
+        description: "Native API endpoint path"
+        example: "/v1/chat/completions"
+      openai_compatible:
+        type: boolean
+        description: "Whether the native endpoint matches the OpenAI chat completions shape"
+        example: true
+
+  streaming:
+    type: object
+    description: "Server-sent events (SSE) streaming support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports streaming responses"
+        example: true
+      native_endpoint:
+        type: string
+        description: "Streaming endpoint path"
+        example: "/v1/chat/completions"
+      usage_in_stream:
+        type: boolean
+        description: "Whether token usage is reported in the final stream chunk"
+        example: true
+      idle_timeout_safe:
+        type: boolean
+        description: "Whether the provider handles long idle periods without closing the stream (important for reasoning models)"
+        example: true
+
+  tool_call:
+    type: object
+    description: "Single tool calling support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports tool/function calling"
+        example: true
+      parallel_supported:
+        type: boolean
+        description: "Whether the provider supports parallel tool calls in a single response"
+        example: true
+      schema_validation:
+        type: string
+        enum: [strict, loose, none]
+        description: "Level of JSON schema validation for tool input"
+        example: "strict"
+      max_tools_per_call:
+        type: integer
+        description: "Maximum number of tools that can be called in parallel (0 = unlimited)"
+        example: 128
+      tool_choice_supported:
+        type: boolean
+        description: "Whether tool_choice parameter is supported (auto, none, required, specific)"
+        example: true
+
+  parallel_tool_call:
+    type: object
+    description: "Parallel tool calling support (subset of tool_call)"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether multiple tools can be called simultaneously"
+        example: true
+      max_parallel:
+        type: integer
+        description: "Maximum number of parallel tool calls"
+        example: 128
+
+  function_call:
+    type: object
+    description: "Legacy functions parameter support (pre-tools API)"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the legacy functions parameter is supported"
+        example: false
+      deprecated:
+        type: boolean
+        description: "Whether this is a deprecated feature"
+        example: true
+
+  tool_choice:
+    type: object
+    description: "Tool choice parameter support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether tool_choice parameter is supported"
+        example: true
+      modes:
+        type: array
+        items:
+          type: string
+          enum: [auto, none, required, any, specific]
+        description: "Supported tool_choice modes"
+        example:
+          - "auto"
+          - "none"
+          - "required"
+          - "specific"
+
+  json_mode:
+    type: object
+    description: "JSON output mode support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether response_format: { type: 'json_object' } is supported"
+        example: true
+      strict_mode:
+        type: boolean
+        description: "Whether strict JSON mode is supported (forces valid JSON)"
+        example: true
+
+  structured_output:
+    type: object
+    description: "Schema-enforced structured output support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether schema-enforced structured output is supported"
+        example: true
+      formats:
+        type: array
+        items:
+          type: string
+          enum: [json_schema, pydantic, ai21, openai]
+        description: "Supported structured output formats"
+        example:
+          - "json_schema"
+          - "openai"
+      schema_enforcement:
+        type: string
+        enum: [strict, lenient, none]
+        description: "How strictly the schema is enforced"
+        example: "strict"
+
+  supports_response_format:
+    type: boolean
+    description: "Whether the provider supports the response_format parameter"
+    example: true
+
+  vision:
+    type: object
+    description: "Vision (image input) support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider accepts image input"
+        example: true
+      input_formats:
+        type: array
+        items:
+          type: string
+          enum: [url, base64, local]
+        description: "Supported image input formats"
+        example:
+          - "url"
+          - "base64"
+      max_images_per_message:
+        type: integer
+        description: "Maximum images allowed per message (0 = unlimited)"
+        example: 10
+
+  audio:
+    type: object
+    description: "Audio input/output support"
+    properties:
+      input_supported:
+        type: boolean
+        description: "Whether audio input (whisper-style) is supported"
+        example: false
+      output_supported:
+        type: boolean
+        description: "Whether audio output is supported"
+        example: false
+      formats:
+        type: array
+        items:
+          type: string
+        description: "Supported audio formats"
+        example:
+          - "wav"
+          - "mp3"
+          - "flac"
+
+  image_generation:
+    type: object
+    description: "Image generation support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports image generation"
+        example: false
+      endpoints:
+        type: array
+        items:
+          type: string
+        description: "Available image generation endpoints"
+        example:
+          - "/v1/images/generations"
+
+  thinking:
+    type: object
+    description: "Extended thinking / reasoning mode support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports extended thinking mode"
+        example: true
+      reasoning_effort_params:
+        type: boolean
+        description: "Whether reasoning_effort parameter is supported (low, medium, high)"
+        example: true
+      max_thinking_tokens:
+        type: integer
+        description: "Maximum thinking tokens allowed (0 = provider default)"
+        example: 100000
+      native_format:
+        type: string
+        description: "Native parameter name for thinking mode"
+        example: "thinking"
+
+  reasoning:
+    type: object
+    description: "Reasoning model support (alias for thinking)"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports reasoning models"
+        example: true
+
+  max_context:
+    type: integer
+    description: "Maximum context window size in tokens (0 = unknown)"
+    example: 128000
+
+  max_output:
+    type: integer
+    description: "Maximum output tokens per request (0 = unknown)"
+    example: 16384
+
+  supports_system_prompt:
+    type: boolean
+    description: "Whether the provider supports system prompts"
+    example: true
+
+  supports_developer_prompt:
+    type: boolean
+    description: "Whether the provider supports the 'developer' message role (OpenAI-specific)"
+    example: false
+
+  supports_seed:
+    type: boolean
+    description: "Whether the provider supports deterministic sampling via seed parameter"
+    example: true
+
+  supports_logprobs:
+    type: boolean
+    description: "Whether the provider supports logprobs in responses"
+    example: true
+
+  max_logprobs:
+    type: integer
+    description: "Maximum logprobs value (1-20)"
+    example: 20
+
+  supports_citations:
+    type: boolean
+    description: "Whether the provider returns source citations in responses"
+    example: false
+
+  embeddings:
+    type: object
+    description: "Text embeddings support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider supports embeddings"
+        example: true
+      endpoint:
+        type: string
+        description: "Embeddings endpoint path"
+        example: "/v1/embeddings"
+      max_dimensions:
+        type: integer
+        description: "Maximum embedding dimensions (0 = provider default)"
+        example: 3072
+      model:
+        type: string
+        description: "Default embedding model ID"
+        example: "text-embedding-3-small"
+
+  usage_tracking:
+    type: object
+    description: "Token usage tracking support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether the provider returns token usage in responses"
+        example: true
+      includes_prompt_tokens:
+        type: boolean
+        description: "Whether prompt tokens are reported"
+        example: true
+      includes_completion_tokens:
+        type: boolean
+        description: "Whether completion tokens are reported"
+        example: true
+      includes_cached_tokens:
+        type: boolean
+        description: "Whether cached/delta tokens are reported"
+        example: false
+
+  finish_reasons:
+    type: object
+    description: "Finish reason values supported by the provider"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether standardized finish reasons are returned"
+        example: true
+      values:
+        type: array
+        items:
+          type: string
+          enum: [stop, tool_calls, length, content_filter, null]
+        description: "Supported finish reason values"
+        example:
+          - "stop"
+          - "tool_calls"
+          - "length"
+
+  rate_limit_headers:
+    type: object
+    description: "Rate limit header parsing support"
+    properties:
+      supported:
+        type: boolean
+        description: "Whether rate limit headers are parsed and exposed"
+        example: true
+      headers:
+        type: array
+        items:
+          type: string
+        description: "Header names that are parsed"
+        example:
+          - "Retry-After"
+          - "X-RateLimit-Remaining"
+          - "X-RateLimit-Reset"
+
+  error_format:
+    type: object
+    description: "Error response format"
+    properties:
+      openai_compatible:
+        type: boolean
+        description: "Whether errors follow the OpenAI error format"
+        example: true
+      native_format:
+        type: string
+        description: "Native error format name (e.g. 'anthropic', 'gemini')"
+        example: null
+
+  api_base_url:
+    type: string
+    description: "Base URL for the provider's API"
+    example: "https://api.openai.com/v1"
+
+  native_api_shape:
+    type: string
+    enum: [openai, anthropic, gemini, custom]
+    description: "The native API shape of the provider"
+    example: "openai"
+
+  adapter_type:
+    type: string
+    enum: [full, stub, none]
+    description: "Conductor adapter implementation status"
+    example: "full"
+
+  documented_capabilities:
+    type: array
+    items:
+      type: string
+    description: "Capabilities explicitly documented by the provider"
+    example:
+      - "chat"
+      - "streaming"
+      - "tools"
+      - "vision"
+
+  last_verified:
+    type: string
+    format: date-time
+    description: "ISO 8601 timestamp when capabilities were last verified"
+    example: "2026-08-08T00:00:00Z"

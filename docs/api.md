@@ -704,3 +704,42 @@ curl http://localhost:8080/api/usage \
 curl "http://localhost:8080/api/logs?limit=50" \
   -H "Authorization: Bearer your-api-key"
 ```
+
+### Dashboard: Streaming
+
+```bash
+curl http://localhost:8080/api/streams \
+  -H "Authorization: Bearer your-api-key"
+```
+
+Returns live streaming pipeline statistics:
+
+```json
+{
+  "active_streams": 0,
+  "streams_started": 12,
+  "streams_completed": 11,
+  "streams_cancelled": 1,
+  "streams_timeout": 0,
+  "streams_errors": 1,
+  "chunks_total": 340,
+  "bytes_total": 12288,
+  "average_duration_ms": 1842.5,
+  "average_chunks": 28.3,
+  "average_bytes": 1024.0,
+  "providers": {
+    "openai": {
+      "streams_started": 12,
+      "streams_completed": 11,
+      "streams_cancelled": 1,
+      "streams_timeout": 0,
+      "streams_errors": 1,
+      "chunks_total": 340,
+      "bytes_total": 12288,
+      "average_duration_ms": 1842.5,
+      "average_chunks": 28.3,
+      "average_bytes": 1024.0
+    }
+  }
+}
+```

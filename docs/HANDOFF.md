@@ -108,6 +108,56 @@ Implementation plan is in [docs/PLAN.md](PLAN.md) with six vertical slices.
 - Implement remaining stub providers (Anthropic, Gemini, DeepSeek, OpenRouter, Groq, Ollama, LM Studio) in future slices.
 - Consider removing router auto-detect via `SupportsModel` to align with explicit-only routing from CONTEXT.md.
 
+## Sprint 20 — Streaming Hardening
+
+### Implemented
+
+- **Hardened the streaming pipeline** (`internal/handler/handler.go`): every stream now
+  terminates cleanly regardless of how it ends — provider channel close without `[DONE]`
+  (provider disconnect), mid-stream error chunks (partial failure), client disconnect
+  (write/flush errors), provider idle timeout, and request teardown.
+- **Resource safety**: cancellable per-stream provider context (derived from
+  `context.Background()`, never the fasthttp `RequestCtx` — avoiding the `userData` reset
+  race), a drain goroutine that guarantees a provider can never block forever on a channel
+  send, and a deferred idle-timer stop. `streamResponse` returns immediately so fasthttp
+  streams incrementally.
+- **Metrics** (`internal/metrics`): wired `stream_started/completed/cancelled/timeout/
+  errors/chunks/bytes_total`, added `conductor_stream_active` gauge, per-stream chunk/byte
+  histograms, and per-provider stream stats. Exported at `/api/metrics`.
+- **Structured logging**: `stream_start`, `stream_chunk` (debug), `stream_complete`,
+  `stream_cancel`, `stream_timeout`, `stream_provider_disconnect`,
+  `stream_client_disconnect`, `stream_write_error` — each with `correlation_id`,
+  `request_id`, `provider`, `model`, `stream_duration_ms`, `chunk_count`, `bytes_sent`.
+- **Dashboard endpoint**: `GET /api/streams` (active/completed/cancelled/timeout, average
+  duration/chunks/bytes, per-provider statistics).
+- **Config**: `stream.idle_timeout` (default `5m`, `<= 0` disables), wired through
+  `internal/config`, `config/config.example.yaml`, and `docs/configuration.md`.
+- **Tests** (`internal/handler/stream_hardening_test.go` + metrics tests): successful
+  streaming, provider disconnect, provider timeout, partial failure, client disconnect,
+  write failure, context cancellation via graceful shutdown, 32-way concurrent streaming,
+  goroutine-leak detection, and the `/api/streams` dashboard. Benchmarks:
+  `BenchmarkStreamSuccessful`, `BenchmarkStreamConcurrent`.
+
+### Validation (Sprint 20)
+
+```
+go test ./... -race            → all 29 packages pass, 0 failures
+go test -bench=. -benchmem ./... → ok
+go vet ./...                   → clean
+go build ./...                 → clean
+go mod tidy                    → clean
+```
+
+### Notes for the next agent
+
+- The streaming writer deliberately avoids the fasthttp `RequestCtx` (both as a context
+  parent and inside the body-stream goroutine); it is reset by the server while the
+  goroutine may still be running, which trips the race detector. Client disconnects are
+  detected via response-pipe write/flush errors; request teardown via the captured
+  `requestDone` channel (fires on server shutdown).
+- `docs/ImplementationReport.md` documents P10.3; the generic name is retained for that
+  prior deliverable.
+
 ## Important notes for the next agent
 
 - Always use the vocabulary from [CONTEXT.md](../CONTEXT.md); challenge any re-introduction of the ambiguous term `model`.

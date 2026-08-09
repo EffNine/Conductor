@@ -1,17 +1,24 @@
 package provider
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
-// Registry holds all registered providers
+// Registry holds all registered providers with plugin metadata.
 type Registry struct {
-	mu        sync.RWMutex
-	providers map[string]Provider
+	mu            sync.RWMutex
+	providers     map[string]Provider
+	metadata      map[string]Metadata
+	registerTimes map[string]time.Time
 }
 
 // NewRegistry creates a new provider registry
 func NewRegistry() *Registry {
 	return &Registry{
-		providers: make(map[string]Provider),
+		providers:     make(map[string]Provider),
+		metadata:      make(map[string]Metadata),
+		registerTimes: make(map[string]time.Time),
 	}
 }
 
@@ -20,6 +27,33 @@ func (r *Registry) Register(p Provider) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers[p.Name()] = p
+	meta := GetMetadata(p)
+	meta.RegistrationTime = time.Now().UTC()
+	r.metadata[p.Name()] = meta
+	r.registerTimes[p.Name()] = meta.RegistrationTime
+}
+
+// RegisterWithMetadata adds a provider with explicit metadata.
+func (r *Registry) RegisterWithMetadata(p Provider, meta Metadata) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers[p.Name()] = p
+	meta.RegistrationTime = time.Now().UTC()
+	r.metadata[p.Name()] = meta
+	r.registerTimes[p.Name()] = meta.RegistrationTime
+}
+
+// Unregister removes a provider from the registry
+func (r *Registry) Unregister(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.providers[name]; !ok {
+		return false
+	}
+	delete(r.providers, name)
+	delete(r.metadata, name)
+	delete(r.registerTimes, name)
+	return true
 }
 
 // Get returns a provider by name
@@ -28,6 +62,14 @@ func (r *Registry) Get(name string) (Provider, bool) {
 	defer r.mu.RUnlock()
 	p, ok := r.providers[name]
 	return p, ok
+}
+
+// GetMetadata returns metadata for a provider by name
+func (r *Registry) GetMetadata(name string) (Metadata, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	meta, ok := r.metadata[name]
+	return meta, ok
 }
 
 // All returns all registered providers
@@ -41,11 +83,24 @@ func (r *Registry) All() []Provider {
 	return providers
 }
 
+// AllMetadata returns all provider metadata
+func (r *Registry) AllMetadata() []Metadata {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	metas := make([]Metadata, 0, len(r.metadata))
+	for _, m := range r.metadata {
+		metas = append(metas, m)
+	}
+	return metas
+}
+
 // Clear removes all registered providers.
 func (r *Registry) Clear() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.providers = make(map[string]Provider)
+	r.metadata = make(map[string]Metadata)
+	r.registerTimes = make(map[string]time.Time)
 }
 
 // Names returns the names of all registered providers
@@ -64,4 +119,77 @@ func (r *Registry) Count() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.providers)
+}
+
+// FindByCapability returns providers that support the given capability
+func (r *Registry) FindByCapability(capability string) []Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []Provider
+	for name, meta := range r.metadata {
+		if meta.HasCapability(capability) {
+			if p, ok := r.providers[name]; ok {
+				result = append(result, p)
+			}
+		}
+	}
+	return result
+}
+
+// FindByModel returns providers that support the given model ID
+func (r *Registry) FindByModel(modelID string) []Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []Provider
+	for _, p := range r.providers {
+		if p.SupportsModel(modelID) {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// FindByCapabilityAndModel returns providers that support both the capability and model
+func (r *Registry) FindByCapabilityAndModel(capability string, modelID string) []Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var result []Provider
+	for name, meta := range r.metadata {
+		if meta.HasCapability(capability) {
+			if p, ok := r.providers[name]; ok && p.SupportsModel(modelID) {
+				result = append(result, p)
+			}
+		}
+	}
+	return result
+}
+
+// GetRegistrationTime returns when a provider was registered
+func (r *Registry) GetRegistrationTime(name string) (time.Time, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	t, ok := r.registerTimes[name]
+	return t, ok
+}
+
+// GetProviderInfo returns combined provider info (provider + metadata)
+func (r *Registry) GetProviderInfo(name string) (Provider, Metadata, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, okP := r.providers[name]
+	meta, okMeta := r.metadata[name]
+	if !okP || !okMeta {
+		return nil, Metadata{}, false
+	}
+	return p, meta, true
+}
+
+// ForEach iterates over all registered providers
+func (r *Registry) ForEach(fn func(name string, p Provider, meta Metadata)) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for name, p := range r.providers {
+		meta, _ := r.metadata[name]
+		fn(name, p, meta)
+	}
 }

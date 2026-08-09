@@ -55,6 +55,9 @@ func (s *streamStubProvider) HealthCheck(context.Context) (*provider.HealthStatu
 }
 
 func (s *streamStubProvider) SupportsModel(string) bool { return true }
+func (s *streamStubProvider) GetMetadata() provider.Metadata {
+	return provider.DefaultMetadata("nvidia_nim")
+}
 
 func TestStreamFlushesReasoningBeforeFinishReason(t *testing.T) {
 	stop := "stop"

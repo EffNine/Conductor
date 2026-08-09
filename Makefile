@@ -70,6 +70,53 @@ run: build
 	@echo "Running $(BINARY_NAME)..."
 	./$(BINARY_PATH)
 
+## benchmarks: Run all benchmarks
+benchmarks:
+	@echo "Running benchmarks..."
+	@go test -bench=. -benchmem ./benchmarks/
+
+## benchmarks-verbose: Run benchmarks with verbose output
+benchmarks-verbose:
+	@echo "Running benchmarks (verbose)..."
+	@go test -bench=. -benchmem -run=^$ -v ./benchmarks/
+
+## benchmark: Run a specific benchmark
+.PHONY: benchmark
+benchmark:
+	@echo "Running benchmark: $(BENCH)"
+	@go test -bench=$(BENCH) -benchmem ./benchmarks/
+
+## benchmark-cpu: Run benchmarks and capture CPU profile
+benchmark-cpu:
+	@echo "Running benchmarks with CPU profile..."
+	@go test -bench=. -benchmem -cpuprofile=cpu.prof ./benchmarks/
+	@echo "CPU profile saved to cpu.prof"
+	@go tool pprof -top cpu.prof
+
+## benchmark-mem: Run benchmarks and capture memory profile
+benchmark-mem:
+	@echo "Running benchmarks with memory profile..."
+	@go test -bench=. -benchmem -memprofile=mem.prof ./benchmarks/
+	@echo "Memory profile saved to mem.prof"
+	@go tool pprof -top mem.prof
+
+## load-test: Run load tests
+load-test:
+	@echo "Running load tests..."
+	@LOAD_TEST=1 go test -v -run=^$ -bench=. -benchtime=5s ./loadtest/
+
+## load-test-concurrent: Run load test with specific concurrency
+.PHONY: load-test-concurrent
+load-test-concurrent:
+	@echo "Running load test with concurrency=$(CONCURRENCY) requests=$(REQUESTS)..."
+	@LOAD_TEST=1 go test -v -run=^$ -bench=BenchmarkHTTPChatCompletion -benchtime=${REQUESTS}x ./loadtest/ -args -concurrency=$(CONCURRENCY)
+
+## memory-audit: Run memory audit benchmarks
+memory-audit:
+	@echo "Running memory audit..."
+	@go test -bench=BenchmarkMemoryAudit -benchmem ./loadtest/
+	@go test -bench=BenchmarkGoroutineLeakDetection -benchmem ./loadtest/
+
 ## gen-key: Print a new random gateway API key
 gen-key: build
 	@./$(BINARY_PATH) gen-key

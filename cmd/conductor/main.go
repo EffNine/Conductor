@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -9,9 +10,11 @@ import (
 
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/automode"
+	"github.com/EffNine/conductor/internal/cache"
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/handler"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/middleware"
@@ -30,6 +33,7 @@ import (
 	"github.com/EffNine/conductor/internal/provider/openrouter"
 	"github.com/EffNine/conductor/internal/provider/xai"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/scheduler"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -93,11 +97,25 @@ func main() {
 	// Initialize provider registry
 	registry := provider.NewRegistry()
 
+	// Initialize event bus for cross-subsystem communication
+	eventBus := eventbus.NewEventBus()
+
+	// Initialize job scheduler
+	_ = scheduler.NewJobRegistry()
+
 	// Register providers
 	registerProviders(cfg, registry, logger)
 
 	// Log registered providers
 	logger.Info("Registered providers", zap.Strings("providers", registry.Names()))
+
+	// Publish provider registration events
+	for _, p := range registry.All() {
+		eventBus.PublishSync(context.Background(), eventbus.Event{
+			Type:    eventbus.ProviderRegistered,
+			Payload: p.Name(),
+		})
+	}
 
 	// Initialize router
 	routerEngine := router.NewEngine(cfg, registry)
@@ -167,12 +185,37 @@ func main() {
 		BodyLimit:    int(cfg.Server.MaxRequestSize),
 	})
 
+	// Initialize intelligent routing engine (optional, enabled by config)
+	var routingEngine *router.RouterEngine
+	if cfg.Routing.Enabled {
+		routingEngine = router.NewRouterEngine(router.RouterEngineConfig{
+			Registry:     registry,
+			HealthStore:  modelStatus,
+			MetricsStore: router.NewMetricsStore(),
+			BreakerPool:  routerEngine.BreakerPool(),
+			Logger:       logger,
+			Weights:      cfg.Routing.Weights,
+		})
+		logger.Info("intelligent routing engine enabled",
+			zap.Float64("health_weight", cfg.Routing.Weights.Health),
+			zap.Float64("latency_weight", cfg.Routing.Weights.Latency),
+			zap.Float64("cost_weight", cfg.Routing.Weights.Cost),
+			zap.Float64("capability_weight", cfg.Routing.Weights.Capability),
+		)
+	}
+
 	// Register middleware
 	middleware.Register(app, cfg, authService, logger)
 
 	// Register handlers
 	h := handler.New(routerEngine, registry, usageTracker, logger, modelCatalog, db)
 	h.SetModelStatus(modelStatus, modelProber)
+	if routingEngine != nil {
+		h.SetRoutingEngine(routingEngine)
+	}
+	cacheEngine := cache.NewEngine(cfg.Cache, h.Metrics(), logger)
+	h.SetCacheEngine(cacheEngine)
+	h.SetStreamIdleTimeout(cfg.Stream.IdleTimeout)
 	h.Register(app)
 
 	// Graceful shutdown
@@ -223,95 +266,77 @@ func initLogger(cfg *config.Config) (*zap.Logger, error) {
 
 // registerProviders registers all enabled providers
 func registerProviders(cfg *config.Config, registry *provider.Registry, logger *zap.Logger) {
+	registerOne := func(name string, p provider.Provider) {
+		registry.Register(p)
+		logger.Info("provider_registered",
+			zap.String("provider", p.Name()),
+			zap.String("display_name", provider.GetMetadata(p).DisplayName),
+		)
+	}
+
 	// OpenAI
 	if cfg.Providers.OpenAI.Enabled {
-		p := openai.NewProvider(cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.BaseURL, cfg.Providers.OpenAI.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("openai", openai.NewProvider(cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.BaseURL, cfg.Providers.OpenAI.Timeout))
 	}
 
 	// Anthropic
 	if cfg.Providers.Anthropic.Enabled {
-		p := anthropic.NewProvider(cfg.Providers.Anthropic.APIKey, cfg.Providers.Anthropic.BaseURL, cfg.Providers.Anthropic.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("anthropic", anthropic.NewProvider(cfg.Providers.Anthropic.APIKey, cfg.Providers.Anthropic.BaseURL, cfg.Providers.Anthropic.Timeout))
 	}
 
 	// Gemini
 	if cfg.Providers.Gemini.Enabled {
-		p := gemini.NewProvider(cfg.Providers.Gemini.APIKey, cfg.Providers.Gemini.BaseURL, cfg.Providers.Gemini.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("gemini", gemini.NewProvider(cfg.Providers.Gemini.APIKey, cfg.Providers.Gemini.BaseURL, cfg.Providers.Gemini.Timeout))
 	}
 
 	// DeepSeek
 	if cfg.Providers.DeepSeek.Enabled {
-		p := deepseek.NewProvider(cfg.Providers.DeepSeek.APIKey, cfg.Providers.DeepSeek.BaseURL, cfg.Providers.DeepSeek.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("deepseek", deepseek.NewProvider(cfg.Providers.DeepSeek.APIKey, cfg.Providers.DeepSeek.BaseURL, cfg.Providers.DeepSeek.Timeout))
 	}
 
 	// OpenRouter
 	if cfg.Providers.OpenRouter.Enabled {
-		p := openrouter.NewProvider(cfg.Providers.OpenRouter.APIKey, cfg.Providers.OpenRouter.BaseURL, cfg.Providers.OpenRouter.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("openrouter", openrouter.NewProvider(cfg.Providers.OpenRouter.APIKey, cfg.Providers.OpenRouter.BaseURL, cfg.Providers.OpenRouter.Timeout))
 	}
 
 	// Groq
 	if cfg.Providers.Groq.Enabled {
-		p := groq.NewProvider(cfg.Providers.Groq.APIKey, cfg.Providers.Groq.BaseURL, cfg.Providers.Groq.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("groq", groq.NewProvider(cfg.Providers.Groq.APIKey, cfg.Providers.Groq.BaseURL, cfg.Providers.Groq.Timeout))
 	}
 
 	// Ollama
 	if cfg.Providers.Ollama.Enabled {
-		p := ollama.NewProvider(cfg.Providers.Ollama.APIKey, cfg.Providers.Ollama.BaseURL, cfg.Providers.Ollama.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("ollama", ollama.NewProvider(cfg.Providers.Ollama.APIKey, cfg.Providers.Ollama.BaseURL, cfg.Providers.Ollama.Timeout))
 	}
 
 	// LM Studio
 	if cfg.Providers.LMStudio.Enabled {
-		p := lmstudio.NewProvider(cfg.Providers.LMStudio.APIKey, cfg.Providers.LMStudio.BaseURL, cfg.Providers.LMStudio.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("lmstudio", lmstudio.NewProvider(cfg.Providers.LMStudio.APIKey, cfg.Providers.LMStudio.BaseURL, cfg.Providers.LMStudio.Timeout))
 	}
 
 	// OpenCode
 	if cfg.Providers.Opencode.Enabled {
-		p := opencode.NewProvider(cfg.Providers.Opencode.APIKey, cfg.Providers.Opencode.BaseURL, cfg.Providers.Opencode.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("opencode", opencode.NewProvider(cfg.Providers.Opencode.APIKey, cfg.Providers.Opencode.BaseURL, cfg.Providers.Opencode.Timeout))
 	}
 
 	// NVIDIA NIM
 	if cfg.Providers.NvidiaNim.Enabled {
-		p := nvidianim.NewProvider(cfg.Providers.NvidiaNim.APIKey, cfg.Providers.NvidiaNim.BaseURL, cfg.Providers.NvidiaNim.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("nvidia_nim", nvidianim.NewProvider(cfg.Providers.NvidiaNim.APIKey, cfg.Providers.NvidiaNim.BaseURL, cfg.Providers.NvidiaNim.Timeout))
 	}
 
 	// Nous Portal
 	if cfg.Providers.NousPortal.Enabled {
-		p := nousportal.NewProvider(cfg.Providers.NousPortal.APIKey, cfg.Providers.NousPortal.BaseURL, cfg.Providers.NousPortal.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("nous_portal", nousportal.NewProvider(cfg.Providers.NousPortal.APIKey, cfg.Providers.NousPortal.BaseURL, cfg.Providers.NousPortal.Timeout))
 	}
 
 	// xAI
 	if cfg.Providers.XAI.Enabled {
-		p := xai.NewProvider(cfg.Providers.XAI.APIKey, cfg.Providers.XAI.BaseURL, cfg.Providers.XAI.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("xai", xai.NewProvider(cfg.Providers.XAI.APIKey, cfg.Providers.XAI.BaseURL, cfg.Providers.XAI.Timeout))
 	}
 
 	// Agnes AI
 	if cfg.Providers.AgnesAI.Enabled {
-		p := agnesai.NewProvider(cfg.Providers.AgnesAI.APIKey, cfg.Providers.AgnesAI.BaseURL, cfg.Providers.AgnesAI.Timeout)
-		registry.Register(p)
-		logger.Debug("Registered provider", zap.String("provider", p.Name()))
+		registerOne("agnesai", agnesai.NewProvider(cfg.Providers.AgnesAI.APIKey, cfg.Providers.AgnesAI.BaseURL, cfg.Providers.AgnesAI.Timeout))
 	}
 }
 

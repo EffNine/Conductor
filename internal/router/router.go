@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/breaker"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/provider"
 )
@@ -25,6 +26,57 @@ type Engine struct {
 	fallbacks    map[string][]Fallback
 	registry     *provider.Registry
 	autoSelector AutoSelector
+	breakers     *BreakerPool
+}
+
+// BreakerPool holds per-provider circuit breakers.
+type BreakerPool struct {
+	mu       sync.RWMutex
+	breakers map[string]*breaker.Breaker
+	cfg      breaker.Config
+}
+
+// NewBreakerPool creates a pool with the given global config.
+func NewBreakerPool(cfg breaker.Config) *BreakerPool {
+	return &BreakerPool{
+		breakers: make(map[string]*breaker.Breaker),
+		cfg:      cfg,
+	}
+}
+
+// Get returns the breaker for a provider, creating one if absent.
+func (p *BreakerPool) Get(providerName string) *breaker.Breaker {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	b, ok := p.breakers[providerName]
+	p.mu.RUnlock()
+	if ok {
+		return b
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if b, ok = p.breakers[providerName]; ok {
+		return b
+	}
+	b = breaker.New(p.cfg)
+	p.breakers[providerName] = b
+	return b
+}
+
+// Stats returns per-provider breaker snapshots.
+func (p *BreakerPool) Stats() map[string]breaker.BreakerStats {
+	if p == nil {
+		return nil
+	}
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	out := make(map[string]breaker.BreakerStats, len(p.breakers))
+	for name, b := range p.breakers {
+		out[name] = b.Stats()
+	}
+	return out
 }
 
 // Route represents a model-to-provider route
@@ -46,6 +98,14 @@ func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
 		aliases:   make(map[string]string),
 		fallbacks: make(map[string][]Fallback),
 		registry:  registry,
+	}
+
+	if cfg.Circuit.Enabled {
+		engine.breakers = NewBreakerPool(breaker.Config{
+			FailureThreshold: cfg.Circuit.FailureThreshold,
+			RecoveryTimeout:  cfg.Circuit.RecoveryTimeout,
+			SuccessThreshold: cfg.Circuit.SuccessThreshold,
+		})
 	}
 
 	// Load routes from config
@@ -132,6 +192,7 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 			ProviderName:    providerName,
 			ProviderModelID: selected,
 			ModelID:         "auto",
+			Breaker:         e.breakers.Get(providerName),
 		}, nil
 	}
 
@@ -160,6 +221,7 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 			ProviderName:    providerName,
 			ProviderModelID: providerModelID,
 			ModelID:         baseID,
+			Breaker:         e.breakers.Get(providerName),
 		}, nil
 	}
 
@@ -171,6 +233,7 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 				ProviderName:    providerHint,
 				ProviderModelID: baseID,
 				ModelID:         baseID,
+				Breaker:         e.breakers.Get(providerHint),
 			}, nil
 		}
 	}
@@ -227,7 +290,10 @@ func (e *Engine) splitProviderPrefix(modelID string) (string, string) {
 	return providerName, base
 }
 
-// ResolveWithFallback resolves a model and returns the route plus fallback chain
+// BreakerPool exposes the pool for dashboard access.
+func (e *Engine) BreakerPool() *BreakerPool {
+	return e.breakers
+}
 func (e *Engine) ResolveWithFallback(modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
 	return e.ResolveWithFallbackAndMessages(modelID, nil)
 }
@@ -269,6 +335,7 @@ func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID stri
 			ProviderName:    fb.Provider,
 			ProviderModelID: modelName,
 			ModelID:         primary.ModelID,
+			Breaker:         e.breakers.Get(fb.Provider),
 		})
 	}
 
@@ -281,4 +348,5 @@ type ResolvedRoute struct {
 	ProviderName    string
 	ProviderModelID string // The upstream model slug to send to the provider
 	ModelID         string // The user-facing model ID from the route key
+	Breaker         *breaker.Breaker
 }

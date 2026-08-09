@@ -181,3 +181,7 @@ func (s *stubProvider) HealthCheck(context.Context) (*provider.HealthStatus, err
 }
 
 func (s *stubProvider) SupportsModel(string) bool { return false }
+
+func (s *stubProvider) GetMetadata() provider.Metadata {
+	return provider.DefaultMetadata(s.name)
+}
