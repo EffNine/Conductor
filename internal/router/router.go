@@ -31,9 +31,10 @@ type Engine struct {
 
 // BreakerPool holds per-provider circuit breakers.
 type BreakerPool struct {
-	mu       sync.RWMutex
-	breakers map[string]*breaker.Breaker
-	cfg      breaker.Config
+	mu              sync.RWMutex
+	breakers        map[string]*breaker.Breaker
+	cfg             breaker.Config
+	stateChangeCb   func(name string, state breaker.State)
 }
 
 // NewBreakerPool creates a pool with the given global config.
@@ -41,6 +42,18 @@ func NewBreakerPool(cfg breaker.Config) *BreakerPool {
 	return &BreakerPool{
 		breakers: make(map[string]*breaker.Breaker),
 		cfg:      cfg,
+	}
+}
+
+// SetStateChangeCallback registers a callback that fires whenever any breaker
+// in this pool transitions state. The callback is invoked synchronously under
+// each breaker's lock, so it must be fast and must not acquire the pool lock.
+func (p *BreakerPool) SetStateChangeCallback(fn func(name string, state breaker.State)) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stateChangeCb = fn
+	for name, b := range p.breakers {
+		b.OnStateChange(func(s breaker.State) { fn(name, s) })
 	}
 }
 

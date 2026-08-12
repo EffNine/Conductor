@@ -67,6 +67,65 @@ type Config struct {
 	// DisplayNames maps ModelID → human-friendly label used in /v1/models
 	// responses. Unmapped models fall back to the provider-stripped ID.
 	DisplayNames map[string]string `mapstructure:"display_names"`
+
+	// Agent controls the single-agent multi-step loop for task execution.
+	Agent AgentConfig `mapstructure:"agent"`
+}
+
+// AgentConfig holds configuration for the agent loop.
+type AgentConfig struct {
+	// MaxSteps is the maximum number of LLM calls allowed per task. Default 10.
+	MaxSteps int `mapstructure:"max_steps"`
+	// WorkspaceRoot is the absolute path that file tools (read/write) treat as
+	// the root boundary. Paths resolving outside this directory are rejected.
+	WorkspaceRoot string `mapstructure:"workspace_root"`
+	// MaxOutputBytes is the hard cap on tool output size (read_file, shell).
+	// Default 65536 (64 KiB).
+	MaxOutputBytes int `mapstructure:"max_output_bytes"`
+	// MaxWriteBytes is the hard cap on write_file content size. Default 1048576 (1 MiB).
+	MaxWriteBytes int `mapstructure:"max_write_bytes"`
+	// Shell controls the shell tool security policy.
+	Shell ShellConfig `mapstructure:"shell"`
+	// Git controls the git tool workspace boundaries.
+	Git GitConfig `mapstructure:"git"`
+	// WorkerCount is the number of async task workers. 0 = sync-only (default).
+	WorkerCount int `mapstructure:"worker_count"`
+	// PollInterval is how often workers check for eligible tasks. Default 1s.
+	PollInterval time.Duration `mapstructure:"poll_interval"`
+	// LeaseDuration is how long a worker holds a task lease. Default 5m.
+	LeaseDuration time.Duration `mapstructure:"lease_duration"`
+}
+
+// ShellConfig holds security parameters for the shell tool.
+type ShellConfig struct {
+	// Enabled enables the shell tool. Default false (most deploys should not
+	// expose a shell tool unless explicitly intended).
+	Enabled bool `mapstructure:"enabled"`
+	// WorkingDir is the absolute path the shell tool resolves relative paths
+	// against. Commands running outside this directory are rejected.
+	WorkingDir string `mapstructure:"working_dir"`
+	// Timeout is the per-command timeout. Default 30s.
+	Timeout time.Duration `mapstructure:"timeout"`
+	// MaxOutputBytes caps stdout/stderr output. Default 65536.
+	MaxOutputBytes int `mapstructure:"max_output_bytes"`
+	// AllowList is the allowlist of executable basenames. Empty means deny all;
+	// "*" allows every executable. When non-empty, only listed programs may run.
+	AllowList []string `mapstructure:"allow_list"`
+	// DeniedCommands are basename patterns that are always rejected regardless
+	// of AllowList. Matches are case-sensitive.
+	DeniedCommands []string `mapstructure:"denied_commands"`
+	// EnvWhitelist lists environment variable names that are forwarded from the
+	// gateway process to the child. All other variables are stripped.
+	EnvWhitelist []string `mapstructure:"env_whitelist"`
+}
+
+// GitConfig holds configuration for the read-only git tool.
+type GitConfig struct {
+	// Enabled enables the git tool. Default false.
+	Enabled bool `mapstructure:"enabled"`
+	// RepoRoot is the absolute path to the git repository root. All git commands
+	// must run inside this directory.
+	RepoRoot string `mapstructure:"repo_root"`
 }
 
 // CatalogConfig controls how the merged Model Catalog is built for /v1/models.
@@ -573,6 +632,18 @@ func setDefaults(v *viper.Viper) {
 
 	// Streaming defaults
 	v.SetDefault("stream.idle_timeout", 5*time.Minute)
+
+	// Agent defaults
+	v.SetDefault("agent.max_steps", 10)
+	v.SetDefault("agent.max_output_bytes", 65536)
+	v.SetDefault("agent.max_write_bytes", 1048576)
+	v.SetDefault("agent.shell.enabled", false)
+	v.SetDefault("agent.shell.timeout", 30*time.Second)
+	v.SetDefault("agent.shell.max_output_bytes", 65536)
+	v.SetDefault("agent.git.enabled", false)
+	v.SetDefault("agent.worker_count", 0)
+	v.SetDefault("agent.poll_interval", 1*time.Second)
+	v.SetDefault("agent.lease_duration", 5*time.Minute)
 
 	// Cost defaults
 	v.SetDefault("cost.enabled", true)

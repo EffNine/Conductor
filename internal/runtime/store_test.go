@@ -485,3 +485,61 @@ func TestRuntimeStateChangeLimit(t *testing.T) {
 		t.Errorf("expected exactly 100 state changes, got %d", len(changes))
 	}
 }
+
+func TestAggregateStats(t *testing.T) {
+	eb := eventbus.NewEventBus()
+	store := NewRuntimeStore(eb)
+
+	r1 := NewProviderRuntime("openai", nil)
+	r1.UpdateState(StateHealthy, "test", nil)
+	r1.RecordSuccess()
+	r1.RecordSuccess()
+	r1.RecordError(errors.New("boom"))
+	r1.RecordLatency(100)
+
+	r2 := NewProviderRuntime("anthropic", nil)
+	r2.UpdateState(StateDegraded, "test", nil)
+	r2.RecordSuccess()
+	r2.RecordLatency(200)
+
+	if err := store.Register(r1); err != nil {
+		t.Fatalf("Register r1: %v", err)
+	}
+	if err := store.Register(r2); err != nil {
+		t.Fatalf("Register r2: %v", err)
+	}
+
+	mgr := NewManager(store)
+	stats := mgr.AggregateStats()
+
+	if stats.TotalProviders != 2 {
+		t.Errorf("TotalProviders = %d, want 2", stats.TotalProviders)
+	}
+	// RecordSuccess*3 + RecordError*1 + RecordLatency*2 = 6 total requests
+	if stats.TotalRequests != 6 {
+		t.Errorf("TotalRequests = %d, want 6", stats.TotalRequests)
+	}
+	if stats.TotalSuccess != 3 {
+		t.Errorf("TotalSuccess = %d, want 3", stats.TotalSuccess)
+	}
+	if stats.TotalFailure != 1 {
+		t.Errorf("TotalFailure = %d, want 1", stats.TotalFailure)
+	}
+	if stats.AvgLatencyMs <= 0 {
+		t.Errorf("AvgLatencyMs = %d, want > 0", stats.AvgLatencyMs)
+	}
+}
+
+func TestAggregateStats_Empty(t *testing.T) {
+	eb := eventbus.NewEventBus()
+	store := NewRuntimeStore(eb)
+	mgr := NewManager(store)
+	stats := mgr.AggregateStats()
+
+	if stats.TotalProviders != 0 {
+		t.Errorf("TotalProviders = %d, want 0", stats.TotalProviders)
+	}
+	if stats.TotalRequests != 0 {
+		t.Errorf("TotalRequests = %d, want 0", stats.TotalRequests)
+	}
+}

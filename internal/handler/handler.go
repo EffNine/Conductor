@@ -19,6 +19,8 @@ import (
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
+	runtimeadapter "github.com/EffNine/conductor/internal/runtime/adapter"
+	"github.com/EffNine/conductor/internal/runtime"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -41,6 +43,9 @@ type Handler struct {
 	routingEngine     *router.RouterEngine
 	cacheEngine       *cache.Engine
 	streamIdleTimeout time.Duration
+	usageAdapter      *runtimeadapter.UsageToRuntimeAdapter
+	breakerAdapter    *runtimeadapter.BreakerToRuntimeAdapter
+	runtimeManager    runtime.Manager
 }
 
 // New creates a new Handler
@@ -101,6 +106,21 @@ func (h *Handler) SetStreamIdleTimeout(d time.Duration) {
 	h.streamIdleTimeout = d
 }
 
+// SetUsageAdapter wires the usage-to-runtime adapter.
+func (h *Handler) SetUsageAdapter(a *runtimeadapter.UsageToRuntimeAdapter) {
+	h.usageAdapter = a
+}
+
+// SetBreakerAdapter wires the breaker-to-runtime adapter.
+func (h *Handler) SetBreakerAdapter(a *runtimeadapter.BreakerToRuntimeAdapter) {
+	h.breakerAdapter = a
+}
+
+// SetRuntimeManager exposes the runtime manager for dashboard access.
+func (h *Handler) SetRuntimeManager(m runtime.Manager) {
+	h.runtimeManager = m
+}
+
 // Register registers all HTTP routes
 func (h *Handler) Register(app *fiber.App) {
 	// OpenAI-compatible endpoints
@@ -128,6 +148,7 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/api/routing", h.HandleRouting)
 	app.Get("/api/cache", h.HandleCacheStatus)
 	app.Get("/api/streams", h.HandleStreamStatus)
+	app.Get("/api/runtime", h.HandleRuntime)
 }
 
 // HandleAutoStatus reports the runtime auto model selection status.
@@ -1347,6 +1368,10 @@ func (h *Handler) trackUsage(requestID, modelID, providerModelID, provider strin
 		record.ErrorMessage = &errMsg
 	}
 
+	if h.usageAdapter != nil {
+		h.usageAdapter.OnUsageRecord(record)
+	}
+
 	h.usageTracker.Record(record)
 }
 
@@ -1603,5 +1628,37 @@ func (h *Handler) HandleStreamStatus(c *fiber.Ctx) error {
 		"average_chunks":      avg(snap.StreamChunks),
 		"average_bytes":       avg(snap.StreamBytes),
 		"providers":           providers,
+	})
+}
+
+// HandleRuntime handles GET /api/runtime — returns provider runtime state.
+func (h *Handler) HandleRuntime(c *fiber.Ctx) error {
+	if h.runtimeManager == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
+			"error": "runtime subsystem not initialized",
+		})
+	}
+	snap := h.runtimeManager.Snapshot(c.Context())
+	providers := make([]fiber.Map, 0, len(snap.Providers))
+	for name, ps := range snap.Providers {
+		providers = append(providers, fiber.Map{
+			"name":            name,
+			"state":           string(ps.State),
+			"latency_ms":      ps.LatencyMs,
+			"error_rate":      ps.ErrorRate,
+			"capacity":        ps.Capacity,
+			"last_health_check": ps.LastHealthCheck,
+		})
+	}
+	return c.JSON(fiber.Map{
+		"timestamp": snap.Timestamp.Format(time.RFC3339),
+		"global": fiber.Map{
+			"total_providers":     snap.GlobalState.TotalProviders,
+			"healthy_providers":   snap.GlobalState.HealthyProviders,
+			"degraded_providers":  snap.GlobalState.DegradedProviders,
+			"unhealthy_providers": snap.GlobalState.UnhealthyProviders,
+			"avg_latency_ms":      snap.GlobalState.AvgLatencyMs,
+		},
+		"providers": providers,
 	})
 }

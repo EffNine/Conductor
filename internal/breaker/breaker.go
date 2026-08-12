@@ -62,16 +62,17 @@ var ErrOpen = errors.New("circuit breaker is open")
 
 // Breaker is a per-provider circuit breaker.
 type Breaker struct {
-	mu               sync.Mutex
-	state            State
-	consecutiveFails int
-	consecutiveSucc  int
-	openedAt         time.Time
-	cfg              Config
-	failures         atomic.Int64
-	successes        atomic.Int64
-	rejections       atomic.Int64
-	opens            atomic.Int64
+	mu                   sync.Mutex
+	state                State
+	consecutiveFails     int
+	consecutiveSucc      int
+	openedAt             time.Time
+	cfg                  Config
+	failures             atomic.Int64
+	successes            atomic.Int64
+	rejections           atomic.Int64
+	opens                atomic.Int64
+	stateChangeCallbacks []func(State)
 }
 
 // New creates a breaker with the given config.
@@ -98,6 +99,7 @@ func (b *Breaker) Allow() Result {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
+	oldState := b.state
 	switch b.state {
 	case StateClosed:
 		return ResultAllowed
@@ -105,6 +107,7 @@ func (b *Breaker) Allow() Result {
 		if time.Since(b.openedAt) >= b.cfg.RecoveryTimeout {
 			b.state = StateHalfOpen
 			b.consecutiveSucc = 0
+			b.notifyStateChange(oldState, b.state)
 			return ResultAllowed
 		}
 		b.rejections.Add(1)
@@ -119,6 +122,7 @@ func (b *Breaker) Allow() Result {
 // RecordSuccess records a successful request.
 func (b *Breaker) RecordSuccess() {
 	b.mu.Lock()
+	oldState := b.state
 	switch b.state {
 	case StateHalfOpen:
 		b.consecutiveSucc++
@@ -126,6 +130,7 @@ func (b *Breaker) RecordSuccess() {
 			b.state = StateClosed
 			b.consecutiveFails = 0
 			b.consecutiveSucc = 0
+			b.notifyStateChange(oldState, b.state)
 		}
 	case StateClosed:
 		b.consecutiveFails = 0
@@ -137,6 +142,7 @@ func (b *Breaker) RecordSuccess() {
 // RecordFailure records a failed request.
 func (b *Breaker) RecordFailure() {
 	b.mu.Lock()
+	oldState := b.state
 	switch b.state {
 	case StateClosed:
 		b.consecutiveFails++
@@ -146,6 +152,7 @@ func (b *Breaker) RecordFailure() {
 			b.consecutiveFails = 0
 			b.consecutiveSucc = 0
 			b.opens.Add(1)
+			b.notifyStateChange(oldState, b.state)
 		}
 	case StateHalfOpen:
 		b.state = StateOpen
@@ -153,6 +160,7 @@ func (b *Breaker) RecordFailure() {
 		b.consecutiveFails = 0
 		b.consecutiveSucc = 0
 		b.opens.Add(1)
+		b.notifyStateChange(oldState, b.state)
 	default:
 	}
 	b.mu.Unlock()
@@ -204,4 +212,22 @@ type BreakerStats struct {
 	TotalSuccesses   int64
 	TotalRejections  int64
 	TotalOpens       int64
+}
+
+// OnStateChange registers a callback that fires whenever the breaker state transitions.
+// The callback receives the new state. It is invoked synchronously under the breaker lock,
+// so callbacks must be fast and must not acquire the breaker lock.
+func (b *Breaker) OnStateChange(fn func(State)) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stateChangeCallbacks = append(b.stateChangeCallbacks, fn)
+}
+
+func (b *Breaker) notifyStateChange(from, to State) {
+	if from == to {
+		return
+	}
+	for _, fn := range b.stateChangeCallbacks {
+		fn(to)
+	}
 }

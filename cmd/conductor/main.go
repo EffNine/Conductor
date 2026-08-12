@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/automode"
 	"github.com/EffNine/conductor/internal/cache"
@@ -16,9 +17,17 @@ import (
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/handler"
+	"github.com/EffNine/conductor/internal/breaker"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
+	adapter "github.com/EffNine/conductor/internal/runtime/adapter"
+	"github.com/EffNine/conductor/internal/runtime"
+	toolfs "github.com/EffNine/conductor/internal/tool/fs"
+	toolgit "github.com/EffNine/conductor/internal/tool/git"
+	toolregistry "github.com/EffNine/conductor/internal/tool"
+	toolshell "github.com/EffNine/conductor/internal/tool/shell"
+	"github.com/EffNine/conductor/internal/worker"
 	"github.com/EffNine/conductor/internal/provider/agnesai"
 	"github.com/EffNine/conductor/internal/provider/anthropic"
 	"github.com/EffNine/conductor/internal/provider/deepseek"
@@ -34,6 +43,7 @@ import (
 	"github.com/EffNine/conductor/internal/provider/xai"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/scheduler"
+	"github.com/EffNine/conductor/internal/task"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -89,6 +99,9 @@ func main() {
 	if err := db.Migrate(); err != nil {
 		logger.Fatal("Failed to run database migrations", zap.Error(err))
 	}
+	if err := task.MigrateTasks(db.DB); err != nil {
+		logger.Fatal("Failed to run task migrations", zap.Error(err))
+	}
 	logger.Info("Database connected and migrated")
 
 	// Initialize auth service
@@ -119,6 +132,20 @@ func main() {
 
 	// Initialize router
 	routerEngine := router.NewEngine(cfg, registry)
+
+	// Initialize runtime store and manager
+	runtimeStore := runtime.NewRuntimeStore(eventBus)
+	runtimeManager := runtime.NewManager(runtimeStore)
+
+	// Register a runtime instance for each provider
+	for _, p := range registry.All() {
+		r := runtime.NewProviderRuntime(p.Name(), p)
+		if err := runtimeStore.Register(r); err != nil {
+			logger.Warn("failed to register runtime for provider",
+				zap.String("provider", p.Name()), zap.Error(err))
+		}
+	}
+	logger.Info("Runtime store initialized", zap.Int("providers", runtimeManager.Count()))
 
 	// Initialize model catalog
 	modelCatalog := catalog.New(registry, catalog.StaticFromConfig(cfg))
@@ -153,6 +180,13 @@ func main() {
 	}
 	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
+	// Wire health → runtime adapter through the batcher callback.
+	healthAdapter := adapter.NewHealthToRuntimeAdapter(runtimeStore)
+	modelProber.SetOnBatch(func(results []health.ProbeResult) {
+		for _, r := range results {
+			healthAdapter.OnProbeResult(r)
+		}
+	})
 	// Skip probes against loopback-only providers so remote deploys (Fly) finish
 	// the available-only pass instead of hanging on localhost ollama/lmstudio.
 	var skipLocal []string
@@ -193,6 +227,7 @@ func main() {
 			HealthStore:  modelStatus,
 			MetricsStore: router.NewMetricsStore(),
 			BreakerPool:  routerEngine.BreakerPool(),
+			Runtime:      runtimeManager,
 			Logger:       logger,
 			Weights:      cfg.Routing.Weights,
 		})
@@ -213,10 +248,105 @@ func main() {
 	if routingEngine != nil {
 		h.SetRoutingEngine(routingEngine)
 	}
+	// Wire usage → runtime adapter so live traffic updates runtime stats.
+	usageAdapter := adapter.NewUsageToRuntimeAdapter(runtimeStore)
+	h.SetUsageAdapter(usageAdapter)
+	// Wire breaker → runtime adapter.
+	breakerAdapter := adapter.NewBreakerToRuntimeAdapter(runtimeStore)
+	h.SetBreakerAdapter(breakerAdapter)
+	// Wire breaker state changes → runtime so operational state is observable.
+	if bp := routerEngine.BreakerPool(); bp != nil {
+		bp.SetStateChangeCallback(func(name string, state breaker.State) {
+			breakerAdapter.OnBreakerStateChange(name, breaker.BreakerStats{State: state})
+		})
+	}
+	// Expose runtime manager for the /api/runtime endpoint.
+	h.SetRuntimeManager(runtimeManager)
 	cacheEngine := cache.NewEngine(cfg.Cache, h.Metrics(), logger)
 	h.SetCacheEngine(cacheEngine)
 	h.SetStreamIdleTimeout(cfg.Stream.IdleTimeout)
 	h.Register(app)
+
+	// Register task API handlers
+	taskStore := task.NewSQLiteStore(db)
+	toolReg := toolregistry.NewRegistry()
+
+	// Register filesystem tools when workspace is configured.
+	if cfg.Agent.WorkspaceRoot != "" {
+		readTool := toolfs.New(cfg.Agent.WorkspaceRoot, cfg.Agent.MaxOutputBytes)
+		writeTool := toolfs.NewWrite(cfg.Agent.WorkspaceRoot, cfg.Agent.MaxWriteBytes)
+		toolReg.Register(readTool)
+		toolReg.Register(writeTool)
+	}
+
+	// Register shell tool when enabled.
+	if cfg.Agent.Shell.Enabled {
+		shellCfg := toolshell.Config{
+			WorkingDir:   cfg.Agent.Shell.WorkingDir,
+			Timeout:      cfg.Agent.Shell.Timeout,
+			MaxOutput:    cfg.Agent.Shell.MaxOutputBytes,
+			AllowList:    cfg.Agent.Shell.AllowList,
+			Denied:       cfg.Agent.Shell.DeniedCommands,
+			EnvWhitelist: cfg.Agent.Shell.EnvWhitelist,
+		}
+		toolReg.Register(toolshell.New(shellCfg))
+	}
+
+	// Register git tools when enabled.
+	if cfg.Agent.Git.Enabled && cfg.Agent.Git.RepoRoot != "" {
+		gitCfg := toolgit.Config{
+			RepoRoot:  cfg.Agent.Git.RepoRoot,
+			MaxOutput: cfg.Agent.MaxOutputBytes,
+		}
+		if err := toolgit.RegisterTools(toolReg, gitCfg); err != nil {
+			logger.Warn("failed to register git tools", zap.Error(err))
+		}
+	}
+
+	agentCfg := agent.Config{
+		MaxSteps:        cfg.Agent.MaxSteps,
+		WorkspaceRoot:   cfg.Agent.WorkspaceRoot,
+		MaxOutputBytes:  cfg.Agent.MaxOutputBytes,
+		MaxWriteBytes:   cfg.Agent.MaxWriteBytes,
+		ShellEnabled:    cfg.Agent.Shell.Enabled,
+		ShellWorkingDir: cfg.Agent.Shell.WorkingDir,
+		ShellTimeout:    cfg.Agent.Shell.Timeout,
+		ShellMaxOutput:  cfg.Agent.Shell.MaxOutputBytes,
+		ShellAllowList:  cfg.Agent.Shell.AllowList,
+		ShellDenied:     cfg.Agent.Shell.DeniedCommands,
+		ShellEnvWhite:   cfg.Agent.Shell.EnvWhitelist,
+		GitEnabled:      cfg.Agent.Git.Enabled,
+		GitRepoRoot:     cfg.Agent.Git.RepoRoot,
+	}
+	// Pass worker count from config for async execution.
+	if cfg.Agent.WorkerCount == 0 {
+		cfg.Agent.WorkerCount = 2 // default when not explicitly set but used by pool
+	}
+	agentImpl := agent.New(agentCfg, task.NewStoreAdapter(taskStore), routerEngine, toolReg, usageTracker, logger)
+	taskExec := task.NewTaskExecutor(taskStore, routerEngine, agentImpl, modelCatalog, usageTracker, logger)
+	taskHandler := task.NewHandler(taskStore, taskExec, logger)
+	taskHandler.Register(app)
+
+	// Start async worker pool + scheduler when enabled by config.
+	if cfg.Agent.WorkerCount > 0 {
+		poolCfg := worker.Config{
+			WorkerCount:   cfg.Agent.WorkerCount,
+			PollInterval:  cfg.Agent.PollInterval,
+			LeaseDuration: cfg.Agent.LeaseDuration,
+		}
+		pool := worker.New(poolCfg, taskStore, taskExec, logger)
+		sched := worker.NewScheduler(taskStore, logger)
+		pool.Start()
+		sched.Start()
+		defer func() {
+			sched.Stop()
+			pool.Stop()
+		}()
+		logger.Info("async worker pool started",
+			zap.Int("workers", poolCfg.WorkerCount),
+			zap.Duration("poll_interval", poolCfg.PollInterval),
+		)
+	}
 
 	// Graceful shutdown
 	go func() {

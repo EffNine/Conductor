@@ -30,6 +30,7 @@ type ModelProber struct {
 	probing        sync.Mutex
 	batcher        *CatalogBatcher
 	errorTracker   *ErrorTracker
+	onBatch        func([]ProbeResult) // optional post-batch callback
 }
 
 // NewModelProber creates a background model reachability prober.
@@ -92,6 +93,9 @@ func NewModelProber(
 		if store != nil {
 			store.ApplyBatch(results)
 		}
+		if p.onBatch != nil {
+			p.onBatch(results)
+		}
 	})
 	p.errorTracker = NewErrorTracker(cfg.ErrorTracking, store)
 	return p
@@ -103,6 +107,15 @@ func (p *ModelProber) ErrorTracker() *ErrorTracker {
 		return nil
 	}
 	return p.errorTracker
+}
+
+// SetOnBatch sets an optional post-batch callback invoked after each batch of
+// probe results is applied to the model status store. Safe to call before Start.
+func (p *ModelProber) SetOnBatch(fn func([]ProbeResult)) {
+	if p == nil {
+		return
+	}
+	p.onBatch = fn
 }
 
 // SkipProviders marks providers that should not be probed (e.g. loopback ollama

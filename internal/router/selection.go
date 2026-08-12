@@ -11,6 +11,7 @@ import (
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/runtime"
 	"go.uber.org/zap"
 )
 
@@ -64,6 +65,7 @@ type RouterEngine struct {
 	registry       *provider.Registry
 	healthStore    *health.ModelStatusStore
 	metricsStore   *MetricsStore
+	runtime        runtime.Manager
 	scorer         *Scorer
 	breakerPool    *BreakerPool
 	logger         *zap.Logger
@@ -78,6 +80,7 @@ type RouterEngineConfig struct {
 	HealthStore      *health.ModelStatusStore
 	MetricsStore     *MetricsStore
 	BreakerPool      *BreakerPool
+	Runtime          runtime.Manager
 	Logger           *zap.Logger
 	Weights          config.RoutingWeights
 	CostCeiling      float64 // max cost per token; 0 uses default
@@ -104,6 +107,7 @@ func NewRouterEngine(cfg RouterEngineConfig) *RouterEngine {
 		registry:       cfg.Registry,
 		healthStore:    cfg.HealthStore,
 		metricsStore:   cfg.MetricsStore,
+		runtime:        cfg.Runtime,
 		scorer:         NewScorer(raw),
 		breakerPool:    cfg.BreakerPool,
 		logger:         cfg.Logger,
@@ -261,7 +265,7 @@ func (e *RouterEngine) scoreCandidate(ctx context.Context, c candidateInfo, capH
 
 func (e *RouterEngine) getHealthScore(providerName, modelID string) float64 {
 	if e.healthStore == nil {
-		return 0.5
+		return e.getRuntimeHealthScore(providerName)
 	}
 	// Check per-model status first.
 	catalogID := providerName + "/" + modelID
@@ -274,7 +278,7 @@ func (e *RouterEngine) getHealthScore(providerName, modelID string) float64 {
 		case health.StateRecovering, health.StateUnhealthy:
 			return 0.1
 		default:
-			return 0.5
+			return e.getRuntimeHealthScore(providerName)
 		}
 	}
 	// Fall back to per-provider metrics.
@@ -283,13 +287,40 @@ func (e *RouterEngine) getHealthScore(providerName, modelID string) float64 {
 			return m.HealthScore()
 		}
 	}
-	return 0.5
+	return e.getRuntimeHealthScore(providerName)
+}
+
+func (e *RouterEngine) getRuntimeHealthScore(providerName string) float64 {
+	if e.runtime == nil {
+		return 0.5
+	}
+	r, err := e.runtime.Get(providerName)
+	if err != nil {
+		return 0.5
+	}
+	switch r.State() {
+	case runtime.StateHealthy:
+		return 1.0
+	case runtime.StateDegraded:
+		return 0.6
+	case runtime.StateUnhealthy, runtime.StateRecovering:
+		return 0.1
+	default:
+		return 0.5
+	}
 }
 
 func (e *RouterEngine) getLatencyMs(providerName string) int64 {
 	if e.metricsStore != nil {
 		if m := e.metricsStore.Get(providerName); m != nil {
 			return m.RollingLatencyMs()
+		}
+	}
+	// Fall back to runtime latency.
+	if e.runtime != nil {
+		r, err := e.runtime.Get(providerName)
+		if err == nil {
+			return r.Snapshot(context.Background()).LatencyMs
 		}
 	}
 	return 0

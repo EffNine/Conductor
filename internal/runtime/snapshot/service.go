@@ -165,7 +165,8 @@ func (s *Service) computeHash(snapshot *Snapshot) string {
 
 // getStats extracts stats from a ProviderRuntime.
 func getStats(r runtime.ProviderRuntime) runtime.ProviderStats {
-	// Use reflection or type assertion to get stats
-	// For now, we'll use a placeholder
+	if pr, ok := r.(interface{ GetStats() runtime.ProviderStats }); ok {
+		return pr.GetStats()
+	}
 	return runtime.ProviderStats{}
 }

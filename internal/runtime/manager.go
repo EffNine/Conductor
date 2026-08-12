@@ -151,9 +151,14 @@ func (m *ManagerImpl) AggregateStats() AggregateStats {
 	var totalSuccess, totalFailure int64
 	var totalRequests int64
 
-	for _, state := range snap.Providers {
-		totalLatency += state.LatencyMs
-		// Stats are available through GetStats on the runtime
+	for name, runtime := range m.store.runtimes {
+		snap := runtime.Snapshot(context.Background())
+		stats := runtime.GetStats()
+		totalLatency += snap.LatencyMs
+		totalSuccess += stats.SuccessCount
+		totalFailure += stats.FailureCount
+		totalRequests += stats.TotalRequests
+		_ = name
 	}
 
 	return AggregateStats{
