@@ -55,6 +55,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 
 	// Build initial messages from task input.
 	messages := buildInitialMessages(t)
+
 	ctx2 := &AgentContext{
 		TaskID:    t.ID,
 		Messages:  messages,

@@ -68,7 +68,7 @@ func NewDecisionPipeline(cfg PipelineConfig) *DecisionPipeline {
 	p.stages = []PipelineStage{
 		NewIntentStage(),
 		NewCapabilityStage(),
-		NewCandidateStage(cfg.Registry),
+		NewCandidateStage(re),
 		NewSelectionStage(re),
 	}
 

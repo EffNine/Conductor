@@ -324,6 +324,11 @@ func main() {
 	}
 	agentImpl := agent.New(agentCfg, task.NewStoreAdapter(taskStore), routerEngine, toolReg, usageTracker, logger)
 	taskExec := task.NewTaskExecutor(taskStore, routerEngine, agentImpl, modelCatalog, usageTracker, logger)
+	// Wire orchestration pipeline for intelligent task planning.
+	if routingEngine != nil {
+		taskExec.WithOrchestration(registry, toolReg, routingEngine, eventBus)
+		logger.Info("orchestration pipeline enabled for task execution")
+	}
 	taskHandler := task.NewHandler(taskStore, taskExec, logger)
 	taskHandler.Register(app)
 

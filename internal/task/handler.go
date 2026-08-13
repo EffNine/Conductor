@@ -259,21 +259,28 @@ func (h *Handler) HandleCancel(c *fiber.Ctx) error {
 }
 
 func taskResponse(t *Task) fiber.Map {
-	return fiber.Map{
-		"id":           t.ID,
-		"status":       string(t.Status),
-		"input":        t.Input,
-		"output":       t.Output,
-		"provider":     t.Provider,
-		"model":        t.Model,
-		"step_count":   t.StepCount,
-		"retry_count":  t.RetryCount,
-		"max_retries":  t.MaxRetries,
-		"error":        t.Error,
-		"created_at":   t.CreatedAt,
-		"started_at":   t.StartedAt,
-		"completed_at": t.CompletedAt,
+	resp := fiber.Map{
+		"id":            t.ID,
+		"status":        string(t.Status),
+		"input":         t.Input,
+		"output":        t.Output,
+		"provider":      t.Provider,
+		"model":         t.Model,
+		"step_count":    t.StepCount,
+		"retry_count":   t.RetryCount,
+		"max_retries":   t.MaxRetries,
+		"error":         t.Error,
+		"created_at":    t.CreatedAt,
+		"started_at":    t.StartedAt,
+		"completed_at":  t.CompletedAt,
 	}
+	// V2.5: Include orchestration metadata when available.
+	if t.PlanID != "" || t.Intent != "" {
+		resp["plan_id"] = t.PlanID
+		resp["intent"] = t.Intent
+		resp["current_plan_step"] = t.CurrentPlanStep
+	}
+	return resp
 }
 
 // compile-time check: SQLiteStore satisfies Store.

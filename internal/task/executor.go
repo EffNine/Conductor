@@ -8,7 +8,11 @@ import (
 
 	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/eventbus"
+	"github.com/EffNine/conductor/internal/orchestration"
+	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/tool"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -20,14 +24,18 @@ type Executor interface {
 }
 
 // TaskExecutor handles the lifecycle of a task, delegating multi-step execution
-// to the Agent.
+// to the Agent. It optionally runs an orchestration pipeline before execution.
 type TaskExecutor struct {
 	store        Store
 	router       *router.Engine
+	routingEngine *router.RouterEngine
 	agent        agent.Agent
 	catalog      *catalog.Catalog
 	usageTracker *usage.Tracker
+	orchPipeline *orchestration.OrchestrationPipeline
 	logger       *zap.Logger
+	registry     *provider.Registry
+	toolReg      *tool.Registry
 }
 
 // NewTaskExecutor creates a new task executor backed by an agent.
@@ -40,13 +48,31 @@ func NewTaskExecutor(
 	l *zap.Logger,
 ) *TaskExecutor {
 	return &TaskExecutor{
-		store:        s,
-		router:       r,
-		agent:        a,
-		catalog:      cat,
+		store:    s,
+		router:   r,
+		agent:    a,
+		catalog:  cat,
 		usageTracker: ut,
-		logger:       l,
+		logger:   l,
 	}
+}
+
+// WithRoutingEngine wires the intelligent routing engine for candidate generation.
+func (e *TaskExecutor) WithRoutingEngine(re *router.RouterEngine) {
+	e.routingEngine = re
+}
+
+// WithOrchestration wires the orchestration pipeline for intelligent task planning.
+func (e *TaskExecutor) WithOrchestration(reg *provider.Registry, toolReg *tool.Registry, re *router.RouterEngine, eb *eventbus.EventBus) {
+	e.registry = reg
+	e.toolReg = toolReg
+	e.orchPipeline = orchestration.NewPipeline(orchestration.PipelineConfig{
+		Registry: reg,
+		Engine:   re,
+		EventBus: eb,
+		Logger:   e.logger,
+		Verify:   orchestration.DefaultVerifier,
+	})
 }
 
 // Execute loads a task by ID, transitions it through running, runs the agent
@@ -85,12 +111,56 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 		_ = e.store.UpdateTask(task)
 	}
 
+	// Run orchestration if pipeline is configured and no plan exists yet.
+	var planInfo map[string]any
+	if e.orchPipeline != nil && task.PlanID == "" {
+		oc, err := e.orchPipeline.Execute(ctx, taskID, task.Input, func() []string {
+			if e.toolReg != nil {
+				return e.toolReg.Names()
+			}
+			return nil
+		}())
+		if err == nil && oc != nil && oc.Plan != nil {
+			plan := oc.Plan
+			// Persist plan metadata on the task.
+			task.PlanID = plan.ID
+			task.Intent = plan.Intent
+			task.CurrentPlanStep = 0
+			_ = e.store.UpdateTask(task)
+
+			planInfo = map[string]any{
+				"plan_id":     plan.ID,
+				"intent":      plan.Intent,
+				"steps":       len(plan.Steps),
+				"candidates":  len(oc.Candidates),
+				"selected":    oc.Selected,
+			}
+			_ = e.store.CreateTaskEvent(&TaskEvent{
+				ID:        uuid.New().String(),
+				TaskID:    taskID,
+				EventType: "plan.created",
+				EventData: mustMarshal(planInfo),
+			})
+			e.logger.Info("orchestration plan created",
+				zap.String("task_id", taskID),
+				zap.String("plan_id", plan.ID),
+				zap.String("intent", plan.Intent),
+				zap.Int("steps", len(plan.Steps)),
+			)
+		}
+	}
+
 	// Emit task.started event.
+	startEventData := map[string]any{"step": 0}
+	if planInfo != nil {
+		startEventData["plan_id"] = planInfo["plan_id"]
+		startEventData["intent"] = planInfo["intent"]
+	}
 	_ = e.store.CreateTaskEvent(&TaskEvent{
 		ID:        uuid.New().String(),
 		TaskID:    taskID,
 		EventType: "task.started",
-		EventData: mustMarshal(map[string]any{"step": 0}),
+		EventData: mustMarshal(startEventData),
 	})
 
 	// Run the agent loop. The agent returns the updated task or an error.
@@ -134,10 +204,37 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 			e.logger.Error("failed to persist agent result",
 				zap.String("task_id", taskID), zap.Error(err))
 		}
+
+		// Run verification if orchestration pipeline is configured.
+		if e.orchPipeline != nil && task.PlanID != "" {
+			verifyOC := &orchestration.Context{
+				TaskID: taskID,
+				Input:  task.Input,
+				Intent: &orchestration.Intent{TaskType: task.Intent},
+			}
+			if vResult, vErr := e.orchPipeline.Verify(ctx, verifyOC, task.Output); vErr == nil && vResult != nil {
+				_ = e.store.CreateTaskEvent(&TaskEvent{
+					ID:        uuid.New().String(),
+					TaskID:    taskID,
+					EventType: "verification.completed",
+					EventData: mustMarshal(map[string]any{
+						"success": vResult.Success,
+						"message": vResult.Message,
+					}),
+				})
+				e.logger.Info("verification completed",
+					zap.String("task_id", taskID),
+					zap.Bool("success", vResult.Success),
+					zap.String("message", vResult.Message),
+				)
+			}
+		}
+
 		e.logger.Info("task completed via agent",
 			zap.String("task_id", taskID),
 			zap.String("status", string(result.Status)),
 			zap.Int("steps", result.StepCount),
+			zap.String("intent", task.Intent),
 		)
 	}
 	return nil

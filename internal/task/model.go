@@ -119,6 +119,11 @@ type Task struct {
 	ClaimedBy  string     `gorm:"type:text;default:''" json:"claimed_by,omitempty"`
 	ClaimedAt  *time.Time `gorm:"index" json:"claimed_at,omitempty"`
 	LeaseUntil *time.Time `gorm:"index" json:"lease_until,omitempty"`
+
+	// V2.5 orchestration fields
+	PlanID       string `gorm:"type:text;default:''" json:"plan_id,omitempty"`
+	Intent       string `gorm:"type:text;default:''" json:"intent,omitempty"`
+	CurrentPlanStep int `gorm:"default:0" json:"current_plan_step"`
 }
 
 // BeforeCreate is a GORM hook to set RootID from ParentID if empty.
@@ -187,4 +192,35 @@ type TaskToolCall struct {
 	Error      *string `gorm:"type:text" json:"error,omitempty"`
 	Status     string `gorm:"type:text" json:"status"`
 	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// Plan represents a bounded sequence of executable steps for a task.
+type Plan struct {
+	ID           string `gorm:"primaryKey;type:text" json:"id"`
+	TaskID       string `gorm:"type:text;index" json:"task_id"`
+	Intent       string `gorm:"type:text;default:''" json:"intent"`
+	Capabilities string `gorm:"type:text;default:''" json:"capabilities"`
+	StepsJSON    []byte `gorm:"type:blob" json:"steps_json"`
+	Status       string `gorm:"type:text;default:'pending'" json:"status"`
+	CurrentStep  int    `gorm:"default:0" json:"current_step"`
+	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
+}
+
+// TaskPlanEvent records plan lifecycle events for a task.
+type TaskPlanEvent struct {
+	ID         string `gorm:"primaryKey;type:text" json:"id"`
+	TaskID     string `gorm:"type:text;index" json:"task_id"`
+	PlanID     string `gorm:"type:text" json:"plan_id"`
+	EventType  string `gorm:"type:text" json:"event_type"`
+	EventData  []byte `gorm:"type:blob" json:"event_data,omitempty"`
+	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// MigratePlans adds the plan-related tables to the database.
+func MigratePlans(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&Plan{},
+		&TaskPlanEvent{},
+	)
 }

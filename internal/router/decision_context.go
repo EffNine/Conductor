@@ -83,6 +83,7 @@ type DecisionContext struct {
 	intent      *policy.Intent
 	capability  *policy.CapabilityRequirement
 	selection   *SelectionResult
+	candidateScores []ProviderScoreView
 	policyRef   string
 	logger      *zap.Logger
 	eventBus    *eventbus.EventBus
@@ -172,6 +173,12 @@ func (c *DecisionContext) Selection() *SelectionResult { return c.selection }
 
 // SetSelection stores the selection result in the context.
 func (c *DecisionContext) SetSelection(r *SelectionResult) { c.selection = r }
+
+// CandidateScores returns the scored candidates (set by Candidate stage).
+func (c *DecisionContext) CandidateScores() []ProviderScoreView { return c.candidateScores }
+
+// SetCandidateScores stores candidate scores in the context.
+func (c *DecisionContext) SetCandidateScores(scores []ProviderScoreView) { c.candidateScores = scores }
 
 // Logger returns the context logger.
 func (c *DecisionContext) Logger() *zap.Logger { return c.logger }

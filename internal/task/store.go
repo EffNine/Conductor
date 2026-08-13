@@ -462,8 +462,83 @@ func (s *SQLiteStore) ReadyRetries(limit int) ([]string, error) {
 	return ids, err
 }
 
+// Plan persistence methods.
+
+func (s *SQLiteStore) CreatePlan(plan *Plan) error {
+	if plan == nil {
+		return fmt.Errorf("plan is nil")
+	}
+	if plan.ID == "" {
+		return fmt.Errorf("plan ID is required")
+	}
+	return s.db.DB.Create(plan).Error
+}
+
+func (s *SQLiteStore) GetPlan(id string) (*Plan, error) {
+	if id == "" {
+		return nil, fmt.Errorf("plan ID is required")
+	}
+	var plan Plan
+	err := s.db.DB.Where("id = ?", id).First(&plan).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, err
+	}
+	return &plan, nil
+}
+
+func (s *SQLiteStore) GetPlanByTaskID(taskID string) (*Plan, error) {
+	if taskID == "" {
+		return nil, fmt.Errorf("task ID is required")
+	}
+	var plan Plan
+	err := s.db.DB.Where("task_id = ?", taskID).Order("created_at DESC").First(&plan).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &plan, nil
+}
+
+func (s *SQLiteStore) UpdatePlan(plan *Plan) error {
+	if plan == nil {
+		return fmt.Errorf("plan is nil")
+	}
+	if plan.ID == "" {
+		return fmt.Errorf("plan ID is required")
+	}
+	return s.db.DB.Save(plan).Error
+}
+
+func (s *SQLiteStore) CreatePlanEvent(evt *TaskPlanEvent) error {
+	if evt == nil {
+		return fmt.Errorf("event is nil")
+	}
+	if evt.ID == "" {
+		return fmt.Errorf("event ID is required")
+	}
+	return s.db.DB.Create(evt).Error
+}
+
+// compile-time check: SQLiteStore satisfies Store.
+var _ Store = (*SQLiteStore)(nil)
+var _ PlanStore = (*SQLiteStore)(nil)
+
 // ErrNoEligibleTask is returned when there are no tasks to claim.
 var ErrNoEligibleTask = errors.New("no eligible task available")
+
+// PlanStore provides persistence operations for plans.
+type PlanStore interface {
+	CreatePlan(plan *Plan) error
+	GetPlan(id string) (*Plan, error)
+	GetPlanByTaskID(taskID string) (*Plan, error)
+	UpdatePlan(plan *Plan) error
+	CreatePlanEvent(evt *TaskPlanEvent) error
+}
 
 // MigrateTasks adds the task-related tables to the database.
 func MigrateTasks(db *gorm.DB) error {
@@ -473,4 +548,12 @@ func MigrateTasks(db *gorm.DB) error {
 		&TaskEvent{},
 		&TaskToolCall{},
 	)
+}
+
+// MigrateAll adds all tables including plans.
+func MigrateAll(db *gorm.DB) error {
+	if err := MigrateTasks(db); err != nil {
+		return err
+	}
+	return MigratePlans(db)
 }

@@ -17,9 +17,9 @@ docker run -d -p 8080:8080 \
 
 ## What It Is
 
-Conductor is a single-operator, self-hosted AI gateway. Drop it between your coding tools and the dozen AI subscriptions you already own. Clients see a tidy, merged model picker. You see unified usage, cost, and health — all behind one gateway key.
+Conductor is a single-operator, self-hosted **OpenAI-compatible AI gateway + persistent task/agent orchestration runtime**. Drop it between your coding tools and the dozen AI subscriptions you already own. Clients see a tidy, merged model picker. You see unified usage, cost, and health — all behind one gateway key.
 
-Think of it as a tiny traffic controller for your AI spend: route by model, fall back when a provider hiccups, and stop guessing which endpoint is actually online.
+Think of it as a tiny traffic controller for your AI spend: route by model, fall back when a provider hiccups, and stop guessing which endpoint is actually online. For complex tasks, Conductor classifies intent, generates executable plans, routes across providers intelligently, and verifies results.
 
 ## Features
 
@@ -28,6 +28,12 @@ Think of it as a tiny traffic controller for your AI spend: route by model, fall
 - **Curated Catalog Mode** — Set `catalog.curated_only: true` and advertise only the Static Model List under each provider. Perfect for shrinking giant catalogs like NVIDIA NIM down to the models you actually use.
 - **Model Online Status** — Background reachability probes run on startup and on interval, hide models that fail, and expose status on `/api/models` and `/api/models/status`. No more picking a model only to discover it is retired.
 - **Explicit Routing + Aliases** — `routes` and `aliases` map bare Model IDs to providers and upstream slugs. Provider-prefixed catalog IDs need no route entry.
+- **Intelligent Task Orchestration (V2.5)** — Create persistent tasks via `POST /api/tasks`. Conductor classifies intent (coding, research, vision, etc.), resolves capability requirements, generates candidate provider/model choices, scores and selects the best route, produces an executable plan, runs the agent loop with tool support, and verifies the result. Plans are persisted to SQLite for observability and recovery.
+- **Multi-Step Agent Loop** — Tasks execute in a bounded loop (configurable `max_steps`) with tool calls (filesystem, shell, git), checkpoint/resume, retry/backoff, and worker pool leasing.
+- **Usage & Cost Tracking** — Per-request records with tokens, latency, extra counters (duration, characters), and USD cost. Aggregates totals plus per-provider and per-model breakdowns in SQLite.
+- **Auto Model Selection** — Send `"model": "auto"` and let the gateway pick the best available model from a configured provider using task classification, reachability, cost, and probe latency.
+- **Dashboard API** — Models, model status, usage, costs, provider health, and request logs — all behind the same gateway key.
+- **Docker & Fly.io** — Single container with embedded SQLite; one-shot deploy via `./scripts/fly-deploy.sh`.
 - **Fallback Chains** — Try backup providers when the primary fails, without the client lifting a finger.
 - **Usage & Cost Tracking** — Per-request records with tokens, latency, extra counters (duration, characters), and USD cost. Aggregates totals plus per-provider and per-model breakdowns in SQLite.
 - **Auto Model Selection** — Send `"model": "auto"` and let the gateway pick the best available model from a configured provider using task classification, reachability, cost, and probe latency.
@@ -150,18 +156,29 @@ See [Configuration Reference](docs/configuration.md) for full details.
 
 ```
 Client → API Key Check → Rate Limit → Validate → Route → Provider Adapter → Normalize → Response
-                                       ↓              ↓                              ↓
-                                   Alias/Routes   Health/Probes               Usage + Cost → SQLite
+                                        ↓              ↓                              ↓
+                                    Alias/Routes   Health/Probes               Usage + Cost → SQLite
+
+Task API Flow (V2.5):
+  POST /api/tasks
+    ↓
+  INTENT → CAPABILITY → CANDIDATE → SELECTION → PLAN
+    ↓
+  AGENT LOOP (steps with tool calls)
+    ↓
+  VERIFY → COMPLETE
 ```
 
 - **Auth** — Single gateway API key via `CONDUCTOR_API_KEY` (auto-generated to `data/conductor.api_key` if unset).
 - **Rate Limiter** — Global and per-provider limits.
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks.
+- **Decision Pipeline** — Intent → Capability → Candidate → Selection stages with intelligent scoring (health, latency, cost, capability).
 - **Provider Adapters** — Common `Provider` interface; OpenAI-compatible passthrough plus a custom Anthropic Messages adapter.
 - **Catalog** — Merges provider model lists (always provider-prefixed) with static fallback; optional curated-only allowlist and reachability filter.
 - **Model Prober** — Probes providers on startup/redeploy and on interval; advertises only probe-passed models after the first pass.
 - **Auto Selector** — Classifies requests by task and scores candidates by health, cost, and latency for `"model": "auto"`.
 - **Usage Tracker** — Persists usage and estimated cost to SQLite.
+- **Task Orchestrator (V2.5)** — Classifies task intent, resolves capabilities, generates ranked provider candidates, creates executable plans, runs multi-step agent loops with tool support, and verifies outcomes. All persisted to SQLite.
 
 See [Architecture](docs/architecture.md) for details.
 

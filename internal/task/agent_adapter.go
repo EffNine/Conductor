@@ -22,6 +22,9 @@ func toAgentRef(t *Task) *agent.TaskRef {
 		MaxRetries:  t.MaxRetries,
 		MaxSteps:    t.MaxSteps,
 		CompletedAt: t.CompletedAt,
+		PlanID:      t.PlanID,
+		Intent:      t.Intent,
+		CurrentPlanStep: t.CurrentPlanStep,
 	}
 }
 
