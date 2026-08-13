@@ -28,13 +28,11 @@ type Executor interface {
 type TaskExecutor struct {
 	store        Store
 	router       *router.Engine
-	routingEngine *router.RouterEngine
 	agent        agent.Agent
 	catalog      *catalog.Catalog
 	usageTracker *usage.Tracker
 	orchPipeline *orchestration.OrchestrationPipeline
 	logger       *zap.Logger
-	registry     *provider.Registry
 	toolReg      *tool.Registry
 }
 
@@ -57,14 +55,8 @@ func NewTaskExecutor(
 	}
 }
 
-// WithRoutingEngine wires the intelligent routing engine for candidate generation.
-func (e *TaskExecutor) WithRoutingEngine(re *router.RouterEngine) {
-	e.routingEngine = re
-}
-
 // WithOrchestration wires the orchestration pipeline for intelligent task planning.
 func (e *TaskExecutor) WithOrchestration(reg *provider.Registry, toolReg *tool.Registry, re *router.RouterEngine, eb *eventbus.EventBus) {
-	e.registry = reg
 	e.toolReg = toolReg
 	e.orchPipeline = orchestration.NewPipeline(orchestration.PipelineConfig{
 		Registry: reg,
@@ -112,7 +104,8 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 	}
 
 	// Run orchestration if pipeline is configured and no plan exists yet.
-	var planInfo map[string]any
+	var selectedProvider string
+	var selectedModel string
 	if e.orchPipeline != nil && task.PlanID == "" {
 		oc, err := e.orchPipeline.Execute(ctx, taskID, task.Input, func() []string {
 			if e.toolReg != nil {
@@ -122,39 +115,76 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 		}())
 		if err == nil && oc != nil && oc.Plan != nil {
 			plan := oc.Plan
-			// Persist plan metadata on the task.
+			// Persist the plan through PlanStore.
+			dbPlan := &Plan{
+				ID:           plan.ID,
+				TaskID:       taskID,
+				Intent:       plan.Intent,
+				Capabilities: plan.Capabilities,
+				StepsJSON:    mustMarshal(plan.Steps),
+				Status:       orchestration.PlanRunning,
+				CurrentStep:  0,
+			}
+			if ps, ok := e.store.(PlanStore); ok {
+				if err := ps.CreatePlan(dbPlan); err != nil {
+					e.logger.Warn("failed to persist plan", zap.String("plan_id", plan.ID), zap.Error(err))
+				}
+			}
+
+			// Apply selected candidate to task fields.
+			if oc.Selected != nil {
+				selectedProvider = oc.Selected.ProviderName
+				// Resolve actual model from the selected candidate.
+				selectedModel = orchestration.ResolveCandidateModel(ctx, e.router, selectedProvider, task.Model)
+				if selectedModel == "" {
+					selectedModel = task.Model
+				}
+			}
+
 			task.PlanID = plan.ID
 			task.Intent = plan.Intent
 			task.CurrentPlanStep = 0
+			if selectedModel != "" {
+				task.Model = selectedModel
+			}
+			if selectedProvider != "" {
+				task.Provider = selectedProvider
+			}
 			_ = e.store.UpdateTask(task)
 
-			planInfo = map[string]any{
-				"plan_id":     plan.ID,
-				"intent":      plan.Intent,
-				"steps":       len(plan.Steps),
-				"candidates":  len(oc.Candidates),
-				"selected":    oc.Selected,
-			}
 			_ = e.store.CreateTaskEvent(&TaskEvent{
 				ID:        uuid.New().String(),
 				TaskID:    taskID,
 				EventType: "plan.created",
-				EventData: mustMarshal(planInfo),
+				EventData: mustMarshal(map[string]any{
+					"plan_id":     plan.ID,
+					"intent":      plan.Intent,
+					"steps":       len(plan.Steps),
+					"provider":    selectedProvider,
+					"model":       selectedModel,
+					"candidates":  len(oc.Candidates),
+				}),
 			})
 			e.logger.Info("orchestration plan created",
 				zap.String("task_id", taskID),
 				zap.String("plan_id", plan.ID),
 				zap.String("intent", plan.Intent),
 				zap.Int("steps", len(plan.Steps)),
+				zap.String("selected_provider", selectedProvider),
+				zap.String("selected_model", selectedModel),
 			)
 		}
 	}
 
 	// Emit task.started event.
 	startEventData := map[string]any{"step": 0}
-	if planInfo != nil {
-		startEventData["plan_id"] = planInfo["plan_id"]
-		startEventData["intent"] = planInfo["intent"]
+	if task.PlanID != "" {
+		startEventData["plan_id"] = task.PlanID
+		startEventData["intent"] = task.Intent
+	}
+	if selectedProvider != "" {
+		startEventData["provider"] = selectedProvider
+		startEventData["model"] = selectedModel
 	}
 	_ = e.store.CreateTaskEvent(&TaskEvent{
 		ID:        uuid.New().String(),
@@ -194,6 +224,10 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 				e.failTask(ctx, taskID, fmt.Errorf("agent: %w", runErr))
 			}
 		}
+		// Update plan status on failure.
+		if task.PlanID != "" {
+			_ = e.updatePlanStatus(taskID, task.PlanID, orchestration.PlanFailed)
+		}
 		return runErr
 	}
 
@@ -205,6 +239,11 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 				zap.String("task_id", taskID), zap.Error(err))
 		}
 
+		// Update plan status to completed.
+		if task.PlanID != "" {
+			_ = e.updatePlanStatus(taskID, task.PlanID, orchestration.PlanCompleted)
+		}
+
 		// Run verification if orchestration pipeline is configured.
 		if e.orchPipeline != nil && task.PlanID != "" {
 			verifyOC := &orchestration.Context{
@@ -213,20 +252,29 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 				Intent: &orchestration.Intent{TaskType: task.Intent},
 			}
 			if vResult, vErr := e.orchPipeline.Verify(ctx, verifyOC, task.Output); vErr == nil && vResult != nil {
+				verifyEvent := map[string]any{
+					"success": vResult.Success,
+					"message": vResult.Message,
+				}
 				_ = e.store.CreateTaskEvent(&TaskEvent{
 					ID:        uuid.New().String(),
 					TaskID:    taskID,
 					EventType: "verification.completed",
-					EventData: mustMarshal(map[string]any{
-						"success": vResult.Success,
-						"message": vResult.Message,
-					}),
+					EventData: mustMarshal(verifyEvent),
 				})
 				e.logger.Info("verification completed",
 					zap.String("task_id", taskID),
 					zap.Bool("success", vResult.Success),
 					zap.String("message", vResult.Message),
 				)
+				// Verification failure is a warning, not a task failure.
+				// Task completes successfully; verification result is recorded.
+				if !vResult.Success {
+					e.logger.Warn("verification failed for task",
+						zap.String("task_id", taskID),
+						zap.String("message", vResult.Message),
+					)
+				}
 			}
 		}
 
@@ -235,9 +283,39 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 			zap.String("status", string(result.Status)),
 			zap.Int("steps", result.StepCount),
 			zap.String("intent", task.Intent),
+			zap.String("provider", task.Provider),
+			zap.String("model", task.Model),
 		)
 	}
 	return nil
+}
+
+// updatePlanStatus transitions a plan to the given status and updates the task.
+func (e *TaskExecutor) updatePlanStatus(taskID, planID, status string) error {
+	ps, ok := e.store.(PlanStore)
+	if !ok {
+		return nil
+	}
+	plan, err := ps.GetPlan(planID)
+	if err != nil {
+		return err
+	}
+	plan.Status = status
+	if status == orchestration.PlanCompleted || status == orchestration.PlanFailed {
+		plan.CurrentStep = len(parsePlanSteps(plan.StepsJSON))
+	}
+	return ps.UpdatePlan(plan)
+}
+
+func parsePlanSteps(stepsJSON []byte) []orchestration.Step {
+	if len(stepsJSON) == 0 {
+		return nil
+	}
+	var steps []orchestration.Step
+	if err := json.Unmarshal(stepsJSON, &steps); err != nil {
+		return nil
+	}
+	return steps
 }
 
 func (e *TaskExecutor) defaultModel() (string, error) {

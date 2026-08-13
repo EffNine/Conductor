@@ -35,6 +35,9 @@ func fromAgentRef(t *Task, ref *agent.TaskRef) {
 	t.Provider = ref.Provider
 	t.Model = ref.Model
 	t.StepCount = ref.StepCount
+	t.PlanID = ref.PlanID
+	t.Intent = ref.Intent
+	t.CurrentPlanStep = ref.CurrentPlanStep
 	if ref.CompletedAt != nil {
 		t.CompletedAt = ref.CompletedAt
 	}

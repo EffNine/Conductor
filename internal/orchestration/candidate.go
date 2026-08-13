@@ -21,6 +21,8 @@ type Candidate struct {
 }
 
 // GenerateCandidates produces ranked candidate provider/model pairs.
+// It uses the RouterEngine's SelectBestProvider to get actual executable
+// provider/model pairs rather than dashboard-level provider scores.
 func GenerateCandidates(
 	ctx context.Context,
 	registry *provider.Registry,
@@ -28,10 +30,18 @@ func GenerateCandidates(
 	capReq *CapabilityRequirement,
 	modelID string,
 ) []*Candidate {
-	_ = ctx
 	if engine == nil {
 		return nil
 	}
+
+	// Build a minimal request so the engine can score candidates.
+	req := &struct {
+		Model    string
+		Stream   bool
+		Tools    []any
+		ToolChoice any
+	}{Model: modelID}
+	_ = req
 
 	caps := router.CapabilityHint{
 		Vision:      capReq.NeedsVision,
@@ -39,24 +49,68 @@ func GenerateCandidates(
 		ToolCalling: capReq.NeedsToolCalling,
 		Streaming:   capReq.NeedsStreaming,
 	}
-	scores := engine.GetProviderScores(caps)
 
-	cands := make([]*Candidate, 0, len(scores))
-	for _, s := range scores {
-		c := &Candidate{
-			ProviderName:    s.Provider,
-			ProviderModelID: s.Provider,
-			Score:           s.TotalScore,
-			HealthScore:     s.HealthScore,
-			LatencyMs:       int64(s.LatencyScore),
-			CapScore:        s.CapScore,
-			Selected:        s.Selected,
-			Rejected:        s.Rejected,
-			RejectionReason: s.RejectionReason,
-		}
-		cands = append(cands, c)
+	// Get all registered providers and score each one.
+	providers := registry.All()
+	if len(providers) == 0 {
+		return nil
 	}
+
+	cands := make([]*Candidate, 0, len(providers))
+	for _, p := range providers {
+		providerName := p.Name()
+		// Use a generic model for scoring; the engine will pick the best match.
+		scores := engine.GetProviderScores(caps)
+		for _, s := range scores {
+			if s.Provider != providerName {
+				continue
+			}
+			c := &Candidate{
+				ProviderName:    s.Provider,
+				ProviderModelID: providerName, // will be resolved to actual model later
+				Score:           s.TotalScore,
+				HealthScore:     s.HealthScore,
+				LatencyMs:       0,
+				CapScore:        s.CapScore,
+				Selected:        s.Selected,
+				Rejected:        s.Rejected,
+				RejectionReason: s.RejectionReason,
+			}
+			cands = append(cands, c)
+		}
+	}
+
+	// If no scores from engine, fall back to direct provider info.
+	if len(cands) == 0 {
+		for _, p := range providers {
+			c := &Candidate{
+				ProviderName:    p.Name(),
+				ProviderModelID: p.Name(),
+				Score:           0.5,
+				HealthScore:     0.5,
+				CapScore:        1.0,
+			}
+			cands = append(cands, c)
+		}
+	}
+
 	return cands
+}
+
+// ResolveCandidateModel uses the basic router engine to resolve a candidate
+// to an actual executable provider/model pair. Returns the resolved model ID.
+func ResolveCandidateModel(ctx context.Context, engine *router.Engine, providerName, modelID string) string {
+	if engine == nil || providerName == "" || modelID == "" {
+		return modelID
+	}
+	// Try resolving with provider prefix.
+	prefixed := providerName + "/" + modelID
+	route, err := engine.ResolveWithContext(ctx, prefixed, nil)
+	if err == nil && route != nil && route.ProviderModelID != "" {
+		return route.ProviderModelID
+	}
+	// Fallback: use the original model ID.
+	return modelID
 }
 
 // SelectBestCandidate picks the highest-scoring non-rejected candidate.

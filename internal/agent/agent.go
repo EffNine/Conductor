@@ -38,21 +38,9 @@ type TaskRef struct {
 	CompletedAt *time.Time
 
 	// V2.5 orchestration fields
-	PlanID      string
-	Intent      string
-	Capabilities *CapabilityInfo
-	SelectedProvider string
+	PlanID          string
+	Intent          string
 	CurrentPlanStep int
-}
-
-// CapabilityInfo holds the resolved capability requirements for a task.
-type CapabilityInfo struct {
-	NeedsFileSystem  bool
-	NeedsShell       bool
-	NeedsGit         bool
-	NeedsReasoning   bool
-	NeedsVision      bool
-	NeedsToolCalling bool
 }
 
 // TaskStatus mirrors task.Status values used by the agent.
