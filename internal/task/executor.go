@@ -115,6 +115,11 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 					EventType: "task.cancelled",
 					EventData: mustMarshal(map[string]any{"error": runErr.Error()}),
 				})
+			} else if IsWorkerContext(ctx) {
+				// Worker-executed: leave task in running state so the caller
+				// (worker pool) can apply retry policy instead of us hard-failing.
+				e.logger.Warn("task execution failed in worker context; retry policy applied by caller",
+					zap.String("task_id", taskID), zap.Error(runErr))
 			} else {
 				e.failTask(ctx, taskID, fmt.Errorf("agent: %w", runErr))
 			}

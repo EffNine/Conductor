@@ -13,6 +13,11 @@ import (
 // workerIDContextKey is the context key for the current worker ID.
 type workerIDContextKey struct{}
 
+// workerExecutionContextKey is the context key that signals worker-executed
+// tasks. When set, the executor must not finalize terminal state — the caller
+// (worker) owns retry/failure policy.
+type workerExecutionContextKey struct{}
+
 // WithWorkerID returns a context carrying the given worker ID.
 func WithWorkerID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, workerIDContextKey{}, id)
@@ -22,6 +27,18 @@ func WithWorkerID(ctx context.Context, id string) context.Context {
 func WorkerIDFromContext(ctx context.Context) string {
 	id, _ := ctx.Value(workerIDContextKey{}).(string)
 	return id
+}
+
+// WithWorkerExecution marks ctx as a worker-driven execution so the executor
+// leaves failure handling to the caller instead of finalizing terminal state.
+func WithWorkerExecution(ctx context.Context) context.Context {
+	return context.WithValue(ctx, workerExecutionContextKey{}, true)
+}
+
+// IsWorkerContext reports whether ctx was created by the worker pool.
+func IsWorkerContext(ctx context.Context) bool {
+	_, ok := ctx.Value(workerExecutionContextKey{}).(bool)
+	return ok
 }
 
 // ErrTaskNotFound is returned when a task does not exist.
@@ -295,7 +312,12 @@ func (s *SQLiteStore) FailTask(id string, errMsg string) error {
 		Updates(map[string]any{"status": StatusFailed, "error": errMsg, "completed_at": now}).Error
 }
 
-// ClaimTask atomically claims a queued or retryable task for a worker.
+// ClaimTask atomically claims a queued task for a worker.
+// QUEUED means "ready to execute immediately." Failed tasks are promoted
+// to queued by the scheduler only when their backoff has expired.
+// The UPDATE itself carries the eligibility predicate, making the claim
+// atomic: if another worker claimed the task between SELECT and UPDATE,
+// RowsAffected == 0 and ErrNoEligibleTask is returned.
 func (s *SQLiteStore) ClaimTask(workerID string, leaseDuration time.Duration) (*Task, error) {
 	if workerID == "" {
 		return nil, fmt.Errorf("workerID is required")
@@ -305,23 +327,16 @@ func (s *SQLiteStore) ClaimTask(workerID string, leaseDuration time.Duration) (*
 
 	var task Task
 	err := s.db.DB.Transaction(func(tx *gorm.DB) error {
-		// Find the oldest eligible task.
+		// Only claim queued tasks (ready to execute immediately).
+		// Failed tasks with backoff are promoted by the scheduler.
 		err := tx.Where("status = ? AND (claimed_by = '' OR claimed_by IS NULL)", StatusQueued).
 			Order("created_at ASC").
 			First(&task).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				// Fall back to failed tasks with next_retry_at <= now.
-				err = tx.Where("status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?", StatusFailed, now).
-					Order("next_retry_at ASC").
-					First(&task).Error
+				return ErrNoEligibleTask
 			}
-			if err != nil {
-				if errors.Is(err, gorm.ErrRecordNotFound) {
-					return ErrNoEligibleTask
-				}
-				return err
-			}
+			return err
 		}
 
 		updates := map[string]any{
@@ -331,10 +346,7 @@ func (s *SQLiteStore) ClaimTask(workerID string, leaseDuration time.Duration) (*
 			"lease_until": until,
 			"updated_at":  now,
 		}
-		if task.Status == StatusFailed {
-			updates["next_retry_at"] = nil
-		}
-		result := tx.Model(&Task{}).Where("id = ?", task.ID).Updates(updates)
+		result := tx.Model(&Task{}).Where("id = ? AND status = ? AND (claimed_by = '' OR claimed_by IS NULL)", task.ID, StatusQueued).Updates(updates)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -402,7 +414,8 @@ func (s *SQLiteStore) ExpireStaleLeases() (int64, error) {
 }
 
 // MakeRetryable increments retry count, schedules the next attempt,
-// clears any active lease, and transitions the task to queued.
+// clears any active lease, and transitions the task to failed.
+// The scheduler is responsible for promoting failed+due tasks back to queued.
 func (s *SQLiteStore) MakeRetryable(id string, backoff time.Duration) (int, error) {
 	if id == "" {
 		return 0, fmt.Errorf("task ID is required")
@@ -424,7 +437,7 @@ func (s *SQLiteStore) MakeRetryable(id string, backoff time.Duration) (int, erro
 		Updates(map[string]any{
 			"retry_count":   task.RetryCount,
 			"next_retry_at": nextRetry,
-			"status":        StatusQueued,
+			"status":        StatusFailed,
 			"claimed_by":    "",
 			"claimed_at":    nil,
 			"lease_until":   nil,

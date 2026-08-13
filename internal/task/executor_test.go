@@ -591,3 +591,88 @@ func TestEvent_NoContradictoryTerminalEvents(t *testing.T) {
 	}
 }
 
+
+// ── Worker-context execution tests ──────────────────────────────────────────
+
+func TestExecute_WorkerContextDoesNotFinalizeFailure(t *testing.T) {
+	db := newTestDB(t)
+	reg := provider.NewRegistry()
+	fake := &fakeAgent{name: "test", model: "gpt-4o", err: errorf("agent boom")}
+	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
+	exec := newTestExecutor(t, db, reg, fake)
+
+	tsk := &task.Task{ID: uuid.New().String(), Status: task.StatusRunning, Input: "fail", Model: "test/gpt-4o"}
+	if err := db.DB.Create(tsk).Error; err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	ctx := task.WithWorkerExecution(context.Background())
+	err := exec.Execute(ctx, tsk.ID)
+	if err == nil {
+		t.Fatal("expected error from Execute")
+	}
+
+	var result task.Task
+	if err := db.DB.Where("id = ?", tsk.ID).First(&result).Error; err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	// Worker context: executor leaves task in running — caller owns retry policy.
+	if result.Status != task.StatusRunning {
+		t.Errorf("status = %q, want running (executor must not finalize in worker context)", result.Status)
+	}
+}
+
+func TestExecute_SyncContextFinalizesFailure(t *testing.T) {
+	db := newTestDB(t)
+	reg := provider.NewRegistry()
+	fake := &fakeAgent{name: "test", model: "gpt-4o", err: errorf("agent boom")}
+	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
+	exec := newTestExecutor(t, db, reg, fake)
+
+	tsk := &task.Task{ID: uuid.New().String(), Status: task.StatusRunning, Input: "fail", Model: "test/gpt-4o"}
+	if err := db.DB.Create(tsk).Error; err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	// No worker context — synchronous execution should finalize failure.
+	err := exec.Execute(context.Background(), tsk.ID)
+	if err == nil {
+		t.Fatal("expected error from Execute")
+	}
+
+	var result task.Task
+	if err := db.DB.Where("id = ?", tsk.ID).First(&result).Error; err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if result.Status != task.StatusFailed {
+		t.Errorf("status = %q, want failed (sync context finalizes)", result.Status)
+	}
+}
+
+func TestExecute_WorkerContextCancellationNotRetryable(t *testing.T) {
+	db := newTestDB(t)
+	reg := provider.NewRegistry()
+	fake := &fakeAgent{name: "test", model: "gpt-4o", err: context.Canceled}
+	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
+	exec := newTestExecutor(t, db, reg, fake)
+
+	tsk := &task.Task{ID: uuid.New().String(), Status: task.StatusRunning, Input: "cancel", Model: "test/gpt-4o"}
+	if err := db.DB.Create(tsk).Error; err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+
+	ctx := task.WithWorkerExecution(context.Background())
+	err := exec.Execute(ctx, tsk.ID)
+	if err == nil {
+		t.Fatal("expected context.Canceled error")
+	}
+
+	var result task.Task
+	if err := db.DB.Where("id = ?", tsk.ID).First(&result).Error; err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	// Cancellation is terminal regardless of context — do NOT become retryable.
+	if result.Status != task.StatusCancelled {
+		t.Errorf("status = %q, want cancelled", result.Status)
+	}
+}

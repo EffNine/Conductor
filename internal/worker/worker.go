@@ -39,6 +39,9 @@ type Pool struct {
 	stopCh    chan struct{}
 	wg        sync.WaitGroup
 	workerIDs []string
+	// active tracks per-task cancel funcs for graceful shutdown.
+	active   map[string]context.CancelFunc
+	activeMu sync.Mutex
 }
 
 // New creates a new worker pool.
@@ -57,12 +60,13 @@ func New(cfg Config, store task.Store, executor task.Executor, logger *zap.Logge
 		workerIDs[i] = fmt.Sprintf("worker-%d", i+1)
 	}
 	return &Pool{
-		cfg:       cfg,
-		store:     store,
-		executor:  executor,
-		logger:    logger,
-		stopCh:    make(chan struct{}),
+		cfg:      cfg,
+		store:    store,
+		executor: executor,
+		logger:   logger,
+		stopCh:   make(chan struct{}),
 		workerIDs: workerIDs,
+		active:   make(map[string]context.CancelFunc),
 	}
 }
 
@@ -87,6 +91,13 @@ func (p *Pool) Stop() {
 	if !p.running.Swap(false) {
 		return
 	}
+	// Cancel all active task contexts so in-flight executions receive the
+	// cancellation signal and can abort promptly.
+	p.activeMu.Lock()
+	for _, cancel := range p.active {
+		cancel()
+	}
+	p.activeMu.Unlock()
 	close(p.stopCh)
 	done := make(chan struct{})
 	go func() {
@@ -136,7 +147,18 @@ func (p *Pool) tick(workerID string) {
 }
 
 func (p *Pool) execute(workerID, taskID string) {
-	ctx := task.WithWorkerID(context.Background(), workerID)
+	ctx, cancel := context.WithCancel(context.Background())
+	ctx = task.WithWorkerID(ctx, workerID)
+	ctx = task.WithWorkerExecution(ctx)
+	p.activeMu.Lock()
+	p.active[taskID] = cancel
+	p.activeMu.Unlock()
+	defer func() {
+		p.activeMu.Lock()
+		delete(p.active, taskID)
+		p.activeMu.Unlock()
+		cancel()
+	}()
 
 	err := p.executor.Execute(ctx, taskID)
 	if err != nil {
@@ -183,7 +205,8 @@ func (p *Pool) handleFailure(workerID, taskID string, err error) {
 		if _, incErr := p.store.MakeRetryable(taskID, backoff); incErr != nil {
 			p.logger.Error("failed to make task retryable", zap.Error(incErr))
 		}
-		p.releaseLeaseIfStillRunning(workerID, taskID)
+		// MakeRetryable already clears the lease and sets status=failed.
+		// No need for an additional release call.
 		return
 	}
 	// Max retries exceeded or no retries configured — fail permanently.
