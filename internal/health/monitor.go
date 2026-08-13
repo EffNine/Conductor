@@ -11,30 +11,35 @@ import (
 
 // Monitor periodically checks provider health
 type Monitor struct {
-	registry *provider.Registry
-	logger   *zap.Logger
-	interval time.Duration
-	timeout  time.Duration
-	statuses map[string]*provider.HealthStatus
-	mu       sync.RWMutex
-	stopCh   chan struct{}
+	registry     *provider.Registry
+	logger       *zap.Logger
+	interval     time.Duration
+	timeout      time.Duration
+	statuses     map[string]*provider.HealthStatus
+	mu           sync.RWMutex
+	stopCh       chan struct{}
+	wg           sync.WaitGroup
+	maxConcurrent int
 }
 
 // NewMonitor creates a new health monitor
 func NewMonitor(registry *provider.Registry, logger *zap.Logger, interval, timeout time.Duration) *Monitor {
 	return &Monitor{
-		registry: registry,
-		logger:   logger,
-		interval: interval,
-		timeout:  timeout,
-		statuses: make(map[string]*provider.HealthStatus),
-		stopCh:   make(chan struct{}),
+		registry:      registry,
+		logger:        logger,
+		interval:      interval,
+		timeout:       timeout,
+		statuses:      make(map[string]*provider.HealthStatus),
+		stopCh:        make(chan struct{}),
+		maxConcurrent: 4,
 	}
 }
 
 // Start begins periodic health checks
 func (m *Monitor) Start() {
+	m.wg.Add(1)
 	go func() {
+		defer m.wg.Done()
 		ticker := time.NewTicker(m.interval)
 		defer ticker.Stop()
 
@@ -52,17 +57,24 @@ func (m *Monitor) Start() {
 	}()
 }
 
-// Stop stops periodic health checks
+// Stop stops periodic health checks and waits for in-flight checks to complete
 func (m *Monitor) Stop() {
 	close(m.stopCh)
+	m.wg.Wait()
 }
 
-// checkAll checks health of all providers
+// checkAll checks health of all providers with bounded concurrency
 func (m *Monitor) checkAll() {
 	providers := m.registry.All()
+	sem := make(chan struct{}, m.maxConcurrent)
 
 	for _, p := range providers {
+		m.wg.Add(1)
+		sem <- struct{}{}
 		go func(p provider.Provider) {
+			defer m.wg.Done()
+			defer func() { <-sem }()
+
 			ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
 			defer cancel()
 
@@ -92,6 +104,11 @@ func (m *Monitor) checkAll() {
 			}
 			m.mu.Unlock()
 		}(p)
+	}
+
+	// Wait for all health checks to finish before returning
+	for range providers {
+		sem <- struct{}{}
 	}
 }
 

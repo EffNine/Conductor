@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,10 +15,11 @@ import (
 
 // Config holds worker pool configuration.
 type Config struct {
-	WorkerCount  int
-	PollInterval time.Duration
-	LeaseDuration time.Duration
+	WorkerCount     int
+	PollInterval    time.Duration
+	LeaseDuration   time.Duration
 	ShutdownTimeout time.Duration
+	TaskTimeout     time.Duration // overall task timeout, 0 = disabled. Default 10m.
 }
 
 // DefaultConfig returns sensible defaults.
@@ -27,6 +29,7 @@ func DefaultConfig() Config {
 		PollInterval:    1 * time.Second,
 		LeaseDuration:   5 * time.Minute,
 		ShutdownTimeout: 30 * time.Second,
+		TaskTimeout:     10 * time.Minute,
 	}
 }
 
@@ -55,6 +58,9 @@ func New(cfg Config, store task.Store, executor task.Executor, logger *zap.Logge
 	}
 	if cfg.LeaseDuration <= 0 {
 		cfg.LeaseDuration = DefaultConfig().LeaseDuration
+	}
+	if cfg.TaskTimeout <= 0 {
+		cfg.TaskTimeout = DefaultConfig().TaskTimeout
 	}
 	workerIDs := make([]string, cfg.WorkerCount)
 	for i := range workerIDs {
@@ -163,7 +169,7 @@ func (p *Pool) tick(workerID string) {
 }
 
 func (p *Pool) execute(workerID, taskID string) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), p.cfg.TaskTimeout)
 	ctx = task.WithWorkerID(ctx, workerID)
 	ctx = task.WithWorkerExecution(ctx)
 	p.activeMu.Lock()
@@ -215,6 +221,20 @@ func (p *Pool) handleFailure(workerID, taskID string, err error) {
 		p.releaseLeaseIfStillRunning(workerID, taskID)
 		return
 	}
+	// CANCELLATION: never retry, always transition to cancelled.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if transErr := p.store.UpdateStatus(taskID, task.StatusCancelled); transErr != nil {
+			p.logger.Error("failed to mark task as cancelled", zap.Error(transErr))
+		}
+		_ = p.store.CreateTaskEvent(&task.TaskEvent{
+			ID:        uuid.New().String(),
+			TaskID:    taskID,
+			EventType: "task.cancelled",
+			EventData: mustMarshal(map[string]any{"error": err.Error()}),
+		})
+		p.releaseLeaseIfStillRunning(workerID, taskID)
+		return
+	}
 	// Attempt retry if retries remain.
 	if t.MaxRetries > 0 && t.RetryCount < t.MaxRetries {
 		backoff := computeBackoff(t.RetryCount)
@@ -237,6 +257,30 @@ func (p *Pool) handleFailure(workerID, taskID string, err error) {
 		EventData: mustMarshal(map[string]any{"error": err.Error()}),
 	})
 	p.releaseLeaseIfStillRunning(workerID, taskID)
+}
+
+// Recover runs startup recovery: pending→queued, expired leases→queued.
+// Must be idempotent.
+func (p *Pool) Recover() error {
+	// Recover pending tasks that were never claimed.
+	n, err := p.store.RecoverPendingTasks()
+	if err != nil {
+		return fmt.Errorf("recover pending tasks: %w", err)
+	}
+	if n > 0 {
+		p.logger.Info("recovery: promoted pending tasks to queued", zap.Int64("count", n))
+	}
+
+	// Expire stale leases so crashed workers' tasks can be reclaimed.
+	expired, err := p.store.ExpireStaleLeases()
+	if err != nil {
+		return fmt.Errorf("expire stale leases: %w", err)
+	}
+	if expired > 0 {
+		p.logger.Info("recovery: expired stale leases", zap.Int64("count", expired))
+	}
+
+	return nil
 }
 
 // computeBackoff returns exponential backoff duration for retry N (0-indexed).

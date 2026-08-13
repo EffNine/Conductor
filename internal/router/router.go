@@ -190,20 +190,18 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 	// Runtime auto mode: if baseID is "auto" and the user did not supply a
 	// provider prefix, let the configured auto selector pick the upstream model.
 	if baseID == "auto" && providerHint == "" && e.autoSelector != nil {
-		providerName := "nvidia_nim" // default scope for this iteration
-		p, found := e.registry.Get(providerName)
-		if !found {
-			return nil, fmt.Errorf("auto mode is unavailable: provider '%s' is not registered", providerName)
-		}
-		taskText := joinMessages(messages)
-		selected, err := e.autoSelector.Select(ctx, taskText)
+		providerName, selectedModel, err := e.selectAutoProvider(ctx, messages)
 		if err != nil {
 			return nil, fmt.Errorf("auto mode failed: %w", err)
+		}
+		p, found := e.registry.Get(providerName)
+		if !found {
+			return nil, fmt.Errorf("auto mode: selected provider '%s' is not registered", providerName)
 		}
 		return &ResolvedRoute{
 			Provider:        p,
 			ProviderName:    providerName,
-			ProviderModelID: selected,
+			ProviderModelID: selectedModel,
 			ModelID:         "auto",
 			Breaker:         e.breakers.Get(providerName),
 		}, nil
@@ -353,6 +351,41 @@ func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID stri
 	}
 
 	return primary, fallbacks, nil
+}
+
+// selectAutoProvider picks the best available provider for auto mode.
+// It scans registered providers, skips open circuit breakers, and returns
+// the first healthy provider with a successfully resolved model.
+func (e *Engine) selectAutoProvider(ctx context.Context, messages []apitypes.Message) (string, string, error) {
+	providers := e.registry.All()
+	if len(providers) == 0 {
+		return "", "", fmt.Errorf("no providers registered for auto mode")
+	}
+
+	// Try each healthy provider
+	for _, p := range providers {
+		name := p.Name()
+		// Skip providers with open circuit breakers
+		if e.breakers != nil {
+			b := e.breakers.Get(name)
+			if b != nil && b.State() == breaker.StateOpen {
+				continue
+			}
+		}
+
+		// Use the auto selector to get a model
+		taskText := joinMessages(messages)
+		selected, err := e.autoSelector.Select(ctx, taskText)
+		if err != nil {
+			continue
+		}
+		if selected == "" {
+			continue
+		}
+		return name, selected, nil
+	}
+
+	return "", "", fmt.Errorf("no healthy provider available for auto mode")
 }
 
 // ResolvedRoute represents a resolved route with provider and model

@@ -68,6 +68,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 		Messages:  messages,
 		ToolState: make(map[string]any),
 		Step:      0,
+		maxBytes:  a.cfg.MaxContextBytes,
 	}
 
 	// Try to restore a checkpoint if the task was previously paused/interrupted.

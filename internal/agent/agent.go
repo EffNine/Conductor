@@ -131,6 +131,7 @@ type Config struct {
 	WorkspaceRoot   string
 	MaxOutputBytes  int
 	MaxWriteBytes   int
+	MaxContextBytes int // hard cap on checkpoint size. 0 = unlimited (backward compatible). Default 1MiB.
 	ShellEnabled    bool
 	ShellWorkingDir string
 	ShellTimeout    time.Duration

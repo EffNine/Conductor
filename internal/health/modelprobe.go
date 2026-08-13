@@ -28,6 +28,7 @@ type ModelProber struct {
 	stopCh         chan struct{}
 	wg             sync.WaitGroup
 	probing        sync.Mutex
+	probingWg      sync.WaitGroup // tracks in-flight ProbeAll / ProbeModelsNeedingRetry calls
 	batcher        *CatalogBatcher
 	errorTracker   *ErrorTracker
 	onBatch        func([]ProbeResult) // optional post-batch callback
@@ -183,7 +184,7 @@ func (p *ModelProber) Start() {
 	}()
 }
 
-// Stop halts background probing and waits for the loop to exit.
+// Stop halts background probing and waits for the loop and any in-flight passes to exit.
 func (p *ModelProber) Stop() {
 	select {
 	case <-p.stopCh:
@@ -195,6 +196,7 @@ func (p *ModelProber) Stop() {
 	if p.batcher != nil {
 		p.batcher.Stop()
 	}
+	p.probingWg.Wait()
 }
 
 // ProbeAll lists the catalog and probes each matching model.
@@ -205,6 +207,9 @@ func (p *ModelProber) ProbeAll() {
 		return
 	}
 	defer p.probing.Unlock()
+
+	p.probingWg.Add(1)
+	defer p.probingWg.Done()
 
 	entries, err := p.catalog.ListAll(context.Background())
 	if err != nil {
@@ -262,6 +267,9 @@ func (p *ModelProber) ProbeModelsNeedingRetry() {
 		return
 	}
 	defer p.probing.Unlock()
+
+	p.probingWg.Add(1)
+	defer p.probingWg.Done()
 
 	due := p.store.ModelsNeedingRetry(time.Now().UTC())
 	if len(due) == 0 {

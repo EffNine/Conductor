@@ -8,6 +8,7 @@ package eventbus
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // EventType identifies the kind of event being published.
@@ -82,10 +83,13 @@ type Event struct {
 // Subscriber is a callback invoked when a matching event is published.
 type Subscriber func(Event)
 
-// EventBus is a lightweight in-process pub/sub bus.
+// EventBus is a lightweight in-process pub/sub bus with bounded subscriber concurrency.
 type EventBus struct {
 	mu            sync.RWMutex
 	subscriptions map[EventType][]subscriberEntry
+	sem           chan struct{} // bounded concurrency semaphore
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 }
 
 type subscriberEntry struct {
@@ -96,10 +100,20 @@ type subscriberEntry struct {
 
 var nextID uint64
 
-// NewEventBus creates a new event bus.
+// NewEventBus creates a new event bus with default worker count (4).
 func NewEventBus() *EventBus {
+	return NewEventBusWithWorkers(4)
+}
+
+// NewEventBusWithWorkers creates a new event bus with the given max concurrent subscriber calls.
+func NewEventBusWithWorkers(workerCount int) *EventBus {
+	if workerCount <= 0 {
+		workerCount = 4
+	}
 	return &EventBus{
 		subscriptions: make(map[EventType][]subscriberEntry),
+		sem:           make(chan struct{}, workerCount),
+		stopCh:        make(chan struct{}),
 	}
 }
 
@@ -138,8 +152,8 @@ func (eb *EventBus) Unsubscribe(eventType EventType, id uint64) {
 	eb.subscriptions[eventType] = filtered
 }
 
-// Publish sends an event to all subscribers of the given type.
-// The event context is propagated to all subscribers.
+// Publish sends an event to all subscribers of the given type with bounded concurrency.
+// If the concurrency limit is reached, the event is dropped with a warning.
 func (eb *EventBus) Publish(ctx context.Context, event Event) {
 	eb.mu.RLock()
 	entries, ok := eb.subscriptions[event.Type]
@@ -150,9 +164,25 @@ func (eb *EventBus) Publish(ctx context.Context, event Event) {
 	}
 
 	for _, entry := range entries {
-		eventWithContext := event
-		eventWithContext.Context = ctx
-		go entry.subscriber(eventWithContext)
+		select {
+		case <-eb.stopCh:
+			return
+		default:
+		}
+
+		select {
+		case eb.sem <- struct{}{}:
+			// slot acquired
+		case <-time.After(5 * time.Second):
+			return
+		}
+
+		eb.wg.Add(1)
+		go func(sub Subscriber, evt Event) {
+			defer func() { <-eb.sem }()
+			defer eb.wg.Done()
+			sub(evt)
+		}(entry.subscriber, eventWithContext(event, ctx))
 	}
 }
 
@@ -172,4 +202,21 @@ func (eb *EventBus) PublishSync(ctx context.Context, event Event) {
 		eventWithContext.Context = ctx
 		entry.subscriber(eventWithContext)
 	}
+}
+
+// Stop signals the bus to stop accepting new publishes and waits for in-flight
+// subscriber calls to complete.
+func (eb *EventBus) Stop() {
+	select {
+	case <-eb.stopCh:
+		// already closed
+	default:
+		close(eb.stopCh)
+	}
+	eb.wg.Wait()
+}
+
+func eventWithContext(event Event, ctx context.Context) Event {
+	event.Context = ctx
+	return event
 }

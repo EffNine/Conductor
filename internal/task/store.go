@@ -111,6 +111,9 @@ type Store interface {
 	// and status is failed, returning their IDs.
 	ReadyRetries(limit int) ([]string, error)
 
+	// RecoverPendingTasks transitions pending tasks with no claimed_by to queued.
+	RecoverPendingTasks() (int64, error)
+
 	// ListChildTasks returns all tasks whose ParentID == parentID, ordered by created_at asc.
 	ListChildTasks(parentID string, limit, offset int) ([]Task, error)
 
@@ -408,7 +411,6 @@ func (s *SQLiteStore) FailTask(id string, errMsg string) error {
 	if id == "" {
 		return fmt.Errorf("task ID is required")
 	}
-	// Do not transition a cancelled task to failed — cancellation is final.
 	var task Task
 	if err := s.db.DB.Where("id = ?", id).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -416,8 +418,8 @@ func (s *SQLiteStore) FailTask(id string, errMsg string) error {
 		}
 		return err
 	}
-	if task.Status == StatusCancelled {
-		return fmt.Errorf("cannot fail cancelled task %s", id)
+	if task.Status == StatusCancelled || task.Status == StatusCompleted {
+		return fmt.Errorf("cannot fail task %s in %s state", id, task.Status)
 	}
 	now := time.Now().UTC()
 	return s.db.DB.Model(&Task{}).
@@ -567,9 +569,8 @@ func (s *SQLiteStore) MakeRetryable(id string, backoff time.Duration) (int, erro
 		}
 		return 0, err
 	}
-	// Do not retry a cancelled task — cancellation is final.
-	if task.Status == StatusCancelled {
-		return 0, fmt.Errorf("cannot retry cancelled task %s", id)
+	if task.Status == StatusCancelled || task.Status == StatusCompleted {
+		return 0, fmt.Errorf("cannot retry task %s in %s state", id, task.Status)
 	}
 	task.RetryCount++
 	nextRetry := time.Now().UTC().Add(backoff)
@@ -593,17 +594,32 @@ func (s *SQLiteStore) MakeRetryable(id string, backoff time.Duration) (int, erro
 	return task.RetryCount, nil
 }
 
-// ReadyRetries returns IDs of failed tasks whose next_retry_at has arrived.
+// ReadyRetries returns IDs of failed tasks whose next_retry_at has arrived
+// and which still have retry budget remaining (retry_count < max_retries).
+// MaxRetries=0 means no retries are allowed, so such tasks are never returned.
 func (s *SQLiteStore) ReadyRetries(limit int) ([]string, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	var ids []string
 	err := s.db.DB.Model(&Task{}).
-		Where("status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ?", StatusFailed, time.Now().UTC()).
+		Where("status = ? AND next_retry_at IS NOT NULL AND next_retry_at <= ? AND retry_count < max_retries AND max_retries > 0",
+			StatusFailed, time.Now().UTC()).
 		Limit(limit).
 		Pluck("id", &ids).Error
 	return ids, err
+}
+
+// RecoverPendingTasks transitions pending tasks with no claimed_by to queued.
+// This is used during startup recovery to reclaim orphaned pending tasks.
+func (s *SQLiteStore) RecoverPendingTasks() (int64, error) {
+	result := s.db.DB.Model(&Task{}).
+		Where("status = ? AND (claimed_by = '' OR claimed_by IS NULL)", StatusPending).
+		Updates(map[string]any{
+			"status":     StatusQueued,
+			"updated_at": time.Now().UTC(),
+		})
+	return result.RowsAffected, result.Error
 }
 
 // Plan persistence methods.

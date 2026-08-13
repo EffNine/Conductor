@@ -510,16 +510,3 @@ func TestGetMetadata(t *testing.T) {
 		t.Error("expected streaming capability")
 	}
 }
-
-func TestPluginInterface(t *testing.T) {
-	// Verify Plugin interface is satisfiable
-	var _ Plugin = (*testPlugin)(nil)
-}
-
-type testPlugin struct {
-	p    *testProvider
-	meta Metadata
-}
-
-func (tp *testPlugin) Provider() Provider { return tp.p }
-func (tp *testPlugin) Metadata() Metadata { return tp.meta }

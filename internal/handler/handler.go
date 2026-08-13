@@ -154,9 +154,8 @@ func (h *Handler) Register(app *fiber.App) {
 // HandleAutoStatus reports the runtime auto model selection status.
 func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
-		"enabled":  h.router.HasAutoSelector(),
-		"provider": "nvidia_nim",
-		"note":     "auto mode currently selects from NVIDIA NIM catalog using health, cost, and latency",
+		"enabled": h.router.HasAutoSelector(),
+		"note":    "auto mode selects from all registered providers using health, cost, and latency scoring",
 	})
 }
 

@@ -43,7 +43,6 @@ import (
 	"github.com/EffNine/conductor/internal/provider/openrouter"
 	"github.com/EffNine/conductor/internal/provider/xai"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/EffNine/conductor/internal/scheduler"
 	"github.com/EffNine/conductor/internal/task"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
@@ -113,9 +112,6 @@ func main() {
 
 	// Initialize event bus for cross-subsystem communication
 	eventBus := eventbus.NewEventBus()
-
-	// Initialize job scheduler
-	_ = scheduler.NewJobRegistry()
 
 	// Register providers
 	registerProviders(cfg, registry, logger)
@@ -379,6 +375,9 @@ func main() {
 		}
 		pool = worker.New(poolCfg, taskStore, exec, logger)
 		sched = worker.NewScheduler(taskStore, logger)
+		if err := pool.Recover(); err != nil {
+			logger.Warn("startup recovery failed (non-fatal)", zap.Error(err))
+		}
 		pool.Start()
 		sched.Start()
 		defer func() {
