@@ -34,6 +34,7 @@ type TaskExecutor struct {
 	orchPipeline *orchestration.OrchestrationPipeline
 	logger       *zap.Logger
 	toolReg      *tool.Registry
+	roleReg      *agent.Registry
 }
 
 // NewTaskExecutor creates a new task executor backed by an agent.
@@ -53,6 +54,12 @@ func NewTaskExecutor(
 		usageTracker: ut,
 		logger:   l,
 	}
+}
+
+// WithRoleRegistry wires the agent definition registry so the executor can
+// look up role-specific routing hints for candidate scoring.
+func (e *TaskExecutor) WithRoleRegistry(rr *agent.Registry) {
+	e.roleReg = rr
 }
 
 // WithOrchestration wires the orchestration pipeline for intelligent task planning.
@@ -107,12 +114,22 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 	var selectedProvider string
 	var selectedModel string
 	if e.orchPipeline != nil && task.PlanID == "" {
+		var routingPrefs orchestration.RoutingPreferences
+		if e.roleReg != nil && task.Role != "" {
+			if def, ok := e.roleReg.Get(task.Role); ok {
+				routingPrefs = orchestration.RoutingPreferences{
+					PreferredProviders:    def.RoutingHints.PreferredProviders,
+					ExcludedProviders:     def.RoutingHints.ExcludedProviders,
+					PreferredCapabilities: def.RoutingHints.PreferredCapabilities,
+				}
+			}
+		}
 		oc, err := e.orchPipeline.Execute(ctx, taskID, task.Input, func() []string {
 			if e.toolReg != nil {
 				return e.toolReg.Names()
 			}
 			return nil
-		}())
+		}(), routingPrefs)
 		if err == nil && oc != nil && oc.Plan != nil {
 			plan := oc.Plan
 			// Persist the plan through PlanStore.

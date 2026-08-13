@@ -56,14 +56,16 @@ type Context struct {
 	Plan         *Plan
 	Verification *VerificationResult
 	ToolNames    []string
+	RoutingPrefs RoutingPreferences
 }
 
 // Execute runs the full orchestration flow for a task.
-func (p *OrchestrationPipeline) Execute(ctx context.Context, taskID, input string, toolNames []string) (*Context, error) {
+func (p *OrchestrationPipeline) Execute(ctx context.Context, taskID, input string, toolNames []string, routingPrefs RoutingPreferences) (*Context, error) {
 	oc := &Context{
-		TaskID:    taskID,
-		Input:     input,
-		ToolNames: toolNames,
+		TaskID:       taskID,
+		Input:        input,
+		ToolNames:    toolNames,
+		RoutingPrefs: routingPrefs,
 	}
 
 	// Phase 1: Understand (Intent)
@@ -80,7 +82,7 @@ func (p *OrchestrationPipeline) Execute(ctx context.Context, taskID, input strin
 	p.publishEvent(ctx, "orchestration.capabilities_resolved", oc)
 
 	// Phase 3: Candidates
-	oc.Candidates = GenerateCandidates(ctx, p.registry, p.engine, oc.Capabilities, "")
+	oc.Candidates = GenerateCandidates(ctx, p.registry, p.engine, oc.Capabilities, "", oc.RoutingPrefs)
 	if len(oc.Candidates) > 0 {
 		oc.Selected = SelectBestCandidate(oc.Candidates)
 	}

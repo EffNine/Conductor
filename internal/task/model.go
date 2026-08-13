@@ -124,6 +124,22 @@ type Task struct {
 	PlanID       string `gorm:"type:text;default:''" json:"plan_id,omitempty"`
 	Intent       string `gorm:"type:text;default:''" json:"intent,omitempty"`
 	CurrentPlanStep int `gorm:"default:0" json:"current_plan_step"`
+
+	// V2.6 multi-agent fields
+	Role         string `gorm:"type:text;default:''" json:"role,omitempty"`
+	DependsOn    string `gorm:"type:text;default:''" json:"depends_on,omitempty"`
+	ChildrenJSON string `gorm:"type:text;default:''" json:"children_json,omitempty"`
+	CoordState   []byte `gorm:"type:blob" json:"coord_state,omitempty"`
+}
+
+// CoordCheckpoint serializes coordinator state for checkpoint/resume.
+type CoordCheckpoint struct {
+	TaskID          string            `json:"task_id"`
+	Children        []string          `json:"children"`
+	CompletedChildren map[string]string `json:"completed_children,omitempty"`
+	FailedChildren  []string          `json:"failed_children,omitempty"`
+	AggregatedOutput string           `json:"aggregated_output,omitempty"`
+	SavedAt         time.Time         `json:"saved_at"`
 }
 
 // BeforeCreate is a GORM hook to set RootID from ParentID if empty.

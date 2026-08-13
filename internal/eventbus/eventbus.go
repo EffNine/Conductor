@@ -60,6 +60,15 @@ const (
 	// System events
 	SystemShutdown     EventType = "system.shutdown"
 	SystemConfigReload EventType = "system.config.reload"
+
+	// Multi-agent coordination events (V2.6)
+	TaskDelegated           EventType = "task.delegated"
+	TaskChildStarted        EventType = "task.child.started"
+	TaskChildCompleted      EventType = "task.child.completed"
+	TaskChildFailed         EventType = "task.child.failed"
+	TaskAggregationStarted  EventType = "task.aggregation.started"
+	TaskAggregationCompleted EventType = "task.aggregation.completed"
+	TaskCoordinationCompleted EventType = "task.coordination.completed"
 )
 
 // Event represents a single message in the bus.

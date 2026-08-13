@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/task"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -113,6 +114,21 @@ func (p *Pool) Stop() {
 	}
 }
 
+// CancelTask cancels an in-flight task by its ID. It looks up the stored
+// cancel func in the active map and invokes it. If the task is not currently
+// active, it returns ErrTaskNotFound. The caller is still responsible for
+// transitioning the task's persisted status to cancelled via the store.
+func (p *Pool) CancelTask(taskID string) error {
+	p.activeMu.Lock()
+	cancel, ok := p.active[taskID]
+	p.activeMu.Unlock()
+	if !ok {
+		return fmt.Errorf("task %s is not actively running: %w", taskID, task.ErrTaskNotFound)
+	}
+	cancel()
+	return nil
+}
+
 func (p *Pool) runWorker(id string) {
 	defer p.wg.Done()
 	ticker := time.NewTicker(p.cfg.PollInterval)
@@ -132,7 +148,7 @@ func (p *Pool) runWorker(id string) {
 func (p *Pool) tick(workerID string) {
 	task_, err := p.store.ClaimTask(workerID, p.cfg.LeaseDuration)
 	if err != nil {
-		if err == task.ErrNoEligibleTask {
+		if err == task.ErrNoEligibleTask || err == task.ErrDependenciesNotMet {
 			return // nothing to do this cycle
 		}
 		p.logger.Warn("failed to claim task", zap.Error(err))
@@ -213,6 +229,13 @@ func (p *Pool) handleFailure(workerID, taskID string, err error) {
 	if updateErr := p.store.UpdateStatus(taskID, task.StatusFailed); updateErr != nil {
 		p.logger.Error("failed to mark task as failed", zap.Error(updateErr))
 	}
+	// Emit task.failed event for audit completeness.
+	_ = p.store.CreateTaskEvent(&task.TaskEvent{
+		ID:        uuid.New().String(),
+		TaskID:    taskID,
+		EventType: "task.failed",
+		EventData: mustMarshal(map[string]any{"error": err.Error()}),
+	})
 	p.releaseLeaseIfStillRunning(workerID, taskID)
 }
 

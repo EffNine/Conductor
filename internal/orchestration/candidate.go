@@ -20,6 +20,13 @@ type Candidate struct {
 	RejectionReason string  `json:"rejection_reason,omitempty"`
 }
 
+// RoutingPreferences carries soft role-based preferences for candidate scoring.
+type RoutingPreferences struct {
+	PreferredProviders    []string
+	ExcludedProviders     []string
+	PreferredCapabilities []string
+}
+
 // GenerateCandidates produces ranked candidate provider/model pairs.
 // It uses the RouterEngine's SelectBestProvider to get actual executable
 // provider/model pairs rather than dashboard-level provider scores.
@@ -29,6 +36,7 @@ func GenerateCandidates(
 	engine *router.RouterEngine,
 	capReq *CapabilityRequirement,
 	modelID string,
+	routingPrefs RoutingPreferences,
 ) []*Candidate {
 	if engine == nil {
 		return nil
@@ -59,16 +67,39 @@ func GenerateCandidates(
 	cands := make([]*Candidate, 0, len(providers))
 	for _, p := range providers {
 		providerName := p.Name()
+
+		// Apply excluded providers filter.
+		if isExcluded(providerName, routingPrefs.ExcludedProviders) {
+			c := &Candidate{
+				ProviderName:    providerName,
+				ProviderModelID: providerName,
+				Score:           0,
+				HealthScore:     0,
+				Rejected:        true,
+				RejectionReason: "excluded by routing hint",
+			}
+			cands = append(cands, c)
+			continue
+		}
+
 		// Use a generic model for scoring; the engine will pick the best match.
 		scores := engine.GetProviderScores(caps)
 		for _, s := range scores {
 			if s.Provider != providerName {
 				continue
 			}
+			score := s.TotalScore
+			// Apply soft preference bonus for preferred providers.
+			if isPreferred(providerName, routingPrefs.PreferredProviders) {
+				score += 0.05
+				if score > 1.0 {
+					score = 1.0
+				}
+			}
 			c := &Candidate{
 				ProviderName:    s.Provider,
 				ProviderModelID: providerName, // will be resolved to actual model later
-				Score:           s.TotalScore,
+				Score:           score,
 				HealthScore:     s.HealthScore,
 				LatencyMs:       0,
 				CapScore:        s.CapScore,
@@ -95,6 +126,24 @@ func GenerateCandidates(
 	}
 
 	return cands
+}
+
+func isPreferred(name string, preferred []string) bool {
+	for _, p := range preferred {
+		if p == name {
+			return true
+		}
+	}
+	return false
+}
+
+func isExcluded(name string, excluded []string) bool {
+	for _, e := range excluded {
+		if e == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveCandidateModel uses the basic router engine to resolve a candidate

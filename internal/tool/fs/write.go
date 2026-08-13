@@ -7,14 +7,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/EffNine/conductor/internal/tool"
 )
 
+// writeMutex serializes concurrent write_file operations to prevent
+// simultaneous known conflicting writes across parallel workers.
+var writeMutex sync.Mutex
+
 // WriteTool writes a file to the filesystem within the configured root.
 type WriteTool struct {
-	root       string
-	maxBytes   int
+	root     string
+	maxBytes int
 }
 
 // NewWrite creates a write_file tool bounded to root.
@@ -76,6 +81,10 @@ func (t *WriteTool) Execute(ctx context.Context, args json.RawMessage) (tool.Too
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return tool.Failure("create directory " + dir + ": " + err.Error()), nil
 	}
+
+	// Serialize writes to prevent concurrent conflicts.
+	writeMutex.Lock()
+	defer writeMutex.Unlock()
 
 	if err := os.WriteFile(target, []byte(input.Content), 0o644); err != nil {
 		return tool.Failure("write " + input.Path + ": " + err.Error()), nil

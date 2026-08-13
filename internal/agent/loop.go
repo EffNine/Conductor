@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
@@ -23,6 +24,7 @@ type AgentImpl struct {
 	store        AgentStore
 	router       *router.Engine
 	registry     *tool.Registry
+	roleRegistry *Registry
 	usageTracker *usage.Tracker
 	logger       *zap.Logger
 }
@@ -39,6 +41,11 @@ func New(cfg Config, store AgentStore, r *router.Engine, reg *tool.Registry, ut 
 	}
 }
 
+// WithRoleRegistry wires the agent definition registry for role-aware execution.
+func (a *AgentImpl) WithRoleRegistry(rr *Registry) {
+	a.roleRegistry = rr
+}
+
 func (a *AgentImpl) Name() string { return "single-agent" }
 
 // Execute runs the bounded multi-step loop for the given task. It does NOT
@@ -53,8 +60,8 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 		maxSteps = defaultMaxSteps
 	}
 
-	// Build initial messages from task input.
-	messages := buildInitialMessages(t)
+	// Build initial messages from task input and role.
+	messages := buildInitialMessages(t, a.roleHint(t))
 
 	ctx2 := &AgentContext{
 		TaskID:    t.ID,
@@ -107,7 +114,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 		req := &apitypes.ChatCompletionRequest{
 			Model:    resolved.ProviderModelID,
 			Messages: ctx2.Messages,
-			Tools:    buildToolDefinitions(a.registry),
+			Tools:    buildToolDefinitions(a.registry, t.RoleDefinition, a.roleRegistry),
 		}
 
 		// Call the provider.
@@ -380,21 +387,65 @@ func (a *AgentImpl) recordUsage(taskID string, resolved *router.ResolvedRoute, u
 	})
 }
 
-func buildInitialMessages(t *TaskRef) []apitypes.Message {
+func buildInitialMessages(t *TaskRef, roleHint string) []apitypes.Message {
 	messages := []apitypes.Message{{Role: "user", Content: t.Input}}
+	parts := []string{}
+	if roleHint != "" {
+		parts = append(parts, roleHint)
+	}
 	if len(t.InputJSON) > 0 {
 		var extra struct {
 			System string `json:"system"`
 		}
 		if err := json.Unmarshal(t.InputJSON, &extra); err == nil && extra.System != "" {
-			messages = append([]apitypes.Message{{Role: "system", Content: extra.System}}, messages...)
+			parts = append(parts, extra.System)
 		}
+	}
+	if len(parts) > 0 {
+		messages = append([]apitypes.Message{{Role: "system", Content: strings.Join(parts, "\n\n")}}, messages...)
 	}
 	return messages
 }
 
-func buildToolDefinitions(reg *tool.Registry) []apitypes.Tool {
+func (a *AgentImpl) roleHint(t *TaskRef) string {
+	if t.RoleDefinition == "" || a.roleRegistry == nil {
+		return ""
+	}
+	def, ok := a.roleRegistry.Get(t.RoleDefinition)
+	if !ok {
+		return ""
+	}
+	return def.SystemPromptHint
+}
+
+func buildToolDefinitions(reg *tool.Registry, roleDef string, roleRegistry *Registry) []apitypes.Tool {
 	list := reg.List()
+	if roleDef != "" && roleRegistry != nil {
+		if def, ok := roleRegistry.Get(roleDef); ok {
+			allow := make(map[string]struct{}, len(def.PreferredTools))
+			for _, n := range def.PreferredTools {
+				allow[n] = struct{}{}
+			}
+			deny := make(map[string]struct{}, len(def.ExcludeTools))
+			for _, n := range def.ExcludeTools {
+				deny[n] = struct{}{}
+			}
+			filtered := make([]tool.Tool, 0, len(list))
+			for _, t := range list {
+				name := t.Name()
+				if len(allow) > 0 {
+					if _, ok := allow[name]; !ok {
+						continue
+					}
+				}
+				if _, ok := deny[name]; ok {
+					continue
+				}
+				filtered = append(filtered, t)
+			}
+			list = filtered
+		}
+	}
 	tools := make([]apitypes.Tool, 0, len(list))
 	for _, t := range list {
 		params := t.Params()

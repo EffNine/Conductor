@@ -76,6 +76,20 @@ func (s *Scheduler) tick() {
 		return
 	}
 	for _, id := range ids {
+		// Skip tasks with unmet dependencies — they should not be promoted yet.
+		t, err := s.store.GetTask(id)
+		if err != nil {
+			s.logger.Warn("scheduler: failed to get task for dependency check",
+				zap.String("task_id", id), zap.Error(err))
+			continue
+		}
+		if t.DependsOn != "" {
+			if depErr := s.store.DependenciesMet(t.DependsOn); depErr != nil {
+				s.logger.Debug("scheduler: skipping promotion due to unmet dependencies",
+					zap.String("task_id", id))
+				continue
+			}
+		}
 		// Transition failed→queued only if still failed (no-op otherwise).
 		if transErr := s.store.UpdateStatus(id, task.StatusQueued); transErr != nil {
 			s.logger.Warn("scheduler: failed to promote task",

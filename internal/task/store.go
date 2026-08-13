@@ -2,6 +2,7 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -109,6 +110,25 @@ type Store interface {
 	// ReadyRetries finds tasks whose status is queued or whose NextRetryAt <= now
 	// and status is failed, returning their IDs.
 	ReadyRetries(limit int) ([]string, error)
+
+	// ListChildTasks returns all tasks whose ParentID == parentID, ordered by created_at asc.
+	ListChildTasks(parentID string, limit, offset int) ([]Task, error)
+
+	// ListTasksByRootID returns all tasks sharing the given root_id, ordered by created_at asc.
+	ListTasksByRootID(rootID string, limit, offset int) ([]Task, error)
+
+	// UpdateCoordinatorState persists the coordinator's internal state blob.
+	UpdateCoordinatorState(id string, state []byte) error
+
+	// GetCoordinatorState retrieves the coordinator state blob for a task.
+	GetCoordinatorState(id string) ([]byte, error)
+
+	// DependenciesMet checks whether all dependency IDs in dependsOnJSON are in a terminal state.
+	DependenciesMet(dependsOnJSON string) error
+
+	// UpdateTaskSelective updates only non-zero fields of a task, avoiding
+	// destructive zero-value overwrites from GORM Save.
+	UpdateTaskSelective(task *Task) error
 }
 
 // SQLiteStore is a GORM-backed implementation of Store.
@@ -163,6 +183,84 @@ func (s *SQLiteStore) UpdateTask(task *Task) error {
 		return ErrTaskNotFound
 	}
 	return nil
+}
+
+// UpdateTaskSelective updates only the non-zero-value fields of a task.
+// This avoids the destructive behavior of GORM's Save which writes zero values
+// for all fields, potentially overwriting valid data.
+func (s *SQLiteStore) UpdateTaskSelective(task *Task) error {
+	if task == nil {
+		return fmt.Errorf("task is nil")
+	}
+	if task.ID == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	updates := make(map[string]any)
+	if task.Input != "" {
+		updates["input"] = task.Input
+	}
+	if len(task.InputJSON) > 0 {
+		updates["input_json"] = task.InputJSON
+	}
+	if task.Output != "" {
+		updates["output"] = task.Output
+	}
+	if len(task.OutputJSON) > 0 {
+		updates["output_json"] = task.OutputJSON
+	}
+	if task.Error != nil {
+		updates["error"] = *task.Error
+	}
+	if task.ErrorCode != nil {
+		updates["error_code"] = *task.ErrorCode
+	}
+	if task.Provider != "" {
+		updates["provider"] = task.Provider
+	}
+	if task.Model != "" {
+		updates["model"] = task.Model
+	}
+	if task.StepCount > 0 {
+		updates["step_count"] = task.StepCount
+	}
+	if task.MaxSteps > 0 {
+		updates["max_steps"] = task.MaxSteps
+	}
+	if task.Checkpoint != nil {
+		updates["checkpoint"] = task.Checkpoint
+	}
+	if task.ClaimedBy != "" {
+		updates["claimed_by"] = task.ClaimedBy
+	}
+	if task.ClaimedAt != nil {
+		updates["claimed_at"] = task.ClaimedAt
+	}
+	if task.LeaseUntil != nil {
+		updates["lease_until"] = task.LeaseUntil
+	}
+	if task.PlanID != "" {
+		updates["plan_id"] = task.PlanID
+	}
+	if task.Intent != "" {
+		updates["intent"] = task.Intent
+	}
+	if task.CurrentPlanStep > 0 {
+		updates["current_plan_step"] = task.CurrentPlanStep
+	}
+	if task.Role != "" {
+		updates["role"] = task.Role
+	}
+	if task.DependsOn != "" {
+		updates["depends_on"] = task.DependsOn
+	}
+	if task.ChildrenJSON != "" {
+		updates["children_json"] = task.ChildrenJSON
+	}
+	if len(updates) == 0 {
+		return nil // nothing to update
+	}
+	updates["updated_at"] = time.Now().UTC()
+	return s.db.DB.Model(&Task{}).Where("id = ?", task.ID).Updates(updates).Error
 }
 
 func (s *SQLiteStore) DeleteTask(id string) error {
@@ -228,6 +326,10 @@ func (s *SQLiteStore) UpdateStatus(id string, newStatus Status) error {
 
 	if err := ValidateTransition(task.Status, newStatus); err != nil {
 		return err
+	}
+	// Cancelled is terminal — reject any transition away from it.
+	if task.Status == StatusCancelled {
+		return &TransitionError{From: StatusCancelled, To: newStatus}
 	}
 
 	now := time.Now().UTC()
@@ -306,6 +408,17 @@ func (s *SQLiteStore) FailTask(id string, errMsg string) error {
 	if id == "" {
 		return fmt.Errorf("task ID is required")
 	}
+	// Do not transition a cancelled task to failed — cancellation is final.
+	var task Task
+	if err := s.db.DB.Where("id = ?", id).First(&task).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrTaskNotFound
+		}
+		return err
+	}
+	if task.Status == StatusCancelled {
+		return fmt.Errorf("cannot fail cancelled task %s", id)
+	}
 	now := time.Now().UTC()
 	return s.db.DB.Model(&Task{}).
 		Where("id = ?", id).
@@ -337,6 +450,18 @@ func (s *SQLiteStore) ClaimTask(workerID string, leaseDuration time.Duration) (*
 				return ErrNoEligibleTask
 			}
 			return err
+		}
+
+		// Enforce dependency eligibility: a task with unmet DependsOn must not be claimable.
+		if task.DependsOn != "" {
+			var depIDs []string
+			if depErr := json.Unmarshal([]byte(task.DependsOn), &depIDs); depErr == nil && len(depIDs) > 0 {
+				var nonTerminal int64
+				tx.Model(&Task{}).Where("id IN ? AND status != ?", depIDs, string(StatusCompleted)).Count(&nonTerminal)
+				if nonTerminal > 0 {
+					return ErrDependenciesNotMet
+				}
+			}
 		}
 
 		updates := map[string]any{
@@ -372,6 +497,21 @@ func (s *SQLiteStore) ReleaseLease(id string, workerID ...string) error {
 	if len(workerID) > 0 && workerID[0] != "" {
 		where += " AND claimed_by = ?"
 		args = append(args, workerID[0])
+	}
+	// Do not overwrite a terminal status — if the task has already been
+	// finalised (completed, failed, cancelled) by another actor, preserve it.
+	var t Task
+	if err := s.db.DB.Where(where, args...).First(&t).Error; err != nil {
+		return err
+	}
+	if t.Status.IsTerminal() {
+		// Still clear lease fields so the task is no longer "owned".
+		return s.db.DB.Model(&Task{}).Where(where, args...).Updates(map[string]any{
+			"claimed_by":  "",
+			"claimed_at":  nil,
+			"lease_until": nil,
+			"updated_at":  now,
+		}).Error
 	}
 	result := s.db.DB.Model(&Task{}).
 		Where(where, args...).
@@ -426,6 +566,10 @@ func (s *SQLiteStore) MakeRetryable(id string, backoff time.Duration) (int, erro
 			return 0, ErrTaskNotFound
 		}
 		return 0, err
+	}
+	// Do not retry a cancelled task — cancellation is final.
+	if task.Status == StatusCancelled {
+		return 0, fmt.Errorf("cannot retry cancelled task %s", id)
 	}
 	task.RetryCount++
 	nextRetry := time.Now().UTC().Add(backoff)
@@ -524,12 +668,96 @@ func (s *SQLiteStore) CreatePlanEvent(evt *TaskPlanEvent) error {
 	return s.db.DB.Create(evt).Error
 }
 
+func (s *SQLiteStore) ListChildTasks(parentID string, limit, offset int) ([]Task, error) {
+	if parentID == "" {
+		return nil, fmt.Errorf("parentID is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var tasks []Task
+	err := s.db.DB.
+		Where("parent_id = ?", parentID).
+		Order("created_at ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+func (s *SQLiteStore) ListTasksByRootID(rootID string, limit, offset int) ([]Task, error) {
+	if rootID == "" {
+		return nil, fmt.Errorf("rootID is required")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	var tasks []Task
+	err := s.db.DB.
+		Where("root_id = ?", rootID).
+		Order("created_at ASC").
+		Limit(limit).
+		Offset(offset).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+func (s *SQLiteStore) UpdateCoordinatorState(id string, state []byte) error {
+	if id == "" {
+		return fmt.Errorf("task ID is required")
+	}
+	return s.db.DB.Model(&Task{}).
+		Where("id = ?", id).
+		Update("coord_state", state).Error
+}
+
+func (s *SQLiteStore) GetCoordinatorState(id string) ([]byte, error) {
+	if id == "" {
+		return nil, fmt.Errorf("task ID is required")
+	}
+	var task Task
+	if err := s.db.DB.Where("id = ?", id).First(&task).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, err
+	}
+	return task.CoordState, nil
+}
+
+// DependenciesMet checks whether all dependency IDs in dependsOnJSON are completed.
+// Returns ErrDependenciesNotMet if any dependency is not yet completed.
+func (s *SQLiteStore) DependenciesMet(dependsOnJSON string) error {
+	if dependsOnJSON == "" {
+		return nil
+	}
+	var depIDs []string
+	if err := json.Unmarshal([]byte(dependsOnJSON), &depIDs); err != nil {
+		return fmt.Errorf("parse depends_on: %w", err)
+	}
+	if len(depIDs) == 0 {
+		return nil
+	}
+	var nonTerminal int64
+	s.db.DB.Model(&Task{}).Where("id IN ? AND status != ?", depIDs, string(StatusCompleted)).Count(&nonTerminal)
+	if nonTerminal > 0 {
+		return fmt.Errorf("%w: %v", ErrDependenciesNotMet, depIDs)
+	}
+	return nil
+}
+
 // compile-time check: SQLiteStore satisfies Store.
 var _ Store = (*SQLiteStore)(nil)
 var _ PlanStore = (*SQLiteStore)(nil)
 
-// ErrNoEligibleTask is returned when there are no tasks to claim.
-var ErrNoEligibleTask = errors.New("no eligible task available")
+	// ErrDependenciesNotMet is returned when a task has unmet dependencies.
+	var ErrDependenciesNotMet = errors.New("task has unmet dependencies")
+
+	// ErrCancelledTask is returned when attempting to claim a cancelled task.
+	var ErrCancelledTask = errors.New("task is cancelled")
+
+	// ErrNoEligibleTask is returned when there are no tasks to claim.
+	var ErrNoEligibleTask = errors.New("no eligible task available")
 
 // PlanStore provides persistence operations for plans.
 type PlanStore interface {

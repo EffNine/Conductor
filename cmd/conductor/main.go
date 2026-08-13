@@ -14,6 +14,7 @@ import (
 	"github.com/EffNine/conductor/internal/cache"
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/coordinator"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/handler"
@@ -329,18 +330,55 @@ func main() {
 		taskExec.WithOrchestration(registry, toolReg, routingEngine, eventBus)
 		logger.Info("orchestration pipeline enabled for task execution")
 	}
-	taskHandler := task.NewHandler(taskStore, taskExec, logger)
-	taskHandler.Register(app)
+
+	// V2.6: Agent role registry.
+	agentReg := agent.NewRegistry()
+	agentReg.Register(agent.AgentDefinition{
+		Name:               "research",
+		Description:        "Research and analysis tasks requiring reasoning",
+		SystemPromptHint:   "You are a research agent. Your role is to analyze, compare, and synthesize information. Focus on accuracy and completeness.",
+		PreferredTools:     []string{},
+		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
+	})
+	agentReg.Register(agent.AgentDefinition{
+		Name:               "coding",
+		Description:        "Coding and implementation tasks requiring filesystem access",
+		SystemPromptHint:   "You are a coding agent. Your role is to implement, modify, and debug code. Use filesystem and shell tools as needed.",
+		PreferredTools:     []string{"read_file", "write_file", "edit_file", "list_files", "shell_exec", "git_status", "git_diff", "git_add", "git_commit"},
+		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
+	})
+	agentReg.Register(agent.AgentDefinition{
+		Name:               "testing",
+		Description:        "Testing and verification tasks",
+		SystemPromptHint:   "You are a testing agent. Your role is to verify correctness, run tests, and validate outputs. Focus on edge cases and failure modes.",
+		PreferredTools:     []string{"shell_exec", "read_file", "list_files"},
+		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
+	})
+	agentReg.Register(agent.AgentDefinition{
+		Name:               "general",
+		Description:        "General-purpose tasks with no specific role",
+		SystemPromptHint:   "",
+	})
+	agentImpl.WithRoleRegistry(agentReg)
+	taskExec.WithRoleRegistry(agentReg)
+
+	// V2.6: Coordinator for multi-agent orchestration.
+	coordStore := coordinator.NewStoreAdapter(taskStore)
+	coordCfg := coordinator.NewConfig()
+	coord := coordinator.New(coordStore, eventBus, logger, coordCfg)
+	exec := coordinator.NewExecutor(taskStore, taskExec, coord, logger)
 
 	// Start async worker pool + scheduler when enabled by config.
+	var pool *worker.Pool
+	var sched *worker.Scheduler
 	if cfg.Agent.WorkerCount > 0 {
 		poolCfg := worker.Config{
 			WorkerCount:   cfg.Agent.WorkerCount,
 			PollInterval:  cfg.Agent.PollInterval,
 			LeaseDuration: cfg.Agent.LeaseDuration,
 		}
-		pool := worker.New(poolCfg, taskStore, taskExec, logger)
-		sched := worker.NewScheduler(taskStore, logger)
+		pool = worker.New(poolCfg, taskStore, exec, logger)
+		sched = worker.NewScheduler(taskStore, logger)
 		pool.Start()
 		sched.Start()
 		defer func() {
@@ -352,6 +390,12 @@ func main() {
 			zap.Duration("poll_interval", poolCfg.PollInterval),
 		)
 	}
+
+	taskHandler := task.NewHandler(taskStore, exec, logger)
+	if pool != nil {
+		taskHandler.WithCancelPool(pool)
+	}
+	taskHandler.Register(app)
 
 	// Graceful shutdown
 	go func() {

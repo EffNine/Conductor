@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -15,18 +16,30 @@ type CreateTaskRequest struct {
 	Provider string `json:"provider,omitempty"`
 	Model    string `json:"model,omitempty"`
 	MaxSteps *int   `json:"max_steps,omitempty"`
+	Role     string `json:"role,omitempty"`
 }
 
 // Handler holds HTTP handlers for the task API.
 type Handler struct {
-	store    Store
-	executor Executor
-	logger   *zap.Logger
+	store       Store
+	executor    Executor
+	logger      *zap.Logger
+	cancelPool  CancelPool // optional; if set, cancellation propagates to in-flight contexts
+}
+
+// CancelPool is the minimal interface for cancelling in-flight task contexts.
+type CancelPool interface {
+	CancelTask(taskID string) error
 }
 
 // NewHandler creates a new task HTTP handler.
 func NewHandler(store Store, exec Executor, logger *zap.Logger) *Handler {
 	return &Handler{store: store, executor: exec, logger: logger}
+}
+
+// WithCancelPool wires an optional worker pool for in-flight cancellation.
+func (h *Handler) WithCancelPool(cp CancelPool) {
+	h.cancelPool = cp
 }
 
 // Register registers task API routes on the Fiber app.
@@ -35,6 +48,7 @@ func (h *Handler) Register(app *fiber.App) {
 	group.Post("/tasks", h.HandleCreate)
 	group.Get("/tasks", h.HandleList)
 	group.Get("/tasks/:id", h.HandleGet)
+	group.Get("/tasks/:id/tree", h.HandleTree)
 	group.Post("/tasks/:id/cancel", h.HandleCancel)
 	group.Post("/tasks/:id/retry", h.HandleRetry)
 	group.Post("/tasks/:id/resume", h.HandleResume)
@@ -68,6 +82,9 @@ func (h *Handler) HandleCreate(c *fiber.Ctx) error {
 	}
 	if req.MaxSteps != nil && *req.MaxSteps > 0 {
 		task.MaxSteps = *req.MaxSteps
+	}
+	if req.Role != "" {
+		task.Role = req.Role
 	}
 
 	if err := h.store.CreateTask(task); err != nil {
@@ -157,9 +174,11 @@ func (h *Handler) HandleResume(c *fiber.Ctx) error {
 			"error": "failed to get task",
 		})
 	}
-	if task.Status != StatusPaused && task.Status != StatusRunning {
+	// Only allow resuming paused tasks. Running tasks are already in progress
+	// and must not be resumed concurrently.
+	if task.Status != StatusPaused {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
-			"error": "can only resume paused or running tasks (current: " + string(task.Status) + ")",
+			"error": "can only resume paused tasks (current: " + string(task.Status) + ")",
 		})
 	}
 	if len(task.Checkpoint) == 0 {
@@ -251,6 +270,20 @@ func (h *Handler) HandleCancel(c *fiber.Ctx) error {
 			"error": "failed to cancel task",
 		})
 	}
+	// Emit task.cancelled event for audit completeness.
+	_ = h.store.CreateTaskEvent(&TaskEvent{
+		ID:        uuid.New().String(),
+		TaskID:    id,
+		EventType: "task.cancelled",
+		EventData: mustMarshal(map[string]any{"source": "api"}),
+	})
+	// Propagate cancellation to any in-flight execution context.
+	if h.cancelPool != nil {
+		if cancelErr := h.cancelPool.CancelTask(id); cancelErr != nil {
+			h.logger.Warn("failed to cancel in-flight context",
+				zap.String("task_id", id), zap.Error(cancelErr))
+		}
+	}
 	updated, _ := h.store.GetTask(id)
 	if updated == nil {
 		return c.JSON(fiber.Map{"id": id, "status": string(StatusCancelled)})
@@ -280,7 +313,66 @@ func taskResponse(t *Task) fiber.Map {
 		resp["intent"] = t.Intent
 		resp["current_plan_step"] = t.CurrentPlanStep
 	}
+	// V2.6: Include multi-agent metadata when available.
+	if t.ParentID != nil && *t.ParentID != "" {
+		resp["parent_id"] = *t.ParentID
+	}
+	if t.RootID != "" {
+		resp["root_id"] = t.RootID
+	}
+	if t.Role != "" {
+		resp["role"] = t.Role
+	}
+	if t.ChildrenJSON != "" {
+		var children []string
+		if err := json.Unmarshal([]byte(t.ChildrenJSON), &children); err == nil {
+			resp["children"] = children
+		}
+	}
 	return resp
+}
+
+// HandleTree returns the parent/child task hierarchy for a given task ID.
+func (h *Handler) HandleTree(c *fiber.Ctx) error {
+	id := c.Params("id")
+	task, err := h.store.GetTask(id)
+	if err == ErrTaskNotFound {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "task not found"})
+	}
+	if err != nil {
+		h.logger.Error("failed to get task", zap.Error(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get task"})
+	}
+
+	children, err := h.store.ListChildTasks(id, 100, 0)
+	if err != nil {
+		h.logger.Error("failed to list children", zap.Error(err))
+		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to list children"})
+	}
+
+	type childNode struct {
+		ID     string             `json:"id"`
+		Status string             `json:"status"`
+		Role   string             `json:"role,omitempty"`
+		Output string             `json:"output,omitempty"`
+	}
+	nodeChildren := make([]childNode, 0, len(children))
+	for _, ch := range children {
+		nodeChildren = append(nodeChildren, childNode{
+			ID:     ch.ID,
+			Status: string(ch.Status),
+			Role:   ch.Role,
+			Output: ch.Output,
+		})
+	}
+
+	return c.JSON(fiber.Map{
+		"id":       task.ID,
+		"status":   string(task.Status),
+		"role":     task.Role,
+		"intent":   task.Intent,
+		"children": nodeChildren,
+	})
 }
 
 // compile-time check: SQLiteStore satisfies Store.

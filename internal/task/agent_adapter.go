@@ -25,6 +25,7 @@ func toAgentRef(t *Task) *agent.TaskRef {
 		PlanID:      t.PlanID,
 		Intent:      t.Intent,
 		CurrentPlanStep: t.CurrentPlanStep,
+		RoleDefinition: t.Role,
 	}
 }
 

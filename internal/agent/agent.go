@@ -41,6 +41,9 @@ type TaskRef struct {
 	PlanID          string
 	Intent          string
 	CurrentPlanStep int
+
+	// V2.6 role field
+	RoleDefinition string
 }
 
 // TaskStatus mirrors task.Status values used by the agent.

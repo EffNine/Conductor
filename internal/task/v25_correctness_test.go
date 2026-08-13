@@ -212,7 +212,7 @@ func TestV25_CandidateContainsRealModel(t *testing.T) {
 		Logger:   zap.NewNop(),
 	})
 	caps := &orchestration.CapabilityRequirement{NeedsToolCalling: true}
-	cands := orchestration.GenerateCandidates(context.Background(), reg, re, caps, "gpt-4o")
+	cands := orchestration.GenerateCandidates(context.Background(), reg, re, caps, "gpt-4o", orchestration.RoutingPreferences{})
 
 	if len(cands) == 0 {
 		t.Fatal("expected non-empty candidates")
