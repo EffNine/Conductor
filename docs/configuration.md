@@ -95,6 +95,8 @@ server:
   max_request_size: 10MB
   cors:
     enabled: true
+    # Default: "*" allows all origins. Restrict to trusted domains in production.
+    # With credentials enabled, wildcard origins are automatically disabled.
     origins: ["*"]
     methods: ["GET", "POST", "OPTIONS"]
     headers: ["Authorization", "Content-Type"]

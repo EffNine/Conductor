@@ -387,29 +387,42 @@ curl https://your-gateway.com/api/usage \
 
 ### API Keys
 
-- Use strong, random API keys
+- Use strong, random API keys (`make gen-key` or `./bin/conductor gen-key`)
 - Never commit keys to version control
-- Use environment variables or secret managers
-- Rotate keys periodically
+- Set `CONDUCTOR_API_KEY` explicitly in production — do not rely on the auto-generated key file on ephemeral disks
+- Rotate provider keys periodically
 
 ### Network
 
-- Use HTTPS in production (Caddy handles this automatically)
-- Restrict CORS origins if needed
-- Use firewall rules to limit access
+- Use HTTPS in production (Caddy or a reverse proxy handles TLS)
+- **CORS defaults to `*`** — restrict origins to your trusted domains in config:
+  ```yaml
+  server:
+    cors:
+      origins: ["https://your-domain.com"]
+  ```
+- Use firewall rules to limit access to the gateway port
 
 ### Rate Limiting
 
-Configure rate limits to prevent abuse:
+Conductor does not include built-in rate limiting. Mitigate abuse at the infrastructure level:
 
-```yaml
-rate_limit:
-  enabled: true
-  global:
-    requests_per_minute: 1000
-  per_provider:
-    requests_per_minute: 100
-```
+- Place the gateway behind a reverse proxy (Caddy, Nginx) with `limit_req`
+- Use a CDN or WAF to throttle and filter requests before they reach the gateway
+- Restrict API key usage per client at the application layer
+
+### File Permissions
+
+- The generated API key file (`data/conductor.api_key`) is created with mode `0600`
+- The SQLite database directory should be restricted to the running user
+- Workspace roots for agent tools (write_file, read_file) are sandboxed to a configured root; ensure the root does not contain sensitive files
+
+### Error Exposure
+
+Error messages from internal components (e.g. provider errors, database errors) are logged server-side but may appear in API responses. For production:
+
+- Avoid exposing stack traces in error JSON
+- Log full errors server-side and return generic messages to clients
 
 ### Updates
 
