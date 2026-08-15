@@ -11,7 +11,6 @@ import (
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
-	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/task"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -20,37 +19,6 @@ import (
 )
 
 // ── Fakes ────────────────────────────────────────────────────────────────────
-
-type fakeProvider struct {
-	name      string
-	model     string
-	resp      *apitypes.ChatCompletionResponse
-	err       error
-	callCount int
-}
-
-func (f *fakeProvider) Name() string                 { return f.name }
-func (f *fakeProvider) SupportsModel(id string) bool { return id == f.model || id == "" }
-func (f *fakeProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
-	f.callCount++
-	return f.resp, f.err
-}
-func (f *fakeProvider) ChatCompletionStream(_ context.Context, _ *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
-	return nil, provider.ErrNotImplemented
-}
-func (f *fakeProvider) Embeddings(_ context.Context, _ *apitypes.EmbeddingRequest) (*apitypes.EmbeddingResponse, error) {
-	return nil, provider.ErrNotImplemented
-}
-func (f *fakeProvider) ListModels(_ context.Context) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{ProviderModelID: f.model}}, nil
-}
-func (f *fakeProvider) GetPricing(_ context.Context) (map[string]provider.PricingInfo, error) {
-	return nil, nil
-}
-func (f *fakeProvider) HealthCheck(_ context.Context) (*provider.HealthStatus, error) {
-	return &provider.HealthStatus{Provider: f.name, IsHealthy: true, LatencyMs: 10}, nil
-}
-func (f *fakeProvider) GetMetadata() provider.Metadata { return provider.Metadata{} }
 
 // fakeExecutor wraps an agent for testing.
 type fakeExecutor struct {
