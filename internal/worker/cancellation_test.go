@@ -8,10 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
-	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/task"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -44,8 +42,6 @@ func (e *slowExecutor) Execute(ctx context.Context, taskID string) error {
 		return nil
 	}
 }
-
-func (e *slowExecutor) signalDone() { close(e.doneCh) }
 
 func newTestDBForCancellation(t *testing.T) *database.Database {
 	t.Helper()
@@ -278,31 +274,3 @@ func (e *countingFailingExecutor) Execute(_ context.Context, taskID string) erro
 	}
 	return e.err
 }
-
-// --- Fake provider for coordinator cancellation test ---
-type noopProvider struct {
-	name string
-}
-
-func (f *noopProvider) Name() string                 { return f.name }
-func (f *noopProvider) SupportsModel(id string) bool { return true }
-func (f *noopProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
-	<-ctx.Done()
-	return nil, ctx.Err()
-}
-func (f *noopProvider) ChatCompletionStream(_ context.Context, _ *apitypes.ChatCompletionRequest) (<-chan apitypes.StreamChunk, error) {
-	return nil, provider.ErrNotImplemented
-}
-func (f *noopProvider) Embeddings(_ context.Context, _ *apitypes.EmbeddingRequest) (*apitypes.EmbeddingResponse, error) {
-	return nil, provider.ErrNotImplemented
-}
-func (f *noopProvider) ListModels(_ context.Context) ([]provider.ModelInfo, error) {
-	return []provider.ModelInfo{{ProviderModelID: "test"}}, nil
-}
-func (f *noopProvider) GetPricing(_ context.Context) (map[string]provider.PricingInfo, error) {
-	return nil, nil
-}
-func (f *noopProvider) HealthCheck(_ context.Context) (*provider.HealthStatus, error) {
-	return &provider.HealthStatus{Provider: f.name, IsHealthy: true, LatencyMs: 10}, nil
-}
-func (f *noopProvider) GetMetadata() provider.Metadata { return provider.Metadata{} }
