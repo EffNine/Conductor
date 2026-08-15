@@ -25,7 +25,7 @@ fi
 
 FLY_BIN="$(command -v fly || command -v flyctl)"
 
-APP_NAME="${APP_NAME:-conductor-yknfkg}"
+APP_NAME="${APP_NAME:-conductor}"
 REGION="${REGION:-sin}"
 VOLUME_NAME="${VOLUME_NAME:-conductor_data}"
 
@@ -48,7 +48,7 @@ echo "Using app=${APP_NAME} region=${REGION}"
 
 if ! "$FLY_BIN" status -a "$APP_NAME" >/dev/null 2>&1; then
   echo "Creating app ${APP_NAME}..."
-  if ! "$FLY_BIN" apps create "$APP_NAME" --org personal 2>/dev/null \
+  if ! "$FLY_BIN" apps create "$APP_NAME" 2>/dev/null \
     && ! "$FLY_BIN" apps create "$APP_NAME"; then
     echo "Could not create app '${APP_NAME}' (name may be taken)."
     echo "Retry with: APP_NAME=conductor-\$USER ./scripts/fly-deploy.sh"

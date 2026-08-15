@@ -1,6 +1,6 @@
 # Provider Certification Suite
 
-**Sprint V2.3-A** — Testing framework design for certifying provider adapter compliance with Conductor's canonical contract.
+**Initial release** — Testing framework design for certifying provider adapter compliance with Conductor's canonical contract.
 
 ---
 

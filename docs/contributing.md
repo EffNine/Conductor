@@ -39,8 +39,8 @@ This project follows the [Contributor Covenant Code of Conduct](https://www.cont
 1. **Fork the repository**
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/gateway.git
-cd gateway
+git clone https://github.com/YOUR_USERNAME/conductor.git
+cd conductor
 ```
 
 2. **Create a feature branch**
@@ -202,7 +202,7 @@ Follow the PR guidelines above.
 ```bash
 # Clone and setup
 git clone https://github.com/EffNine/conductor.git
-cd gateway
+cd conductor
 
 # Install dependencies
 go mod download
@@ -219,7 +219,7 @@ make build
 # Run locally
 export CONDUCTOR_API_KEY=test-key
 export OPENAI_API_KEY=sk-test
-./bin/gateway
+./bin/conductor
 ```
 
 ### Testing

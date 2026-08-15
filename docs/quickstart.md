@@ -77,7 +77,7 @@ make build
 # Run
 export CONDUCTOR_API_KEY=your-secret-gateway-key
 export OPENAI_API_KEY=sk-your-openai-key
-./bin/gateway
+./bin/conductor
 ```
 
 ## Configuration

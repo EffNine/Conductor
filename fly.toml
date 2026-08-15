@@ -3,8 +3,8 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = 'conductor-yknfkg'
-primary_region = 'sin'
+app = 'conductor'
+primary_region = 'sin' # change to your preferred region
 
 [build]
   dockerfile = 'deployments/Dockerfile'

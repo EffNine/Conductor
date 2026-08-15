@@ -35,10 +35,6 @@ Think of it as a tiny traffic controller for your AI spend: route by model, fall
 - **Dashboard API** — Models, model status, usage, costs, provider health, and request logs — all behind the same gateway key.
 - **Docker & Fly.io** — Single container with embedded SQLite; one-shot deploy via `./scripts/fly-deploy.sh`.
 - **Fallback Chains** — Try backup providers when the primary fails, without the client lifting a finger.
-- **Usage & Cost Tracking** — Per-request records with tokens, latency, extra counters (duration, characters), and USD cost. Aggregates totals plus per-provider and per-model breakdowns in SQLite.
-- **Auto Model Selection** — Send `"model": "auto"` and let the gateway pick the best available model from a configured provider using task classification, reachability, cost, and probe latency.
-- **Dashboard API** — Models, model status, usage, costs, provider health, and request logs — all behind the same gateway key.
-- **Docker & Fly.io** — Single container with embedded SQLite; one-shot deploy via `./scripts/fly-deploy.sh`.
 
 ## Quick Start
 

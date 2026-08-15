@@ -231,38 +231,6 @@ immediately with retrospective documentation.
 
 ---
 
-## Article X: Sprint Scope — V2.2-D
-
-### Section 10.1 — In Scope
-- Architecture documentation (`docs/architecture/`)
-- Plugin SDK implementation (`internal/plugin/`)
-- Plugin category interfaces
-- Extension point definitions
-- Dependency rule documentation
-- Package boundary documentation
-- All tests passing
-
-### Section 10.2 — Out of Scope
-- Policy logic implementation
-- Learning system implementation
-- Dashboard implementation
-- Trace persistence implementation
-- Enterprise features
-- Key Vault implementation
-- Any routing engine changes
-- Any API endpoint changes
-- Any runtime behavior changes
-
-### Section 10.3 — Validation Criteria
-1. `go build ./...` succeeds
-2. `go test ./...` passes with 100% pass rate
-3. `internal/plugin/` has zero imports from `internal/`
-4. No new dependencies added to `go.mod`
-5. No changes to existing package interfaces
-6. No changes to HTTP API endpoints
-7. No changes to routing behavior
-
----
 
 ## Appendix A: File Inventory
 
@@ -289,17 +257,4 @@ internal/plugin/
 
 ---
 
-## Appendix B: Future Sprint Preview
-
-| Sprint | Focus | Key Changes |
-|--------|-------|-------------|
-| V2.3-A | Policy Engine | Implement `PolicyPlugin` interface, add intent/capability logic |
-| V2.3-B | Learning Foundation | Implement `LearningPlugin` interface, add adaptive scoring |
-| V2.3-C | Trace Persistence | Implement `TraceStore`, persist `DecisionTrace` to SQLite |
-| V2.4-A | Dashboard API | Implement `DashboardPlugin` interface, add web UI endpoints |
-| V2.4-B | Enterprise | Multi-tenant auth, RBAC, audit logging |
-
----
-
-*Conductor Architecture Constitution V1 — Frozen for V2.2-D*
 *All architectural decisions must reference this document.*
