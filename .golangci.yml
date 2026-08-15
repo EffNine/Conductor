@@ -73,6 +73,26 @@ issues:
       linters:
         - revive
       text: "stutters"
+    - path: internal/agent/
+      linters:
+        - revive
+      text: "stutters"
+    - path: internal/task/
+      linters:
+        - revive
+      text: "stutters"
+    - path: internal/orchestration/
+      linters:
+        - revive
+      text: "stutters"
+    - path: internal/coordinator/
+      linters:
+        - revive
+      text: "stutters"
+    - path: internal/tool/
+      linters:
+        - revive
+      text: "stutters"
 
 run:
   timeout: 5m

@@ -139,6 +139,7 @@ func (t *Tool) Execute(ctx context.Context, args json.RawMessage) (tool.ToolResu
 		defer cancel()
 	}
 
+	// #nosec G204 -- cmdArgs are validated by the tool's allowlist/denylist; user input is never passed directly.
 	cmd := exec.CommandContext(execCtx, cmdArgs[0], cmdArgs[1:]...)
 	cmd.Dir = t.workingDir
 	cmd.Env = env
