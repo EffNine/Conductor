@@ -87,3 +87,11 @@ env/
 *.bak
 *.backup
 *.orig
+
+# Internal working docs
+AGENTS.md
+CONTEXT.md
+PERFORMANCE.md
+SPRINT_*.md
+docs/HANDOFF.md
+docs/PLAN.md
