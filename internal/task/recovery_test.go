@@ -36,9 +36,9 @@ func openRecoveryTestDB(t *testing.T) *database.Database {
 func insertPendingTask(t *testing.T, db *database.Database, id string) {
 	t.Helper()
 	tsk := &task.Task{
-		ID:       id,
-		Status:   task.StatusPending,
-		Input:    "pending-task",
+		ID:         id,
+		Status:     task.StatusPending,
+		Input:      "pending-task",
 		MaxRetries: 3,
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
@@ -49,13 +49,13 @@ func insertPendingTask(t *testing.T, db *database.Database, id string) {
 func insertRunningTaskWithLease(t *testing.T, db *database.Database, id string, leaseUntil time.Time) {
 	t.Helper()
 	tsk := &task.Task{
-		ID:           id,
-		Status:       task.StatusRunning,
-		Input:        "running-task",
-		MaxRetries:   3,
-		ClaimedBy:    "worker-1",
-		ClaimedAt:    &leaseUntil,
-		LeaseUntil:   &leaseUntil,
+		ID:         id,
+		Status:     task.StatusRunning,
+		Input:      "running-task",
+		MaxRetries: 3,
+		ClaimedBy:  "worker-1",
+		ClaimedAt:  &leaseUntil,
+		LeaseUntil: &leaseUntil,
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
 		t.Fatalf("CreateTask: %v", err)

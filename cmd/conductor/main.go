@@ -11,6 +11,7 @@ import (
 	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/automode"
+	"github.com/EffNine/conductor/internal/breaker"
 	"github.com/EffNine/conductor/internal/cache"
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
@@ -18,17 +19,9 @@ import (
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/handler"
-	"github.com/EffNine/conductor/internal/breaker"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
-	adapter "github.com/EffNine/conductor/internal/runtime/adapter"
-	"github.com/EffNine/conductor/internal/runtime"
-	toolfs "github.com/EffNine/conductor/internal/tool/fs"
-	toolgit "github.com/EffNine/conductor/internal/tool/git"
-	toolregistry "github.com/EffNine/conductor/internal/tool"
-	toolshell "github.com/EffNine/conductor/internal/tool/shell"
-	"github.com/EffNine/conductor/internal/worker"
 	"github.com/EffNine/conductor/internal/provider/agnesai"
 	"github.com/EffNine/conductor/internal/provider/anthropic"
 	"github.com/EffNine/conductor/internal/provider/cerebras"
@@ -49,8 +42,15 @@ import (
 	"github.com/EffNine/conductor/internal/provider/xai"
 	"github.com/EffNine/conductor/internal/provider/zai"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/runtime"
+	adapter "github.com/EffNine/conductor/internal/runtime/adapter"
 	"github.com/EffNine/conductor/internal/task"
+	toolregistry "github.com/EffNine/conductor/internal/tool"
+	toolfs "github.com/EffNine/conductor/internal/tool/fs"
+	toolgit "github.com/EffNine/conductor/internal/tool/git"
+	toolshell "github.com/EffNine/conductor/internal/tool/shell"
 	"github.com/EffNine/conductor/internal/usage"
+	"github.com/EffNine/conductor/internal/worker"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
@@ -170,6 +170,7 @@ func main() {
 	// Per-model reachability (especially NVIDIA NIM free vs unreachable endpoints)
 	modelStatus := health.NewModelStatusStore(cfg.Health.Models.UnhealthyThreshold, cfg.Health.Models.UnknownAsReachable)
 	modelStatus.Configure(cfg.Health.Models)
+	modelStatus.SetStrictHealthy(cfg.Health.Models.StrictHealthy)
 	if persist := health.NewDBStatusPersistence(db); persist != nil {
 		modelStatus.SetPersistence(persist)
 		if n, err := health.RestoreModelStatusStore(modelStatus, db); err != nil {
@@ -182,6 +183,7 @@ func main() {
 		}
 	}
 	modelCatalog.SetReachabilityFilter(modelStatus, cfg.Health.Models.HideUnreachable)
+	modelCatalog.SetStrictHealthy(cfg.Health.Models.StrictHealthy)
 	modelProber := health.NewModelProber(modelCatalog, registry, modelStatus, logger, cfg.Health.Models)
 	// Wire health → runtime adapter through the batcher callback.
 	healthAdapter := adapter.NewHealthToRuntimeAdapter(runtimeStore)
@@ -337,30 +339,30 @@ func main() {
 	// V2.6: Agent role registry.
 	agentReg := agent.NewRegistry()
 	agentReg.Register(agent.AgentDefinition{
-		Name:               "research",
-		Description:        "Research and analysis tasks requiring reasoning",
-		SystemPromptHint:   "You are a research agent. Your role is to analyze, compare, and synthesize information. Focus on accuracy and completeness.",
-		PreferredTools:     []string{},
-		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
+		Name:             "research",
+		Description:      "Research and analysis tasks requiring reasoning",
+		SystemPromptHint: "You are a research agent. Your role is to analyze, compare, and synthesize information. Focus on accuracy and completeness.",
+		PreferredTools:   []string{},
+		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
 	})
 	agentReg.Register(agent.AgentDefinition{
-		Name:               "coding",
-		Description:        "Coding and implementation tasks requiring filesystem access",
-		SystemPromptHint:   "You are a coding agent. Your role is to implement, modify, and debug code. Use filesystem and shell tools as needed.",
-		PreferredTools:     []string{"read_file", "write_file", "edit_file", "list_files", "shell_exec", "git_status", "git_diff", "git_add", "git_commit"},
-		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
+		Name:             "coding",
+		Description:      "Coding and implementation tasks requiring filesystem access",
+		SystemPromptHint: "You are a coding agent. Your role is to implement, modify, and debug code. Use filesystem and shell tools as needed.",
+		PreferredTools:   []string{"read_file", "write_file", "edit_file", "list_files", "shell_exec", "git_status", "git_diff", "git_add", "git_commit"},
+		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
 	})
 	agentReg.Register(agent.AgentDefinition{
-		Name:               "testing",
-		Description:        "Testing and verification tasks",
-		SystemPromptHint:   "You are a testing agent. Your role is to verify correctness, run tests, and validate outputs. Focus on edge cases and failure modes.",
-		PreferredTools:     []string{"shell_exec", "read_file", "list_files"},
-		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
+		Name:             "testing",
+		Description:      "Testing and verification tasks",
+		SystemPromptHint: "You are a testing agent. Your role is to verify correctness, run tests, and validate outputs. Focus on edge cases and failure modes.",
+		PreferredTools:   []string{"shell_exec", "read_file", "list_files"},
+		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
 	})
 	agentReg.Register(agent.AgentDefinition{
-		Name:               "general",
-		Description:        "General-purpose tasks with no specific role",
-		SystemPromptHint:   "",
+		Name:             "general",
+		Description:      "General-purpose tasks with no specific role",
+		SystemPromptHint: "",
 	})
 	agentImpl.WithRoleRegistry(agentReg)
 	taskExec.WithRoleRegistry(agentReg)

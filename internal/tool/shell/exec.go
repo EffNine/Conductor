@@ -37,8 +37,8 @@ type Config struct {
 // New creates a shell tool with the given policy.
 func New(cfg Config) *Tool {
 	t := &Tool{
-		timeout: cfg.Timeout,
-		maxBytes: cfg.MaxOutput,
+		timeout:   cfg.Timeout,
+		maxBytes:  cfg.MaxOutput,
 		allowList: make(map[string]bool),
 		denied:    make(map[string]bool),
 		envWhite:  make(map[string]bool),

@@ -44,9 +44,9 @@ func GenerateCandidates(
 
 	// Build a minimal request so the engine can score candidates.
 	req := &struct {
-		Model    string
-		Stream   bool
-		Tools    []any
+		Model      string
+		Stream     bool
+		Tools      []any
 		ToolChoice any
 	}{Model: modelID}
 	_ = req

@@ -20,8 +20,8 @@ import (
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
-	runtimeadapter "github.com/EffNine/conductor/internal/runtime/adapter"
 	"github.com/EffNine/conductor/internal/runtime"
+	runtimeadapter "github.com/EffNine/conductor/internal/runtime/adapter"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -1662,11 +1662,11 @@ func (h *Handler) HandleRuntime(c *fiber.Ctx) error {
 	providers := make([]fiber.Map, 0, len(snap.Providers))
 	for name, ps := range snap.Providers {
 		providers = append(providers, fiber.Map{
-			"name":            name,
-			"state":           string(ps.State),
-			"latency_ms":      ps.LatencyMs,
-			"error_rate":      ps.ErrorRate,
-			"capacity":        ps.Capacity,
+			"name":              name,
+			"state":             string(ps.State),
+			"latency_ms":        ps.LatencyMs,
+			"error_rate":        ps.ErrorRate,
+			"capacity":          ps.Capacity,
 			"last_health_check": ps.LastHealthCheck,
 		})
 	}

@@ -2,11 +2,13 @@ package catalog_test
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/provider"
 )
 
@@ -365,4 +367,45 @@ func (s *stubProvider) SupportsModel(string) bool { return false }
 
 func (s *stubProvider) GetMetadata() provider.Metadata {
 	return provider.DefaultMetadata(s.name)
+}
+
+func TestCatalogStrictHealthy(t *testing.T) {
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{
+		name: "openai",
+		models: []provider.ModelInfo{
+			{ProviderModelID: "good", ModelID: "good"},
+			{ProviderModelID: "degraded", ModelID: "degraded"},
+			{ProviderModelID: "unhealthy", ModelID: "unhealthy"},
+		},
+	})
+
+	store := health.NewModelStatusStore(1, true)
+	store.SetStrictHealthy(true)
+	store.RecordSuccess("openai/good", "openai", "good", 10)
+	store.UpdateErrorRate("openai/degraded", "openai", "degraded", 0.5, 0.15, 0.05)
+	store.RecordFailure("openai/unhealthy", "openai", "unhealthy", "model not found", http.StatusNotFound)
+
+	c := catalog.New(reg, nil)
+	c.SetReachabilityFilter(store, true)
+	c.SetStrictHealthy(true)
+
+	entries, err := c.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	ids := modelIDs(entries)
+	if len(ids) != 1 || ids[0] != "openai/good" {
+		t.Fatalf("List with strict healthy = %v, want only [openai/good]", ids)
+	}
+
+	// ListAll should also respect strict healthy.
+	all, err := c.ListAll(context.Background())
+	if err != nil {
+		t.Fatalf("ListAll: %v", err)
+	}
+	allIDs := modelIDs(all)
+	if len(allIDs) != 1 || allIDs[0] != "openai/good" {
+		t.Fatalf("ListAll with strict healthy = %v, want only [openai/good]", allIDs)
+	}
 }

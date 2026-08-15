@@ -54,7 +54,7 @@ func openTestDB(t *testing.T, name string) *database.Database {
 
 type noopProvider struct{ name string }
 
-func (n *noopProvider) Name() string { return n.name }
+func (n *noopProvider) Name() string                 { return n.name }
 func (n *noopProvider) SupportsModel(id string) bool { return true }
 func (n *noopProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	select {

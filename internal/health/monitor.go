@@ -11,14 +11,14 @@ import (
 
 // Monitor periodically checks provider health
 type Monitor struct {
-	registry     *provider.Registry
-	logger       *zap.Logger
-	interval     time.Duration
-	timeout      time.Duration
-	statuses     map[string]*provider.HealthStatus
-	mu           sync.RWMutex
-	stopCh       chan struct{}
-	wg           sync.WaitGroup
+	registry      *provider.Registry
+	logger        *zap.Logger
+	interval      time.Duration
+	timeout       time.Duration
+	statuses      map[string]*provider.HealthStatus
+	mu            sync.RWMutex
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
 	maxConcurrent int
 }
 

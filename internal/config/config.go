@@ -319,6 +319,11 @@ type ModelHealthConfig struct {
 	Backoff ProbeBackoffConfig `mapstructure:"backoff"`
 	// ErrorTracking feeds live request outcomes into degraded/healthy state.
 	ErrorTracking ErrorTrackingConfig `mapstructure:"error_tracking"`
+	// StrictHealthy, when true, hides every model that is not in the healthy
+	// state (degraded, unknown, recovering, unhealthy). Default true: only
+	// models confirmed healthy via probing are advertised. Set to false to also
+	// show degraded and unprobed models.
+	StrictHealthy bool `mapstructure:"strict_healthy"`
 }
 
 // ProbeBackoffConfig schedules retries after consecutive probe failures.
@@ -613,6 +618,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.error_tracking.window", 5*time.Minute)
 	v.SetDefault("health.models.error_tracking.unhealthy_threshold", 0.15)
 	v.SetDefault("health.models.error_tracking.recovery_threshold", 0.05)
+	v.SetDefault("health.models.strict_healthy", true)
 
 	// Usage defaults
 	v.SetDefault("usage.enabled", true)
@@ -987,8 +993,8 @@ func (c *Config) Redacted() *Config {
 	}
 	p := c.Providers
 	return &Config{
-		Server:              c.Server,
-		APIKey:              "[REDACTED]",
+		Server: c.Server,
+		APIKey: "[REDACTED]",
 		Providers: ProvidersConfig{
 			OpenAI:     redactProvider(p.OpenAI),
 			Anthropic:  redactProvider(p.Anthropic),

@@ -767,11 +767,11 @@ func TestV26_GatewayUnchanged(t *testing.T) {
 
 	taskID := "gateway-test"
 	tsk := &task.Task{
-		ID:      taskID,
-		Status:  task.StatusPending,
-		Input:   "hello via gateway",
-		Model:   "test-model",
-		Role:    "",
+		ID:     taskID,
+		Status: task.StatusPending,
+		Input:  "hello via gateway",
+		Model:  "test-model",
+		Role:   "",
 	}
 	if err := s.CreateTask(tsk); err != nil {
 		t.Fatalf("create: %v", err)

@@ -27,7 +27,7 @@ type Tool struct {
 
 // Config holds parameters for the git tool.
 type Config struct {
-	RepoRoot string
+	RepoRoot  string
 	MaxOutput int
 }
 

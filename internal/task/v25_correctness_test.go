@@ -33,7 +33,7 @@ type fakeProvider4 struct {
 	override  func(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error)
 }
 
-func (f *fakeProvider4) Name() string { return f.name }
+func (f *fakeProvider4) Name() string                 { return f.name }
 func (f *fakeProvider4) SupportsModel(id string) bool { return id == f.model || id == "" }
 func (f *fakeProvider4) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	f.callCount++
@@ -60,14 +60,14 @@ func (f *fakeProvider4) HealthCheck(_ context.Context) (*provider.HealthStatus, 
 func (f *fakeProvider4) GetMetadata() provider.Metadata { return provider.Metadata{} }
 
 type fakeAgent4 struct {
-	name        string
-	model       string
-	resp        *apitypes.ChatCompletionResponse
-	err         error
-	callCount   int
-	store       task.Store
-	captured    *agent.TaskRef
-	overrideFn  func(ctx context.Context, t *agent.TaskRef) (*agent.TaskRef, error)
+	name       string
+	model      string
+	resp       *apitypes.ChatCompletionResponse
+	err        error
+	callCount  int
+	store      task.Store
+	captured   *agent.TaskRef
+	overrideFn func(ctx context.Context, t *agent.TaskRef) (*agent.TaskRef, error)
 }
 
 func (f *fakeAgent4) Name() string { return f.name }
@@ -239,7 +239,7 @@ func TestV25_PlanPersistedThroughPlanStore(t *testing.T) {
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 		},
 	}
@@ -323,18 +323,18 @@ func TestV25_PlanReloadAfterPersistence(t *testing.T) {
 	}
 
 	// Reload plan by task ID (simulating restart).
-	relaoded, err := store.GetPlanByTaskID("task-reload-test")
+	reloaded, err := store.GetPlanByTaskID("task-reload-test")
 	if err != nil {
 		t.Fatalf("GetPlanByTaskID: %v", err)
 	}
-	if relaoded.ID != plan.ID {
-		t.Errorf("reloaded plan ID = %q, want %q", relaoded.ID, plan.ID)
+	if reloaded.ID != plan.ID {
+		t.Errorf("reloaded plan ID = %q, want %q", reloaded.ID, plan.ID)
 	}
-	if relaoded.Intent != "coding" {
-		t.Errorf("reloaded intent = %q, want coding", relaoded.Intent)
+	if reloaded.Intent != "coding" {
+		t.Errorf("reloaded intent = %q, want coding", reloaded.Intent)
 	}
-	if relaoded.CurrentStep != 1 {
-		t.Errorf("reloaded current_step = %d, want 1", relaoded.CurrentStep)
+	if reloaded.CurrentStep != 1 {
+		t.Errorf("reloaded current_step = %d, want 1", reloaded.CurrentStep)
 	}
 
 	// Also reload by plan ID.
@@ -371,21 +371,21 @@ func TestV25_PlanCurrentStepAdvances(t *testing.T) {
 		t.Fatalf("UpdatePlan: %v", err)
 	}
 
-	relaoded, err := store.GetPlan(plan.ID)
+	reloaded, err := store.GetPlan(plan.ID)
 	if err != nil {
 		t.Fatalf("GetPlan: %v", err)
 	}
-	if relaoded.CurrentStep != 2 {
-		t.Errorf("current_step = %d, want 2", relaoded.CurrentStep)
+	if reloaded.CurrentStep != 2 {
+		t.Errorf("current_step = %d, want 2", reloaded.CurrentStep)
 	}
-	if relaoded.Status != orchestration.PlanRunning {
-		t.Errorf("status = %q, want running", relaoded.Status)
+	if reloaded.Status != orchestration.PlanRunning {
+		t.Errorf("status = %q, want running", reloaded.Status)
 	}
 
 	// Mark completed.
-	relaoded.Status = orchestration.PlanCompleted
-	relaoded.CurrentStep = 3
-	if err := store.UpdatePlan(relaoded); err != nil {
+	reloaded.Status = orchestration.PlanCompleted
+	reloaded.CurrentStep = 3
+	if err := store.UpdatePlan(reloaded); err != nil {
 		t.Fatalf("UpdatePlan: %v", err)
 	}
 
@@ -408,7 +408,7 @@ func TestV25_PlanCompletionState(t *testing.T) {
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "sorted array: [1,2,3]"}}},
 		},
 	}
@@ -453,7 +453,7 @@ func TestV25_PlanFailureState(t *testing.T) {
 	reg := provider.NewRegistry()
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
-		err:  assertAnError("boom"),
+		err: assertAnError("boom"),
 	}
 	reg.Register(&fakeProvider4{name: "test", model: "gpt-4o"})
 
@@ -503,16 +503,16 @@ func TestV25_AgentRefCarriesOrchestrationFields(t *testing.T) {
 
 	// Create a task with V2.5 fields.
 	tsk := &task.Task{
-		ID:                "task-orch-ref",
-		Status:            task.StatusRunning,
-		Input:             "test input",
-		PlanID:            "plan-123",
-		Intent:            "coding",
-		CurrentPlanStep:   2,
-		Provider:          "openai",
-		Model:             "gpt-4o",
-		StepCount:         3,
-		Output:            "result",
+		ID:              "task-orch-ref",
+		Status:          task.StatusRunning,
+		Input:           "test input",
+		PlanID:          "plan-123",
+		Intent:          "coding",
+		CurrentPlanStep: 2,
+		Provider:        "openai",
+		Model:           "gpt-4o",
+		StepCount:       3,
+		Output:          "result",
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
 		t.Fatalf("CreateTask: %v", err)
@@ -574,7 +574,7 @@ func TestV25_VerificationFailureSemantics(t *testing.T) {
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "hi"}}}, // too short for coding
 		},
 	}
@@ -619,7 +619,7 @@ func TestV25_BackwardCompatibility_NoOrchestration(t *testing.T) {
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "backward compatible"}}},
 		},
 	}
@@ -659,7 +659,7 @@ func TestV25_CheckpointResumePreservesPlanState(t *testing.T) {
 	fake := &fakeAgent4{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 		},
 	}

@@ -40,10 +40,10 @@ func newStore(t *testing.T, db *database.Database) task.Store {
 
 func newTask(id, input string) *task.Task {
 	return &task.Task{
-		ID:        id,
-		Status:    task.StatusPending,
-		Input:     input,
-		Priority:  0,
+		ID:         id,
+		Status:     task.StatusPending,
+		Input:      input,
+		Priority:   0,
 		MaxRetries: 3,
 	}
 }
@@ -402,18 +402,18 @@ func TestTaskStepPersistence(t *testing.T) {
 	respJSON, _ := json.Marshal(map[string]string{"content": "hello"})
 
 	step := task.TaskStep{
-		ID:             uuid.New().String(),
-		TaskID:         tsk.ID,
-		StepNumber:     1,
-		Provider:       "openai",
-		Model:          "gpt-4o",
-		Request:        reqJSON,
-		Response:       respJSON,
-		Status:         "completed",
-		LatencyMs:      1200,
-		PromptTokens:   10,
+		ID:               uuid.New().String(),
+		TaskID:           tsk.ID,
+		StepNumber:       1,
+		Provider:         "openai",
+		Model:            "gpt-4o",
+		Request:          reqJSON,
+		Response:         respJSON,
+		Status:           "completed",
+		LatencyMs:        1200,
+		PromptTokens:     10,
 		CompletionTokens: 20,
-		TotalTokens:    30,
+		TotalTokens:      30,
 	}
 	if err := db.DB.Create(&step).Error; err != nil {
 		t.Fatalf("Create TaskStep: %v", err)
@@ -445,8 +445,8 @@ func TestTaskEventPersistence(t *testing.T) {
 		t.Fatalf("AutoMigrate: %v", err)
 	}
 
- eventData, _ := json.Marshal(map[string]string{"from": "pending", "to": "queued"})
- evt := task.TaskEvent{
+	eventData, _ := json.Marshal(map[string]string{"from": "pending", "to": "queued"})
+	evt := task.TaskEvent{
 		ID:        uuid.New().String(),
 		TaskID:    "task-1",
 		EventType: "status_changed",
@@ -475,14 +475,14 @@ func TestTaskToolCallPersistence(t *testing.T) {
 
 	argsJSON, _ := json.Marshal(map[string]string{"path": "/etc/hosts"})
 	tc := task.TaskToolCall{
-		ID:       uuid.New().String(),
-		TaskID:   "task-1",
-		StepID:   strPtr("step-1"),
-		CallID:   "call-abc",
-		ToolName: "read_file",
+		ID:        uuid.New().String(),
+		TaskID:    "task-1",
+		StepID:    strPtr("step-1"),
+		CallID:    "call-abc",
+		ToolName:  "read_file",
 		Arguments: argsJSON,
-		Result:   strPtr("root:x:0:0:"),
-		Status:   "completed",
+		Result:    strPtr("root:x:0:0:"),
+		Status:    "completed",
 	}
 	if err := db.DB.Create(&tc).Error; err != nil {
 		t.Fatalf("Create TaskToolCall: %v", err)

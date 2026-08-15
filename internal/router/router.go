@@ -31,10 +31,10 @@ type Engine struct {
 
 // BreakerPool holds per-provider circuit breakers.
 type BreakerPool struct {
-	mu              sync.RWMutex
-	breakers        map[string]*breaker.Breaker
-	cfg             breaker.Config
-	stateChangeCb   func(name string, state breaker.State)
+	mu            sync.RWMutex
+	breakers      map[string]*breaker.Breaker
+	cfg           breaker.Config
+	stateChangeCb func(name string, state breaker.State)
 }
 
 // NewBreakerPool creates a pool with the given global config.
@@ -329,31 +329,31 @@ func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID stri
 		return primary, nil, nil
 	}
 
-		fallbacks := make([]ResolvedRoute, 0, len(fallbackCfgs))
-		for _, fb := range fallbackCfgs {
-			p, found := e.registry.Get(fb.Provider)
-			if !found {
-				continue
-			}
-
-			modelName := fb.ModelID
-			if modelName == "" {
-				modelName = primary.ModelID
-			}
-
-			b := e.breakers.Get(fb.Provider)
-			if b != nil && b.Allow() != breaker.ResultAllowed {
-				continue
-			}
-
-			fallbacks = append(fallbacks, ResolvedRoute{
-				Provider:        p,
-				ProviderName:    fb.Provider,
-				ProviderModelID: modelName,
-				ModelID:         primary.ModelID,
-				Breaker:         b,
-			})
+	fallbacks := make([]ResolvedRoute, 0, len(fallbackCfgs))
+	for _, fb := range fallbackCfgs {
+		p, found := e.registry.Get(fb.Provider)
+		if !found {
+			continue
 		}
+
+		modelName := fb.ModelID
+		if modelName == "" {
+			modelName = primary.ModelID
+		}
+
+		b := e.breakers.Get(fb.Provider)
+		if b != nil && b.Allow() != breaker.ResultAllowed {
+			continue
+		}
+
+		fallbacks = append(fallbacks, ResolvedRoute{
+			Provider:        p,
+			ProviderName:    fb.Provider,
+			ProviderModelID: modelName,
+			ModelID:         primary.ModelID,
+			Breaker:         b,
+		})
+	}
 
 	return primary, fallbacks, nil
 }

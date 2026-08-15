@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/agent"
-	"github.com/EffNine/conductor/internal/coordinator"
 	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/coordinator"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/task"
@@ -61,10 +61,10 @@ func newLogger(t *testing.T) *zap.Logger {
 func insertTask(t *testing.T, s task.Store, id, input, role string) *task.Task {
 	t.Helper()
 	task_ := &task.Task{
-		ID:      id,
-		Status:  task.StatusPending,
-		Input:   input,
-		Role:    role,
+		ID:     id,
+		Status: task.StatusPending,
+		Input:  input,
+		Role:   role,
 	}
 	if err := s.CreateTask(task_); err != nil {
 		t.Fatalf("create task: %v", err)
@@ -110,15 +110,15 @@ func toCoordInfo(s task.Store, id string) *coordinator.TaskInfo {
 		return nil
 	}
 	return &coordinator.TaskInfo{
-		ID:             raw.ID,
-		ParentID:       raw.ParentID,
-		RootID:         raw.RootID,
-		Status:         string(raw.Status),
-		Input:          raw.Input,
-		Role:           raw.Role,
-		Intent:         raw.Intent,
-		ChildrenJSON:   raw.ChildrenJSON,
-		DependsOn:      raw.DependsOn,
+		ID:           raw.ID,
+		ParentID:     raw.ParentID,
+		RootID:       raw.RootID,
+		Status:       string(raw.Status),
+		Input:        raw.Input,
+		Role:         raw.Role,
+		Intent:       raw.Intent,
+		ChildrenJSON: raw.ChildrenJSON,
+		DependsOn:    raw.DependsOn,
 	}
 }
 
@@ -469,10 +469,10 @@ func TestMaxChildrenBound(t *testing.T) {
 func TestAgentRoleRegistry(t *testing.T) {
 	agentReg := agent.NewRegistry()
 	agentReg.Register(agent.AgentDefinition{
-		Name:               "research",
-		SystemPromptHint:   "You are a researcher.",
-		PreferredTools:     []string{},
-		RoutingHints:       agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
+		Name:             "research",
+		SystemPromptHint: "You are a researcher.",
+		PreferredTools:   []string{},
+		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
 	})
 	agentReg.Register(agent.AgentDefinition{
 		Name:             "coder",
@@ -491,6 +491,7 @@ func TestAgentRoleRegistry(t *testing.T) {
 		t.Errorf("preferred_tools=%v, want empty", def.PreferredTools)
 	}
 }
+
 // --- Test 12: RootID propagation in task model ---
 
 func TestRootIDPropagation(t *testing.T) {
@@ -661,11 +662,11 @@ func TestCoordinatorExecutor_DelegatesToCoordinator(t *testing.T) {
 
 	leafID := "leaf-1"
 	leaf := &task.Task{
-		ID:      leafID,
-		Status:  task.StatusPending,
-		Input:   "simple task",
-		Role:    "general",
-		Model:   "test-model",
+		ID:     leafID,
+		Status: task.StatusPending,
+		Input:  "simple task",
+		Role:   "general",
+		Model:  "test-model",
 	}
 	_ = s.CreateTask(leaf)
 	_ = s.UpdateStatus(leafID, task.StatusQueued)

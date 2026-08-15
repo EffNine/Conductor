@@ -36,12 +36,12 @@ func openRetryTestDB(t *testing.T) *database.Database {
 func insertFailedTask(t *testing.T, db *database.Database, id string, retryCount, maxRetries int, nextRetryAt time.Time) {
 	t.Helper()
 	tsk := &task.Task{
-		ID:           id,
-		Status:       task.StatusFailed,
-		Input:        "retry-test",
-		RetryCount:   retryCount,
-		MaxRetries:   maxRetries,
-		NextRetryAt:  &nextRetryAt,
+		ID:          id,
+		Status:      task.StatusFailed,
+		Input:       "retry-test",
+		RetryCount:  retryCount,
+		MaxRetries:  maxRetries,
+		NextRetryAt: &nextRetryAt,
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
 		t.Fatalf("CreateTask: %v", err)

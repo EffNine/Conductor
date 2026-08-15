@@ -268,10 +268,10 @@ func TestConfigRedacted(t *testing.T) {
 	cfg := &Config{
 		APIKey: "secret-gateway-key",
 		Providers: ProvidersConfig{
-			OpenAI:     ProviderConfig{Enabled: true, APIKey: "sk-openai", BaseURL: "https://api.openai.com/v1"},
-			Anthropic:  ProviderConfig{Enabled: false, APIKey: "", BaseURL: "https://api.anthropic.com"},
-			Ollama:     ProviderConfig{Enabled: true, APIKey: "ollama-key", BaseURL: "http://localhost:11434/v1"},
-			NvidiaNim:  ProviderConfig{Enabled: true, APIKey: "nim-key", BaseURL: "https://integrate.api.nvidia.com/v1"},
+			OpenAI:    ProviderConfig{Enabled: true, APIKey: "sk-openai", BaseURL: "https://api.openai.com/v1"},
+			Anthropic: ProviderConfig{Enabled: false, APIKey: "", BaseURL: "https://api.anthropic.com"},
+			Ollama:    ProviderConfig{Enabled: true, APIKey: "ollama-key", BaseURL: "http://localhost:11434/v1"},
+			NvidiaNim: ProviderConfig{Enabled: true, APIKey: "nim-key", BaseURL: "https://integrate.api.nvidia.com/v1"},
 		},
 		Server: ServerConfig{Host: "0.0.0.0", Port: 8080},
 		Routes: map[string]RouteConfig{

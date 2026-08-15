@@ -401,11 +401,11 @@ func TestModelProberOmitsThinkingBudget(t *testing.T) {
 	if gotBody["max_tokens"] != float64(16) {
 		t.Fatalf("max_tokens = %v, want 16", gotBody["max_tokens"])
 	}
-	st := store.Get("nvidia_nim/google/gemma-2-2b-it")
+	st := store.Get("nvidia_nim/gemma-2-2b-it")
 	if st == nil || !st.Reachable {
 		t.Fatalf("model should be recorded reachable without thinking_budget: %+v", st)
 	}
-	if !store.ShouldAdvertise("nvidia_nim/google/gemma-2-2b-it", "nvidia_nim") {
+	if !store.ShouldAdvertise("nvidia_nim/gemma-2-2b-it", "nvidia_nim") {
 		t.Fatal("available-only catalog must advertise probe-passed model")
 	}
 }
@@ -456,10 +456,10 @@ func TestModelProberThinkingBudgetWouldFalseNegative(t *testing.T) {
 	})
 	prober.ProbeAll()
 
-	if store.Get("nvidia_nim/nvidia/nemotron-3-super-120b-a12b") == nil {
+	if store.Get("nvidia_nim/nemotron-3-super-120b-a12b") == nil {
 		t.Fatal("expected success status after probe without thinking_budget")
 	}
-	if !store.ShouldAdvertise("nvidia_nim/nvidia/nemotron-3-super-120b-a12b", "nvidia_nim") {
+	if !store.ShouldAdvertise("nvidia_nim/nemotron-3-super-120b-a12b", "nvidia_nim") {
 		t.Fatal("working model must not be hidden by available-only after clean probe")
 	}
 }

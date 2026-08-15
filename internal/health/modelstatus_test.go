@@ -297,12 +297,57 @@ func TestIsInconclusiveProbeFailure(t *testing.T) {
 		{0, "timeout", true},
 		{0, "context deadline exceeded", true},
 		{http.StatusBadGateway, "bad gateway", true},
-		{http.StatusNotFound, "missing", false},
+		{http.StatusServiceUnavailable, "overloaded", true},
+		{http.StatusGatewayTimeout, "gateway timeout", true},
+		{http.StatusTooManyRequests, "rate limit", false},
+		{http.StatusUnauthorized, "bad key", false},
+		{http.StatusOK, "", false},
+		{http.StatusNotFound, "model not found", false},
 	}
 	for _, tc := range cases {
 		got := health.IsInconclusiveProbeFailure(tc.code, tc.msg)
 		if got != tc.want {
 			t.Fatalf("code=%d msg=%q: got %v want %v", tc.code, tc.msg, got, tc.want)
 		}
+	}
+}
+
+func TestShouldAdvertiseStrictHealthy(t *testing.T) {
+	store := health.NewModelStatusStore(1, true)
+	store.SetStrictHealthy(true)
+	store.MarkFilterReady()
+
+	// Healthy model should be advertised even in strict mode.
+	store.RecordSuccess("openai/good", "openai", "good", 5)
+	if !store.ShouldAdvertise("openai/good", "openai") {
+		t.Fatal("healthy model must be advertised in strict mode")
+	}
+
+	// Unknown/unprobed model must be hidden in strict mode.
+	if store.ShouldAdvertise("openai/unseen", "openai") {
+		t.Fatal("unprobed model must be hidden in strict mode")
+	}
+
+	// Failed model must be hidden.
+	store.RecordFailure("openai/bad", "openai", "bad", "model not found", http.StatusNotFound)
+	if store.ShouldAdvertise("openai/bad", "openai") {
+		t.Fatal("failed model must be hidden in strict mode")
+	}
+
+	// Degraded model must also be hidden.
+	store.UpdateErrorRate("openai/slow", "openai", "slow", 0.5, 0.15, 0.05)
+	if store.ShouldAdvertise("openai/slow", "openai") {
+		t.Fatal("degraded model must be hidden in strict mode")
+	}
+}
+
+func TestShouldAdvertiseStrictHealthyDisabledKeepsDegraded(t *testing.T) {
+	store := health.NewModelStatusStore(1, true)
+	store.SetStrictHealthy(false)
+	store.MarkFilterReady()
+
+	store.UpdateErrorRate("openai/slow", "openai", "slow", 0.5, 0.15, 0.05)
+	if !store.ShouldAdvertise("openai/slow", "openai") {
+		t.Fatal("degraded model must be advertised when strict healthy is off")
 	}
 }

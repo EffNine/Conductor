@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
-	"time"
 	"testing"
+	"time"
 
 	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/apitypes"
@@ -31,7 +31,7 @@ type fakeProvider struct {
 	override  func(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error)
 }
 
-func (f *fakeProvider) Name() string { return f.name }
+func (f *fakeProvider) Name() string                 { return f.name }
 func (f *fakeProvider) SupportsModel(id string) bool { return id == f.model || id == "" }
 func (f *fakeProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	f.callCount++
@@ -154,9 +154,9 @@ func TestExecute_Success(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Role: "assistant", Content: "hello world"}}},
-		Usage: &apitypes.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+		Usage:   &apitypes.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
 	}}
 	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
 	exec := newTestExecutor(t, db, reg, fake)
@@ -242,7 +242,7 @@ func TestExecute_DefaultModel(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent{name: "test", model: "default-model", resp: &apitypes.ChatCompletionResponse{
-		Model: "default-model",
+		Model:   "default-model",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "ok"}}},
 	}}
 	reg.Register(&fakeProvider{name: "test", model: "default-model"})
@@ -275,7 +275,7 @@ func TestExecute_WithSystemPrompt(t *testing.T) {
 	fake := &fakeAgent{
 		name: "test", model: "gpt-4o",
 		resp: &apitypes.ChatCompletionResponse{
-			Model: "gpt-4o",
+			Model:   "gpt-4o",
 			Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "ok"}}},
 		},
 	}
@@ -442,7 +442,7 @@ func TestMaxStepsSeparateFromMaxRetries(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "ok"}}},
 	}}
 	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
@@ -477,7 +477,7 @@ func TestEvent_TaskStartedEmitted(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "ok"}}},
 	}}
 	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
@@ -559,7 +559,7 @@ func TestEvent_NoContradictoryTerminalEvents(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent{name: "test", model: "gpt-4o", store: task.NewSQLiteStore(db), resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 	}}
 	reg.Register(&fakeProvider{name: "test", model: "gpt-4o"})
@@ -590,7 +590,6 @@ func TestEvent_NoContradictoryTerminalEvents(t *testing.T) {
 		t.Errorf("task.cancelled count = %d, want 0", cancelledCount)
 	}
 }
-
 
 // ── Worker-context execution tests ──────────────────────────────────────────
 

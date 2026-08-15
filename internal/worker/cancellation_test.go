@@ -91,10 +91,10 @@ func TestTaskTimeoutCausesCancellation(t *testing.T) {
 
 	exec := &slowExecutor{store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
-		TaskTimeout:  500 * time.Millisecond,
+		TaskTimeout:   500 * time.Millisecond,
 	}, store, exec, zap.NewNop())
 	pool.Start()
 	defer pool.Stop()
@@ -132,10 +132,10 @@ func TestCancelTaskNeverRetries(t *testing.T) {
 
 	exec := &slowExecutor{store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
-		TaskTimeout:  5 * time.Second, // long enough that we cancel manually
+		TaskTimeout:   5 * time.Second, // long enough that we cancel manually
 	}, store, exec, zap.NewNop())
 	pool.Start()
 
@@ -189,10 +189,10 @@ func TestDeadlineExceededNeverRetries(t *testing.T) {
 
 	exec := &slowExecutor{store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
-		TaskTimeout:  200 * time.Millisecond,
+		TaskTimeout:   200 * time.Millisecond,
 	}, store, exec, zap.NewNop())
 	pool.Start()
 	defer pool.Stop()
@@ -232,10 +232,10 @@ func TestNonCancellationErrorStillRetries(t *testing.T) {
 
 	failingExec := &countingFailingExecutor{store: store, err: fmt.Errorf("random boom")}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
-		TaskTimeout:  5 * time.Second,
+		TaskTimeout:   5 * time.Second,
 	}, store, failingExec, zap.NewNop())
 	pool.Start()
 	defer pool.Stop()
@@ -284,8 +284,8 @@ type noopProvider struct {
 	name string
 }
 
-func (f *noopProvider) Name() string                    { return f.name }
-func (f *noopProvider) SupportsModel(id string) bool    { return true }
+func (f *noopProvider) Name() string                 { return f.name }
+func (f *noopProvider) SupportsModel(id string) bool { return true }
 func (f *noopProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()

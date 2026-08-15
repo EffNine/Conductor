@@ -47,9 +47,9 @@ func TestClassifyIntent_Default(t *testing.T) {
 
 func TestGeneratePlan_Coding(t *testing.T) {
 	caps := &orchestration.CapabilityRequirement{
-		NeedsFileSystem: true,
-		NeedsShell:      true,
-		NeedsGit:        true,
+		NeedsFileSystem:  true,
+		NeedsShell:       true,
+		NeedsGit:         true,
 		NeedsToolCalling: true,
 	}
 	plan := orchestration.GeneratePlan("fix the failing tests in this repo", "coding", caps)

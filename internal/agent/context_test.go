@@ -70,8 +70,8 @@ func TestCheckpointTruncation(t *testing.T) {
 			Content: "assistant response step " + string(rune('0'+i)),
 		})
 		messages = append(messages, apitypes.Message{
-			Role:     "tool",
-			Content:  strings.Repeat("x", 50000), // 50KB tool output
+			Role:       "tool",
+			Content:    strings.Repeat("x", 50000), // 50KB tool output
 			ToolCallID: "tc-" + string(rune('0'+i)),
 		})
 	}

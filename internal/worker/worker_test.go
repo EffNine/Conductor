@@ -29,7 +29,7 @@ type fakeProvider struct {
 	callCount int
 }
 
-func (f *fakeProvider) Name() string { return f.name }
+func (f *fakeProvider) Name() string                 { return f.name }
 func (f *fakeProvider) SupportsModel(id string) bool { return id == f.model || id == "" }
 func (f *fakeProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	f.callCount++
@@ -54,11 +54,11 @@ func (f *fakeProvider) GetMetadata() provider.Metadata { return provider.Metadat
 
 // fakeExecutor wraps an agent for testing.
 type fakeExecutor struct {
-	resp   *apitypes.ChatCompletionResponse
-	err    error
-	calls  int
-	mu     sync.Mutex
-	store  task.Store
+	resp  *apitypes.ChatCompletionResponse
+	err   error
+	calls int
+	mu    sync.Mutex
+	store task.Store
 }
 
 func (f *fakeExecutor) Execute(_ context.Context, taskID string) error {
@@ -136,9 +136,9 @@ func insertQueuedTask(t *testing.T, db *database.Database, input string) string 
 	t.Helper()
 	id := uuid.New().String()
 	tsk := &task.Task{
-		ID:      id,
-		Status:  task.StatusQueued,
-		Input:   input,
+		ID:         id,
+		Status:     task.StatusQueued,
+		Input:      input,
 		MaxRetries: 3,
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
@@ -458,8 +458,8 @@ func TestWorkerExecutesTask(t *testing.T) {
 
 	fe := &fakeExecutor{store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 100 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  100 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -497,8 +497,8 @@ func TestWorkerFailureBecomesRetryable(t *testing.T) {
 
 	fe := &fakeExecutor{err: assertAnError("boom"), store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 100 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  100 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -542,8 +542,8 @@ func TestWorkerFailureExhaustsRetries(t *testing.T) {
 
 	fe := &fakeExecutor{err: assertAnError("boom"), store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 100 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  100 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -1058,13 +1058,12 @@ func TestMaxRetriesSemantics(t *testing.T) {
 	})
 }
 
-
 // ── Blocker 1: Retry lifecycle via worker pool ───────────────────────────────
 
 // TestWorkerRetryLifecycle verifies the full retry flow:
-//   1. Worker claims task and fails → MakeRetryable is called (RetryCount increments)
-//   2. Task is released back to queued for re-claim
-//   3. On second failure, max retries exhausted → task becomes failed
+//  1. Worker claims task and fails → MakeRetryable is called (RetryCount increments)
+//  2. Task is released back to queued for re-claim
+//  3. On second failure, max retries exhausted → task becomes failed
 func TestWorkerRetryLifecycle(t *testing.T) {
 	db := newTestDB(t)
 	store := task.NewSQLiteStore(db)
@@ -1072,8 +1071,8 @@ func TestWorkerRetryLifecycle(t *testing.T) {
 
 	fe := &fakeExecutor{err: assertAnError("boom"), store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -1111,8 +1110,8 @@ func TestWorkerRetryMaxRetriesZero(t *testing.T) {
 
 	fe := &fakeExecutor{err: assertAnError("boom"), store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  1,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   1,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -1142,8 +1141,8 @@ func TestWorkerRetryResumedByAnotherWorker(t *testing.T) {
 
 	fe := &fakeExecutor{err: assertAnError("boom"), store: store}
 	pool := workerpkg.New(workerpkg.Config{
-		WorkerCount:  2,
-		PollInterval: 50 * time.Millisecond,
+		WorkerCount:   2,
+		PollInterval:  50 * time.Millisecond,
 		LeaseDuration: 5 * time.Minute,
 	}, store, fe, zap.NewNop())
 	pool.Start()
@@ -1459,7 +1458,8 @@ ticker:
 }
 
 // TestRetryBackoffSequence verifies the exponential backoff values:
-//   retry 0 → 5s, retry 1 → 15s, retry 2 → 45s, retry 3+ → cap at 15min
+//
+//	retry 0 → 5s, retry 1 → 15s, retry 2 → 45s, retry 3+ → cap at 15min
 func TestRetryBackoffSequence(t *testing.T) {
 	db := newTestDB(t)
 	store := task.NewSQLiteStore(db)
@@ -1467,14 +1467,14 @@ func TestRetryBackoffSequence(t *testing.T) {
 	base := 5 * time.Second
 	maxDelay := 15 * time.Minute
 	cases := []struct {
-		retryCount    int
-		wantMin       time.Duration
-		wantMax       time.Duration
+		retryCount int
+		wantMin    time.Duration
+		wantMax    time.Duration
 	}{
 		{0, base, base},
 		{1, 15 * time.Second, 15 * time.Second},
 		{2, 45 * time.Second, 45 * time.Second},
-		{3, 2*time.Minute, maxDelay},
+		{3, 2 * time.Minute, maxDelay},
 		{10, maxDelay, maxDelay},
 	}
 

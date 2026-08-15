@@ -16,27 +16,27 @@ import (
 // TaskInfo is a lightweight interface to the task model, breaking the import cycle
 // between coordinator and task packages.
 type TaskInfo struct {
-	ID                string
-	ParentID          *string
-	RootID            string
-	Status            string
-	Input             string
-	InputJSON         []byte
-	Output            string
-	OutputJSON        []byte
-	Error             *string
-	Provider          string
-	Model             string
-	StepCount         int
-	PlanID            string
-	Intent            string
-	CurrentPlanStep   int
-	Role              string
-	DependsOn         string
-	ChildrenJSON      string
-	CompletedAt       *time.Time
-	RetryCount        int
-	MaxRetries        int
+	ID              string
+	ParentID        *string
+	RootID          string
+	Status          string
+	Input           string
+	InputJSON       []byte
+	Output          string
+	OutputJSON      []byte
+	Error           *string
+	Provider        string
+	Model           string
+	StepCount       int
+	PlanID          string
+	Intent          string
+	CurrentPlanStep int
+	Role            string
+	DependsOn       string
+	ChildrenJSON    string
+	CompletedAt     *time.Time
+	RetryCount      int
+	MaxRetries      int
 }
 
 // IsTerminal reports whether the task has reached a final state.
@@ -106,12 +106,12 @@ const (
 
 // Config holds coordinator execution parameters.
 type Config struct {
-	MaxChildren      int
-	MaxDepth         int
-	MaxAgents        int
-	PollInterval     time.Duration
-	RequiredMode     bool // if true, all children must succeed for parent to complete
-	MaxChildContext  int  // max bytes of parent input forwarded to each child (0 = use default)
+	MaxChildren     int
+	MaxDepth        int
+	MaxAgents       int
+	PollInterval    time.Duration
+	RequiredMode    bool // if true, all children must succeed for parent to complete
+	MaxChildContext int  // max bytes of parent input forwarded to each child (0 = use default)
 }
 
 // NewConfig returns Config with sensible defaults.

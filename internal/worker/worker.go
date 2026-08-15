@@ -67,13 +67,13 @@ func New(cfg Config, store task.Store, executor task.Executor, logger *zap.Logge
 		workerIDs[i] = fmt.Sprintf("worker-%d", i+1)
 	}
 	return &Pool{
-		cfg:      cfg,
-		store:    store,
-		executor: executor,
-		logger:   logger,
-		stopCh:   make(chan struct{}),
+		cfg:       cfg,
+		store:     store,
+		executor:  executor,
+		logger:    logger,
+		stopCh:    make(chan struct{}),
 		workerIDs: workerIDs,
-		active:   make(map[string]context.CancelFunc),
+		active:    make(map[string]context.CancelFunc),
 	}
 }
 

@@ -12,8 +12,8 @@ import (
 // Scheduler wakes periodically and promotes retryable failed tasks to queued
 // so the worker pool can claim them. It does NOT execute tasks itself.
 type Scheduler struct {
-	store   task.Store
-	logger  *zap.Logger
+	store    task.Store
+	logger   *zap.Logger
 	interval time.Duration
 	running  bool
 	stopCh   chan struct{}

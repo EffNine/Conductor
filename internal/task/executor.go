@@ -47,12 +47,12 @@ func NewTaskExecutor(
 	l *zap.Logger,
 ) *TaskExecutor {
 	return &TaskExecutor{
-		store:    s,
-		router:   r,
-		agent:    a,
-		catalog:  cat,
+		store:        s,
+		router:       r,
+		agent:        a,
+		catalog:      cat,
 		usageTracker: ut,
-		logger:   l,
+		logger:       l,
 	}
 }
 
@@ -178,12 +178,12 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 				TaskID:    taskID,
 				EventType: "plan.created",
 				EventData: mustMarshal(map[string]any{
-					"plan_id":     plan.ID,
-					"intent":      plan.Intent,
-					"steps":       len(plan.Steps),
-					"provider":    selectedProvider,
-					"model":       selectedModel,
-					"candidates":  len(oc.Candidates),
+					"plan_id":    plan.ID,
+					"intent":     plan.Intent,
+					"steps":      len(plan.Steps),
+					"provider":   selectedProvider,
+					"model":      selectedModel,
+					"candidates": len(oc.Candidates),
 				}),
 			})
 			e.logger.Info("orchestration plan created",

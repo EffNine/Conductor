@@ -21,10 +21,10 @@ type CreateTaskRequest struct {
 
 // Handler holds HTTP handlers for the task API.
 type Handler struct {
-	store       Store
-	executor    Executor
-	logger      *zap.Logger
-	cancelPool  CancelPool // optional; if set, cancellation propagates to in-flight contexts
+	store      Store
+	executor   Executor
+	logger     *zap.Logger
+	cancelPool CancelPool // optional; if set, cancellation propagates to in-flight contexts
 }
 
 // CancelPool is the minimal interface for cancelling in-flight task contexts.
@@ -293,19 +293,19 @@ func (h *Handler) HandleCancel(c *fiber.Ctx) error {
 
 func taskResponse(t *Task) fiber.Map {
 	resp := fiber.Map{
-		"id":            t.ID,
-		"status":        string(t.Status),
-		"input":         t.Input,
-		"output":        t.Output,
-		"provider":      t.Provider,
-		"model":         t.Model,
-		"step_count":    t.StepCount,
-		"retry_count":   t.RetryCount,
-		"max_retries":   t.MaxRetries,
-		"error":         t.Error,
-		"created_at":    t.CreatedAt,
-		"started_at":    t.StartedAt,
-		"completed_at":  t.CompletedAt,
+		"id":           t.ID,
+		"status":       string(t.Status),
+		"input":        t.Input,
+		"output":       t.Output,
+		"provider":     t.Provider,
+		"model":        t.Model,
+		"step_count":   t.StepCount,
+		"retry_count":  t.RetryCount,
+		"max_retries":  t.MaxRetries,
+		"error":        t.Error,
+		"created_at":   t.CreatedAt,
+		"started_at":   t.StartedAt,
+		"completed_at": t.CompletedAt,
 	}
 	// V2.5: Include orchestration metadata when available.
 	if t.PlanID != "" || t.Intent != "" {
@@ -351,10 +351,10 @@ func (h *Handler) HandleTree(c *fiber.Ctx) error {
 	}
 
 	type childNode struct {
-		ID     string             `json:"id"`
-		Status string             `json:"status"`
-		Role   string             `json:"role,omitempty"`
-		Output string             `json:"output,omitempty"`
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Role   string `json:"role,omitempty"`
+		Output string `json:"output,omitempty"`
 	}
 	nodeChildren := make([]childNode, 0, len(children))
 	for _, ch := range children {

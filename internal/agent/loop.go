@@ -197,7 +197,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 						ID: newUUID(), TaskID: t.ID, StepID: &stepRecord.ID,
 						CallID: tc.ID, ToolName: tc.Function.Name,
 						Arguments: []byte(tc.Function.Arguments),
-						Error: strPtr(errStr), Status: "failed",
+						Error:     strPtr(errStr), Status: "failed",
 					})
 				}
 				select {

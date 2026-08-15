@@ -73,22 +73,22 @@ type Environment struct {
 //
 // DecisionContext is not safe for concurrent use; treat it as single-goroutine.
 type DecisionContext struct {
-	id          DecisionID
-	timestamp   time.Time
-	request     *apitypes.ChatCompletionRequest
-	runtimeSnap RuntimeSnapshot
-	configSnap  ConfigSnapshot
-	taskMeta    TaskMetadata
-	environment Environment
-	intent      *policy.Intent
-	capability  *policy.CapabilityRequirement
-	selection   *SelectionResult
+	id              DecisionID
+	timestamp       time.Time
+	request         *apitypes.ChatCompletionRequest
+	runtimeSnap     RuntimeSnapshot
+	configSnap      ConfigSnapshot
+	taskMeta        TaskMetadata
+	environment     Environment
+	intent          *policy.Intent
+	capability      *policy.CapabilityRequirement
+	selection       *SelectionResult
 	candidateScores []ProviderScoreView
-	policyRef   string
-	logger      *zap.Logger
-	eventBus    *eventbus.EventBus
-	ctx         context.Context
-	cancel      context.CancelFunc
+	policyRef       string
+	logger          *zap.Logger
+	eventBus        *eventbus.EventBus
+	ctx             context.Context
+	cancel          context.CancelFunc
 }
 
 // contextTimeout bounds how long any single downstream call derived from a

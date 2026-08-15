@@ -337,8 +337,8 @@ func (s *SQLiteStore) UpdateStatus(id string, newStatus Status) error {
 
 	now := time.Now().UTC()
 	updates := map[string]any{
-		"status":      newStatus,
-		"updated_at":  now,
+		"status":     newStatus,
+		"updated_at": now,
 	}
 	switch newStatus {
 	case StatusRunning:
@@ -766,14 +766,14 @@ func (s *SQLiteStore) DependenciesMet(dependsOnJSON string) error {
 var _ Store = (*SQLiteStore)(nil)
 var _ PlanStore = (*SQLiteStore)(nil)
 
-	// ErrDependenciesNotMet is returned when a task has unmet dependencies.
-	var ErrDependenciesNotMet = errors.New("task has unmet dependencies")
+// ErrDependenciesNotMet is returned when a task has unmet dependencies.
+var ErrDependenciesNotMet = errors.New("task has unmet dependencies")
 
-	// ErrCancelledTask is returned when attempting to claim a cancelled task.
-	var ErrCancelledTask = errors.New("task is cancelled")
+// ErrCancelledTask is returned when attempting to claim a cancelled task.
+var ErrCancelledTask = errors.New("task is cancelled")
 
-	// ErrNoEligibleTask is returned when there are no tasks to claim.
-	var ErrNoEligibleTask = errors.New("no eligible task available")
+// ErrNoEligibleTask is returned when there are no tasks to claim.
+var ErrNoEligibleTask = errors.New("no eligible task available")
 
 // PlanStore provides persistence operations for plans.
 type PlanStore interface {

@@ -33,7 +33,7 @@ type fakeProvider2 struct {
 	override  func(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error)
 }
 
-func (f *fakeProvider2) Name() string { return f.name }
+func (f *fakeProvider2) Name() string                 { return f.name }
 func (f *fakeProvider2) SupportsModel(id string) bool { return id == f.model || id == "" }
 func (f *fakeProvider2) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	f.callCount++
@@ -165,9 +165,9 @@ func TestV25_CapabilityResolution(t *testing.T) {
 
 func TestV25_PlanGeneration(t *testing.T) {
 	caps := &orchestration.CapabilityRequirement{
-		NeedsFileSystem: true,
-		NeedsShell:      true,
-		NeedsGit:        true,
+		NeedsFileSystem:  true,
+		NeedsShell:       true,
+		NeedsGit:         true,
 		NeedsToolCalling: true,
 	}
 	plan := orchestration.GeneratePlan("find failing tests and fix them", "coding", caps)
@@ -216,9 +216,9 @@ func TestV25_TaskWithOrchestration_Completes(t *testing.T) {
 	db := newTestDB2(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent2{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Role: "assistant", Content: "hello world"}}},
-		Usage: &apitypes.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
+		Usage:   &apitypes.Usage{PromptTokens: 10, CompletionTokens: 5, TotalTokens: 15},
 	}}
 	reg.Register(&fakeProvider2{name: "test", model: "gpt-4o"})
 
@@ -260,7 +260,7 @@ func TestV25_TaskWithoutOrchestration_BackwardCompatible(t *testing.T) {
 	db := newTestDB2(t)
 	reg := provider.NewRegistry()
 	fake := &fakeAgent2{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 	}}
 	reg.Register(&fakeProvider2{name: "test", model: "gpt-4o"})

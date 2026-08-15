@@ -7,9 +7,9 @@ import (
 
 // VerificationResult holds the outcome of a verification step.
 type VerificationResult struct {
-	Success      bool   `json:"success"`
-	Message      string `json:"message"`
-	VerifiedAt   string `json:"verified_at"`
+	Success    bool   `json:"success"`
+	Message    string `json:"message"`
+	VerifiedAt string `json:"verified_at"`
 }
 
 // VerifyFunc is a function that verifies a task result.

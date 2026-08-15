@@ -12,13 +12,13 @@ import (
 type Status string
 
 const (
-	StatusPending    Status = "pending"
-	StatusQueued     Status = "queued"
-	StatusRunning    Status = "running"
-	StatusPaused     Status = "paused"
-	StatusCompleted  Status = "completed"
-	StatusFailed     Status = "failed"
-	StatusCancelled  Status = "cancelled"
+	StatusPending   Status = "pending"
+	StatusQueued    Status = "queued"
+	StatusRunning   Status = "running"
+	StatusPaused    Status = "paused"
+	StatusCompleted Status = "completed"
+	StatusFailed    Status = "failed"
+	StatusCancelled Status = "cancelled"
 )
 
 // IsTerminal returns true if the status is a final state.
@@ -73,20 +73,20 @@ func ValidateTransition(from, to Status) error {
 // Task represents a persistent unit of work in Conductor.
 type Task struct {
 	// Identity
-	ID       string `gorm:"primaryKey;type:text" json:"id"`
+	ID       string  `gorm:"primaryKey;type:text" json:"id"`
 	ParentID *string `gorm:"type:text" json:"parent_id,omitempty"`
-	RootID   string `gorm:"type:text;index" json:"root_id"`
+	RootID   string  `gorm:"type:text;index" json:"root_id"`
 
 	// State
-	Status   Status  `gorm:"type:text;index" json:"status"`
-	Priority int     `gorm:"default:0" json:"priority"`
+	Status   Status `gorm:"type:text;index" json:"status"`
+	Priority int    `gorm:"default:0" json:"priority"`
 
 	// Input
 	Input     string `gorm:"type:text" json:"input"`
 	InputJSON []byte `gorm:"type:blob" json:"input_json,omitempty"`
 
 	// Output
-	Output    string `gorm:"type:text" json:"output,omitempty"`
+	Output     string `gorm:"type:text" json:"output,omitempty"`
 	OutputJSON []byte `gorm:"type:blob" json:"output_json,omitempty"`
 
 	// Error
@@ -108,9 +108,9 @@ type Task struct {
 	Checkpoint []byte `gorm:"type:blob" json:"checkpoint,omitempty"`
 
 	// Provider/model execution metadata
-	Provider string `gorm:"type:text" json:"provider,omitempty"`
-	Model    string `gorm:"type:text" json:"model,omitempty"`
-	StepCount int   `gorm:"default:0" json:"step_count"`
+	Provider  string `gorm:"type:text" json:"provider,omitempty"`
+	Model     string `gorm:"type:text" json:"model,omitempty"`
+	StepCount int    `gorm:"default:0" json:"step_count"`
 	// MaxSteps limits the number of LLM iterations in a single agent execution.
 	// 0 means use the global agent default (10).
 	MaxSteps int `gorm:"default:0" json:"max_steps"`
@@ -121,9 +121,9 @@ type Task struct {
 	LeaseUntil *time.Time `gorm:"index" json:"lease_until,omitempty"`
 
 	// V2.5 orchestration fields
-	PlanID       string `gorm:"type:text;default:''" json:"plan_id,omitempty"`
-	Intent       string `gorm:"type:text;default:''" json:"intent,omitempty"`
-	CurrentPlanStep int `gorm:"default:0" json:"current_plan_step"`
+	PlanID          string `gorm:"type:text;default:''" json:"plan_id,omitempty"`
+	Intent          string `gorm:"type:text;default:''" json:"intent,omitempty"`
+	CurrentPlanStep int    `gorm:"default:0" json:"current_plan_step"`
 
 	// V2.6 multi-agent fields
 	Role         string `gorm:"type:text;default:''" json:"role,omitempty"`
@@ -134,12 +134,12 @@ type Task struct {
 
 // CoordCheckpoint serializes coordinator state for checkpoint/resume.
 type CoordCheckpoint struct {
-	TaskID          string            `json:"task_id"`
-	Children        []string          `json:"children"`
+	TaskID            string            `json:"task_id"`
+	Children          []string          `json:"children"`
 	CompletedChildren map[string]string `json:"completed_children,omitempty"`
-	FailedChildren  []string          `json:"failed_children,omitempty"`
-	AggregatedOutput string           `json:"aggregated_output,omitempty"`
-	SavedAt         time.Time         `json:"saved_at"`
+	FailedChildren    []string          `json:"failed_children,omitempty"`
+	AggregatedOutput  string            `json:"aggregated_output,omitempty"`
+	SavedAt           time.Time         `json:"saved_at"`
 }
 
 // BeforeCreate is a GORM hook to set RootID from ParentID if empty.
@@ -165,15 +165,15 @@ type TaskStep struct {
 	Model    string `gorm:"type:text" json:"model,omitempty"`
 
 	// Request / response
-	Request   []byte `gorm:"type:blob" json:"request,omitempty"`
-	Response  []byte `gorm:"type:blob" json:"response,omitempty"`
+	Request  []byte `gorm:"type:blob" json:"request,omitempty"`
+	Response []byte `gorm:"type:blob" json:"response,omitempty"`
 
 	// Tool call data
 	ToolCalls   []byte `gorm:"type:blob" json:"tool_calls,omitempty"`
 	ToolResults []byte `gorm:"type:blob" json:"tool_results,omitempty"`
 
 	// Status
-	Status string `gorm:"type:text" json:"status"`
+	Status string  `gorm:"type:text" json:"status"`
 	Error  *string `gorm:"type:text" json:"error,omitempty"`
 
 	// Timing
@@ -189,48 +189,48 @@ type TaskStep struct {
 
 // TaskEvent records a state transition or notable occurrence for a task.
 type TaskEvent struct {
-	ID         string `gorm:"primaryKey;type:text" json:"id"`
-	TaskID     string `gorm:"type:text;index" json:"task_id"`
-	EventType  string `gorm:"type:text" json:"event_type"`
-	EventData  []byte `gorm:"type:blob" json:"event_data,omitempty"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID        string    `gorm:"primaryKey;type:text" json:"id"`
+	TaskID    string    `gorm:"type:text;index" json:"task_id"`
+	EventType string    `gorm:"type:text" json:"event_type"`
+	EventData []byte    `gorm:"type:blob" json:"event_data,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 // TaskToolCall records a single tool invocation within a task step.
 type TaskToolCall struct {
-	ID         string `gorm:"primaryKey;type:text" json:"id"`
-	TaskID     string `gorm:"type:text;index" json:"task_id"`
-	StepID     *string `gorm:"type:text" json:"step_id,omitempty"`
-	CallID     string `gorm:"type:text" json:"call_id"`
-	ToolName   string `gorm:"type:text" json:"tool_name"`
-	Arguments  []byte `gorm:"type:blob" json:"arguments,omitempty"`
-	Result     *string `gorm:"type:text" json:"result,omitempty"`
-	Error      *string `gorm:"type:text" json:"error,omitempty"`
-	Status     string `gorm:"type:text" json:"status"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID        string    `gorm:"primaryKey;type:text" json:"id"`
+	TaskID    string    `gorm:"type:text;index" json:"task_id"`
+	StepID    *string   `gorm:"type:text" json:"step_id,omitempty"`
+	CallID    string    `gorm:"type:text" json:"call_id"`
+	ToolName  string    `gorm:"type:text" json:"tool_name"`
+	Arguments []byte    `gorm:"type:blob" json:"arguments,omitempty"`
+	Result    *string   `gorm:"type:text" json:"result,omitempty"`
+	Error     *string   `gorm:"type:text" json:"error,omitempty"`
+	Status    string    `gorm:"type:text" json:"status"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 // Plan represents a bounded sequence of executable steps for a task.
 type Plan struct {
-	ID           string `gorm:"primaryKey;type:text" json:"id"`
-	TaskID       string `gorm:"type:text;index" json:"task_id"`
-	Intent       string `gorm:"type:text;default:''" json:"intent"`
-	Capabilities string `gorm:"type:text;default:''" json:"capabilities"`
-	StepsJSON    []byte `gorm:"type:blob" json:"steps_json"`
-	Status       string `gorm:"type:text;default:'pending'" json:"status"`
-	CurrentStep  int    `gorm:"default:0" json:"current_step"`
+	ID           string    `gorm:"primaryKey;type:text" json:"id"`
+	TaskID       string    `gorm:"type:text;index" json:"task_id"`
+	Intent       string    `gorm:"type:text;default:''" json:"intent"`
+	Capabilities string    `gorm:"type:text;default:''" json:"capabilities"`
+	StepsJSON    []byte    `gorm:"type:blob" json:"steps_json"`
+	Status       string    `gorm:"type:text;default:'pending'" json:"status"`
+	CurrentStep  int       `gorm:"default:0" json:"current_step"`
 	CreatedAt    time.Time `gorm:"autoCreateTime" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // TaskPlanEvent records plan lifecycle events for a task.
 type TaskPlanEvent struct {
-	ID         string `gorm:"primaryKey;type:text" json:"id"`
-	TaskID     string `gorm:"type:text;index" json:"task_id"`
-	PlanID     string `gorm:"type:text" json:"plan_id"`
-	EventType  string `gorm:"type:text" json:"event_type"`
-	EventData  []byte `gorm:"type:blob" json:"event_data,omitempty"`
-	CreatedAt  time.Time `gorm:"autoCreateTime" json:"created_at"`
+	ID        string    `gorm:"primaryKey;type:text" json:"id"`
+	TaskID    string    `gorm:"type:text;index" json:"task_id"`
+	PlanID    string    `gorm:"type:text" json:"plan_id"`
+	EventType string    `gorm:"type:text" json:"event_type"`
+	EventData []byte    `gorm:"type:blob" json:"event_data,omitempty"`
+	CreatedAt time.Time `gorm:"autoCreateTime" json:"created_at"`
 }
 
 // MigratePlans adds the plan-related tables to the database.

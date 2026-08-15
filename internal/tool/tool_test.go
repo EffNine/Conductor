@@ -18,8 +18,8 @@ type fakeTool struct {
 	called      bool
 }
 
-func (f *fakeTool) Name() string { return f.name }
-func (f *fakeTool) Description() string { return f.description }
+func (f *fakeTool) Name() string           { return f.name }
+func (f *fakeTool) Description() string    { return f.description }
 func (f *fakeTool) Params() map[string]any { return f.params }
 func (f *fakeTool) Execute(_ context.Context, _ json.RawMessage) (tool.ToolResult, error) {
 	f.called = true

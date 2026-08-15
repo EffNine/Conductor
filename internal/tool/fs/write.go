@@ -86,7 +86,7 @@ func (t *WriteTool) Execute(ctx context.Context, args json.RawMessage) (tool.Too
 	writeMutex.Lock()
 	defer writeMutex.Unlock()
 
-	if err := os.WriteFile(target, []byte(input.Content), 0o644); err != nil {
+	if err := os.WriteFile(target, []byte(input.Content), 0o600); err != nil {
 		return tool.Failure("write " + input.Path + ": " + err.Error()), nil
 	}
 	return tool.Success(fmt.Sprintf("wrote %d bytes to %s", len(input.Content), input.Path)), nil

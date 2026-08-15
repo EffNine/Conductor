@@ -12,11 +12,11 @@ import (
 
 // Intent represents the classified purpose of a task.
 type Intent struct {
-	TaskType    string            `json:"task_type"`
-	Confidence  float64           `json:"confidence"`
-	Description string            `json:"description,omitempty"`
-	Metadata    map[string]any    `json:"metadata,omitempty"`
-	ClassifiedAt time.Time         `json:"classified_at"`
+	TaskType     string         `json:"task_type"`
+	Confidence   float64        `json:"confidence"`
+	Description  string         `json:"description,omitempty"`
+	Metadata     map[string]any `json:"metadata,omitempty"`
+	ClassifiedAt time.Time      `json:"classified_at"`
 }
 
 // ClassifyIntent analyzes task input and returns the best-matching intent.
@@ -26,10 +26,10 @@ func ClassifyIntent(ctx context.Context, input string) *Intent {
 	desc := profileDescription(profile)
 
 	intent := &Intent{
-		TaskType:    profile,
-		Confidence:  computeConfidence(input, profile),
-		Description: desc,
-		Metadata:    map[string]any{"classifier": "keyword_heuristics"},
+		TaskType:     profile,
+		Confidence:   computeConfidence(input, profile),
+		Description:  desc,
+		Metadata:     map[string]any{"classifier": "keyword_heuristics"},
 		ClassifiedAt: time.Now().UTC(),
 	}
 	return intent

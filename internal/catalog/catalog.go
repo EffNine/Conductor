@@ -72,12 +72,13 @@ type StaticModels map[string][]string
 
 // Catalog merges model lists from registered providers.
 type Catalog struct {
-	registry     *provider.Registry
-	static       StaticModels
-	filter       ReachabilityFilter
-	hide         bool
-	curatedOnly  bool
-	displayNames map[string]string
+	registry      *provider.Registry
+	static        StaticModels
+	filter        ReachabilityFilter
+	hide          bool
+	curatedOnly   bool
+	strictHealthy bool
+	displayNames  map[string]string
 }
 
 // New creates a Catalog. static may be nil.
@@ -166,6 +167,13 @@ func (c *Catalog) SetReachabilityFilter(filter ReachabilityFilter, hide bool) {
 	c.hide = hide
 }
 
+// SetStrictHealthy, when true, hides every model that is not in the healthy
+// state (degraded, unknown, recovering, unhealthy) from both List() and
+// ListAll(). This takes precedence over unknown_as_reachable.
+func (c *Catalog) SetStrictHealthy(v bool) {
+	c.strictHealthy = v
+}
+
 // StaticFromConfig builds StaticModels from provider config.
 func StaticFromConfig(cfg *config.Config) StaticModels {
 	if cfg == nil {
@@ -199,11 +207,14 @@ func StaticFromConfig(cfg *config.Config) StaticModels {
 // When curated_only is enabled, providers with a Static Model List use that
 // allowlist; providers without one still use dynamic ListModels.
 // When a reachability filter is configured with hide enabled, unreachable models
-// are omitted.
+// are omitted. When strict_healthy is enabled, only healthy models are advertised.
 func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	entries, err := c.ListAll(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if c.strictHealthy {
+		entries = c.filterStrictHealthy(entries)
 	}
 	if c.filter == nil || !c.hide {
 		return entries, nil
@@ -224,11 +235,22 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 // When curated_only is enabled, providers with a non-empty Static Model List use
 // that allowlist; providers with an empty list still use dynamic ListModels.
 // This shrinks huge catalogs (NVIDIA NIM) without wiping other providers.
+// When strict_healthy is enabled, only healthy models are returned.
 func (c *Catalog) ListAll(ctx context.Context) ([]Entry, error) {
+	var entries []Entry
+	var err error
 	if c.curatedOnly {
-		return c.listCuratedOrDynamic(ctx)
+		entries, err = c.listCuratedOrDynamic(ctx)
+	} else {
+		entries, err = c.listDynamic(ctx)
 	}
-	return c.listDynamic(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if c.strictHealthy {
+		entries = c.filterStrictHealthy(entries)
+	}
+	return entries, nil
 }
 
 func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {
@@ -305,6 +327,22 @@ func (c *Catalog) staticEntries(providerName string) []Entry {
 	return entries
 }
 
+// filterStrictHealthy removes entries that are not in a healthy state.
+// Uses the configured filter's ShouldAdvertise when available; falls back to
+// keeping all entries when no filter is set (strict mode without probing).
+func (c *Catalog) filterStrictHealthy(entries []Entry) []Entry {
+	filtered := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if c.filter != nil && c.filter.ShouldAdvertise(e.ModelID, e.Provider) {
+			filtered = append(filtered, e)
+		} else if c.filter == nil {
+			// No filter configured — strict healthy with no probing means keep all.
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered
+}
+
 // stripProviderPrefix removes a leading org prefix from a model ID when that
 // prefix would be redundant with the gateway provider name. For example, NIM
 // returns "nvidia/nemotron-3-nano-30b" but the gateway ID is already prefixed
@@ -313,15 +351,15 @@ func (c *Catalog) staticEntries(providerName string) []Entry {
 func stripProviderPrefix(id, providerName string) string {
 	// Normalize provider name to a prefix pattern.
 	prefixes := map[string][]string{
-		"nvidia_nim": {"nvidia/", "deepseek-ai/", "meta/", "google/", "mistralai/", "minimaxai/", "stepfun-ai/", "z-ai/", "poolside/", "thinkingmachines/", "openai/", "bytedance-seed/"},
-		"gemini":     {"models/", "gemini/"},
-		"groq":       {"groq/", "meta-llama/", "openai/", "qwen/", "canopylabs/"},
-		"kilocode":   {"kilocode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "mistralai/", "nvidia/", "qwen/", "x-ai/", "cohere/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "stealth/", "gryphe/", "arcee-ai/", "rekaai/", "morph/", "aedans/", "inception/", "relace/", "sao10k/", "perceptron/", "deepcogito/", "cognitivecomputations/", "nex-agi/"},
+		"nvidia_nim":  {"nvidia/", "deepseek-ai/", "meta/", "google/", "mistralai/", "minimaxai/", "stepfun-ai/", "z-ai/", "poolside/", "thinkingmachines/", "openai/", "bytedance-seed/"},
+		"gemini":      {"models/", "gemini/"},
+		"groq":        {"groq/", "meta-llama/", "openai/", "qwen/", "canopylabs/"},
+		"kilocode":    {"kilocode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "mistralai/", "nvidia/", "qwen/", "x-ai/", "cohere/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "stealth/", "gryphe/", "arcee-ai/", "rekaai/", "morph/", "aedans/", "inception/", "relace/", "sao10k/", "perceptron/", "deepcogito/", "cognitivecomputations/", "nex-agi/"},
 		"nous_portal": {"nous_portal/", "openai/", "anthropic/", "google/", "mistralai/", "deepseek/", "meta-llama/", "qwen/", "minimax/", "upstage/", "stepfun/", "poolside/", "tencent/", "bytedance-seed/", "moonshotai/", "inclusionai/", "arcee-ai/", "aion-labs/", "nex-agi/", "sao10k/", "kwaipilot/", "sentence-transformers/", "intfloat/", "ai21/", "x-ai/"},
-		"opencode":   {"opencode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "x-ai/", "poolside/", "nemotron/"},
-		"openrouter": {"openrouter/", "openai/", "anthropic/", "google/", "mistralai/", "deepseek/", "meta-llama/", "qwen/", "x-ai/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "morph/", "aedans/", "rekaai/", "nex-agi/", "sao10k/", "inflection/", "arcee-ai/", "thinkingmachines/", "openrouter/"},
-		"ollama":     {"ollama/"},
-		"mistral":    {"mistral/", "mistralai/"},
+		"opencode":    {"opencode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "x-ai/", "poolside/", "nemotron/"},
+		"openrouter":  {"openrouter/", "openai/", "anthropic/", "google/", "mistralai/", "deepseek/", "meta-llama/", "qwen/", "x-ai/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "morph/", "aedans/", "rekaai/", "nex-agi/", "sao10k/", "inflection/", "arcee-ai/", "thinkingmachines/", "openrouter/"},
+		"ollama":      {"ollama/"},
+		"mistral":     {"mistral/", "mistralai/"},
 	}
 	if skip, ok := prefixes[providerName]; ok {
 		for _, prefix := range skip {

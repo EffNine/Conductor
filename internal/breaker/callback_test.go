@@ -57,11 +57,11 @@ func TestBreakerCallbackFiredOnClose(t *testing.T) {
 	var states []breaker.State
 	b.OnStateChange(func(s breaker.State) { states = append(states, s) })
 
-	b.RecordFailure()   // opens
+	b.RecordFailure() // opens
 	time.Sleep(60 * time.Millisecond)
-	b.Allow()            // half-open
-	b.RecordSuccess()   // still half-open (need 2 successes)
-	b.RecordSuccess()   // closes
+	b.Allow()         // half-open
+	b.RecordSuccess() // still half-open (need 2 successes)
+	b.RecordSuccess() // closes
 
 	if len(states) != 3 {
 		t.Fatalf("expected 3 callbacks, got %d", len(states))

@@ -20,15 +20,15 @@ type Step struct {
 
 // Plan is a bounded sequence of steps derived from task understanding.
 type Plan struct {
-	ID           string     `json:"id"`
-	TaskID       string     `json:"task_id"`
-	Intent       string     `json:"intent"`
-	Capabilities string     `json:"capabilities,omitempty"`
-	Steps        []Step     `json:"steps"`
-	Status       string     `json:"status"` // "pending", "running", "completed", "failed"
-	CurrentStep  int        `json:"current_step"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID           string    `json:"id"`
+	TaskID       string    `json:"task_id"`
+	Intent       string    `json:"intent"`
+	Capabilities string    `json:"capabilities,omitempty"`
+	Steps        []Step    `json:"steps"`
+	Status       string    `json:"status"` // "pending", "running", "completed", "failed"
+	CurrentStep  int       `json:"current_step"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // PlanStatus values.

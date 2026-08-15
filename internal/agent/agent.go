@@ -96,24 +96,24 @@ type Event struct {
 
 // ToolCall records a single tool invocation within a task step.
 type ToolCall struct {
-	ID       string
-	TaskID   string
-	StepID   *string
-	CallID   string
-	ToolName string
+	ID        string
+	TaskID    string
+	StepID    *string
+	CallID    string
+	ToolName  string
 	Arguments []byte
-	Result   *string
-	Error    *string
-	Status   string
+	Result    *string
+	Error     *string
+	Status    string
 }
 
 // Checkpoint serializes enough state to resume an interrupted agent run.
 type Checkpoint struct {
-	TaskID    string               `json:"task_id"`
-	Step      int                  `json:"step"`
-	Messages  []apitypes.Message   `json:"messages"`
-	ToolState map[string]any       `json:"tool_state,omitempty"`
-	SavedAt   time.Time            `json:"saved_at"`
+	TaskID    string             `json:"task_id"`
+	Step      int                `json:"step"`
+	Messages  []apitypes.Message `json:"messages"`
+	ToolState map[string]any     `json:"tool_state,omitempty"`
+	SavedAt   time.Time          `json:"saved_at"`
 }
 
 // DefaultMaxSteps is the fallback when cfg.MaxSteps <= 0.

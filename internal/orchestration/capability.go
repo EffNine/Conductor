@@ -8,14 +8,14 @@ import (
 
 // CapabilityRequirement describes what the task execution needs.
 type CapabilityRequirement struct {
-	NeedsFileSystem bool
-	NeedsShell      bool
-	NeedsGit        bool
-	NeedsReasoning  bool
-	NeedsVision     bool
+	NeedsFileSystem  bool
+	NeedsShell       bool
+	NeedsGit         bool
+	NeedsReasoning   bool
+	NeedsVision      bool
 	NeedsToolCalling bool
-	NeedsStreaming  bool
-	MaxTokens       int
+	NeedsStreaming   bool
+	MaxTokens        int
 }
 
 // ResolveCapabilities determines the capability requirements for a task.

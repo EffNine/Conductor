@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/EffNine/conductor/internal/tool/fs"
 	"github.com/EffNine/conductor/internal/tool"
+	"github.com/EffNine/conductor/internal/tool/fs"
 )
 
 // ── ReadFile tests ───────────────────────────────────────────────────────────

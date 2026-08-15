@@ -18,9 +18,9 @@ var ErrToolNotFound = errors.New("tool not found")
 
 // Registry holds registered tools and provides thread-safe lookup.
 type Registry struct {
-	mu       sync.RWMutex
-	tools    map[string]Tool
-	order    []string // preserves insertion order for deterministic listing
+	mu    sync.RWMutex
+	tools map[string]Tool
+	order []string // preserves insertion order for deterministic listing
 }
 
 // NewRegistry creates an empty tool registry.

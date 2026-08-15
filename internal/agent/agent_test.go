@@ -31,7 +31,7 @@ type fakeProvider struct {
 	overrideCall func(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error)
 }
 
-func (f *fakeProvider) Name() string { return f.name }
+func (f *fakeProvider) Name() string                 { return f.name }
 func (f *fakeProvider) SupportsModel(id string) bool { return id == f.model || id == "" }
 func (f *fakeProvider) ChatCompletion(ctx context.Context, req *apitypes.ChatCompletionRequest) (*apitypes.ChatCompletionResponse, error) {
 	f.callCount++
@@ -66,8 +66,8 @@ type fakeTool struct {
 	callCount   int
 }
 
-func (f *fakeTool) Name() string { return f.name }
-func (f *fakeTool) Description() string { return f.description }
+func (f *fakeTool) Name() string           { return f.name }
+func (f *fakeTool) Description() string    { return f.description }
 func (f *fakeTool) Params() map[string]any { return f.params }
 func (f *fakeTool) Execute(_ context.Context, _ json.RawMessage) (toolregistry.ToolResult, error) {
 	f.callCount++
@@ -111,10 +111,10 @@ func insertTask(t *testing.T, db *database.Database, input, model string) string
 	t.Helper()
 	id := uuid.New().String()
 	tsk := &task.Task{
-		ID:      id,
-		Status:  task.StatusPending,
-		Input:   input,
-		Model:   model,
+		ID:         id,
+		Status:     task.StatusPending,
+		Input:      input,
+		Model:      model,
 		MaxRetries: 3,
 	}
 	if err := db.DB.Create(tsk).Error; err != nil {
@@ -129,7 +129,7 @@ func TestAgent_SingleStepFinalResponse(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeProvider{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 	}}
 	reg.Register(fake)
@@ -238,7 +238,7 @@ func TestAgent_ToolCallAndResult(t *testing.T) {
 	reg := provider.NewRegistry()
 	callCount := 0
 	fakeResp := &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 	}
 	fake := &fakeProvider{name: "test", model: "gpt-4o", resp: fakeResp}
@@ -294,7 +294,7 @@ func TestAgent_CheckpointSaved(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeProvider{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "ok"}}},
 	}}
 	reg.Register(fake)
@@ -321,7 +321,7 @@ func TestAgent_Cancelled(t *testing.T) {
 	db := newTestDB(t)
 	reg := provider.NewRegistry()
 	fake := &fakeProvider{name: "test", model: "gpt-4o", resp: &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "slow"}}},
 	}}
 	reg.Register(fake)
@@ -437,7 +437,7 @@ func TestCheckpoint_OrderingToolThenCheckpoint(t *testing.T) {
 	reg := provider.NewRegistry()
 	callCount := 0
 	fakeResp := &apitypes.ChatCompletionResponse{
-		Model: "gpt-4o",
+		Model:   "gpt-4o",
 		Choices: []apitypes.Choice{{Message: &apitypes.Message{Content: "done"}}},
 	}
 	fake := &fakeProvider{name: "test", model: "gpt-4o", resp: fakeResp}

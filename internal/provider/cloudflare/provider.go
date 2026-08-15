@@ -16,11 +16,11 @@ import (
 // Provider implements the provider.Provider interface for Cloudflare Workers AI.
 // Workers AI uses a custom REST API, not OpenAI-compatible.
 type Provider struct {
-	name        string
-	apiToken    string
-	accountID   string
-	baseURL     string
-	client      *http.Client
+	name      string
+	apiToken  string
+	accountID string
+	baseURL   string
+	client    *http.Client
 }
 
 // NewProvider creates a new Cloudflare Workers AI provider.
@@ -48,7 +48,7 @@ func extractCloudflareAccountID(url string) string {
 				j++
 			}
 			if j > i+9 {
-				return url[i+9:j]
+				return url[i+9 : j]
 			}
 		}
 	}

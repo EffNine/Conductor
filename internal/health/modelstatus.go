@@ -63,6 +63,7 @@ type ModelStatusStore struct {
 	persist           StatusPersistence
 	backoff           config.ProbeBackoffConfig
 	errorWindow       time.Duration
+	strictHealthy     bool // when true, only healthy models are advertised
 }
 
 // NewModelStatusStore creates an empty store.
@@ -93,9 +94,17 @@ func (s *ModelStatusStore) Configure(cfg config.ModelHealthConfig) {
 	if cfg.ErrorTracking.Window > 0 {
 		s.errorWindow = cfg.ErrorTracking.Window
 	}
+	s.strictHealthy = cfg.StrictHealthy
 }
 
-// SetBackoff replaces the backoff schedule used when recording failures.
+// SetStrictHealthy toggles strict healthy filtering: when true, only models in
+// the healthy state are advertised; all other states (degraded, unknown,
+// recovering, unhealthy) are hidden regardless of unknown_as_reachable.
+func (s *ModelStatusStore) SetStrictHealthy(v bool) {
+	s.mu.Lock()
+	s.strictHealthy = v
+	s.mu.Unlock()
+}
 func (s *ModelStatusStore) SetBackoff(cfg config.ProbeBackoffConfig) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -387,6 +396,8 @@ func (s *ModelStatusStore) IsReachable(modelID string) (reachable bool, known bo
 //   - Unprobed models stay visible until their provider's first probe pass
 //     finishes (avoids empty flicker on cold start and on scoped probes), then
 //     follow unknownAsReachable (default true = err toward availability).
+//   - When StrictHealthy is configured, only models in StateHealthy are
+//     advertised; degraded, unknown, recovering and unhealthy states are hidden.
 func (s *ModelStatusStore) ShouldAdvertise(modelID, provider string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -395,16 +406,23 @@ func (s *ModelStatusStore) ShouldAdvertise(modelID, provider string) bool {
 		if !s.providerFilterReadyLocked(provider) {
 			return true
 		}
+		if s.strictHealthy {
+			return false
+		}
 		return s.unknownAsReachable
+	}
+	state := st.State
+	if state == "" {
+		state = DeriveState(st.Reachable, st.ConsecutiveFails, true)
+	}
+	// Strict healthy: only healthy models pass through.
+	if s.strictHealthy && state != StateHealthy {
+		return false
 	}
 	// A model is only confirmed unreachable once it hits the unhealthy threshold.
 	// Before that, keep it visible so sub-threshold blips do not hide it.
 	if st.ConsecutiveFails > 0 && st.ConsecutiveFails < s.unhealthyThreshold {
 		return true
-	}
-	state := st.State
-	if state == "" {
-		state = DeriveState(st.Reachable, st.ConsecutiveFails, true)
 	}
 	switch state {
 	case StateHealthy, StateDegraded:
