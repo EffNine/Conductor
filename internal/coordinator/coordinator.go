@@ -548,12 +548,6 @@ func (c *Coordinator) cancelRunningChildren(ctx context.Context, parentID string
 
 // --- resume/checkpoint helpers ---
 
-type childStatusRecord struct {
-	ChildID string `json:"child_id"`
-	Status  string `json:"status"`
-	Output  string `json:"output,omitempty"`
-}
-
 type ResumeState struct {
 	CompletedChildren []ChildStatusRecord `json:"completed_children"`
 	AggregatedOutput  string              `json:"aggregated_output,omitempty"`

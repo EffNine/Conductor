@@ -120,13 +120,3 @@ func (tc *AgentContext) truncate(maxBytes int) *AgentContext {
 	}
 	return tc
 }
-
-func checkpointSize(tc *AgentContext) int {
-	data, _ := json.Marshal(Checkpoint{
-		TaskID:    tc.TaskID,
-		Step:      tc.Step,
-		Messages:  tc.Messages,
-		ToolState: tc.ToolState,
-	})
-	return len(data)
-}

@@ -104,8 +104,6 @@ func (s *Scheduler) tick() {
 	}
 }
 
-func uuidNew() string { return "sched-uuid-placeholder" }
-
 func mustMarshal(v any) []byte {
 	b, err := json.Marshal(v)
 	if err != nil {

@@ -281,8 +281,12 @@ func main() {
 	if cfg.Agent.WorkspaceRoot != "" {
 		readTool := toolfs.New(cfg.Agent.WorkspaceRoot, cfg.Agent.MaxOutputBytes)
 		writeTool := toolfs.NewWrite(cfg.Agent.WorkspaceRoot, cfg.Agent.MaxWriteBytes)
-		toolReg.Register(readTool)
-		toolReg.Register(writeTool)
+		if err := toolReg.Register(readTool); err != nil {
+			logger.Warn("failed to register read_file tool", zap.Error(err))
+		}
+		if err := toolReg.Register(writeTool); err != nil {
+			logger.Warn("failed to register write_file tool", zap.Error(err))
+		}
 	}
 
 	// Register shell tool when enabled.
@@ -295,7 +299,9 @@ func main() {
 			Denied:       cfg.Agent.Shell.DeniedCommands,
 			EnvWhitelist: cfg.Agent.Shell.EnvWhitelist,
 		}
-		toolReg.Register(toolshell.New(shellCfg))
+		if err := toolReg.Register(toolshell.New(shellCfg)); err != nil {
+			logger.Warn("failed to register shell tool", zap.Error(err))
+		}
 	}
 
 	// Register git tools when enabled.
@@ -338,32 +344,40 @@ func main() {
 
 	// V2.6: Agent role registry.
 	agentReg := agent.NewRegistry()
-	agentReg.Register(agent.AgentDefinition{
+	if err := agentReg.Register(agent.AgentDefinition{
 		Name:             "research",
 		Description:      "Research and analysis tasks requiring reasoning",
 		SystemPromptHint: "You are a research agent. Your role is to analyze, compare, and synthesize information. Focus on accuracy and completeness.",
 		PreferredTools:   []string{},
 		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"reasoning"}},
-	})
-	agentReg.Register(agent.AgentDefinition{
+	}); err != nil {
+		logger.Warn("failed to register research agent role", zap.Error(err))
+	}
+	if err := agentReg.Register(agent.AgentDefinition{
 		Name:             "coding",
 		Description:      "Coding and implementation tasks requiring filesystem access",
 		SystemPromptHint: "You are a coding agent. Your role is to implement, modify, and debug code. Use filesystem and shell tools as needed.",
 		PreferredTools:   []string{"read_file", "write_file", "edit_file", "list_files", "shell_exec", "git_status", "git_diff", "git_add", "git_commit"},
 		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
-	})
-	agentReg.Register(agent.AgentDefinition{
+	}); err != nil {
+		logger.Warn("failed to register coding agent role", zap.Error(err))
+	}
+	if err := agentReg.Register(agent.AgentDefinition{
 		Name:             "testing",
 		Description:      "Testing and verification tasks",
 		SystemPromptHint: "You are a testing agent. Your role is to verify correctness, run tests, and validate outputs. Focus on edge cases and failure modes.",
 		PreferredTools:   []string{"shell_exec", "read_file", "list_files"},
 		RoutingHints:     agent.RoutingHints{PreferredCapabilities: []string{"tool_calling"}},
-	})
-	agentReg.Register(agent.AgentDefinition{
+	}); err != nil {
+		logger.Warn("failed to register testing agent role", zap.Error(err))
+	}
+	if err := agentReg.Register(agent.AgentDefinition{
 		Name:             "general",
 		Description:      "General-purpose tasks with no specific role",
 		SystemPromptHint: "",
-	})
+	}); err != nil {
+		logger.Warn("failed to register general agent role", zap.Error(err))
+	}
 	agentImpl.WithRoleRegistry(agentReg)
 	taskExec.WithRoleRegistry(agentReg)
 

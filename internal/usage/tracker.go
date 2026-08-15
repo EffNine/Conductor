@@ -61,12 +61,6 @@ func (t *Tracker) Record(r *Record) {
 	t.mu.Unlock()
 }
 
-func (t *Tracker) flush() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.flushLocked()
-}
-
 func (t *Tracker) flushLocked() {
 	if len(t.buffer) == 0 {
 		return

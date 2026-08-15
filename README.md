@@ -41,7 +41,7 @@ Full guide → [docs/quickstart.md](docs/quickstart.md)
 | **Model Reachability** | Background probes hide unreachable models; status exposed at `/api/models/status` |
 | **Explicit Routing + Aliases** | Map bare IDs to providers and upstream slugs. Provider-prefixed IDs route without config |
 | **Fallback Chains** | Automatic failover when a provider fails |
-| **Auto Model Selection** | Send `"model": "auto"` — gateway picks the best model by health, cost, and latency |
+| **Auto Model Selection** | Send `"model": "auto"` with NVIDIA NIM enabled — gateway picks the best model by health, cost, and latency |
 | **Task Orchestration (V2.5)** | `POST /api/tasks` creates persistent tasks with intent classification, plan generation, agent loops, and verification |
 | **Multi-Step Agents** | Bounded loops with tool calls (fs, shell, git), checkpoint/resume, retry/backoff |
 | **Usage & Cost Tracking** | Per-request tokens, latency, and USD cost aggregated in SQLite |
@@ -67,7 +67,7 @@ Full guide → [docs/quickstart.md](docs/quickstart.md)
 | Z.AI | ✅ | ✅ | ✅ | ✅ |
 | Cerebras | ✅ | ✅ | ✅ | ✅ |
 | Requesty | ✅ | ✅ | ✅ | ✅ |
-| Cloudflare | ✅ | ✅ | ✅ | — |
+| Cloudflare | ✅ | ❌ | ❌ | — |
 
 ## Architecture
 
