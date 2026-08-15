@@ -67,12 +67,13 @@ func (m *Monitor) Stop() {
 func (m *Monitor) checkAll() {
 	providers := m.registry.All()
 	sem := make(chan struct{}, m.maxConcurrent)
+	var checkWg sync.WaitGroup
 
 	for _, p := range providers {
-		m.wg.Add(1)
+		checkWg.Add(1)
 		sem <- struct{}{}
 		go func(p provider.Provider) {
-			defer m.wg.Done()
+			defer checkWg.Done()
 			defer func() { <-sem }()
 
 			ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
@@ -106,10 +107,7 @@ func (m *Monitor) checkAll() {
 		}(p)
 	}
 
-	// Wait for all health checks to finish before returning
-	for range providers {
-		sem <- struct{}{}
-	}
+	checkWg.Wait()
 }
 
 // GetStatus returns the health status of a provider

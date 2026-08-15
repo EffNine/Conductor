@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -118,6 +119,10 @@ func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatC
 	streamClient := &http.Client{Transport: p.client.Transport}
 	if streamClient.Transport == nil {
 		streamClient.Transport = http.DefaultTransport
+	} else if t, ok := streamClient.Transport.(*http.Transport); ok && t.DialContext == nil {
+		cloned := t.Clone()
+		cloned.DialContext = (&net.Dialer{Timeout: 10 * time.Second}).DialContext
+		streamClient.Transport = cloned
 	}
 
 	resp, err := streamClient.Do(httpReq)

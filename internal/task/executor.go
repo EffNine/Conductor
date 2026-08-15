@@ -96,7 +96,11 @@ func (e *TaskExecutor) Execute(ctx context.Context, taskID string) error {
 			return fmt.Errorf("transition →running: %w", err)
 		}
 		// Refresh the task from DB so we have the latest state.
-		task, _ = e.store.GetTask(taskID)
+		refreshed, err := e.store.GetTask(taskID)
+		if err != nil {
+			return fmt.Errorf("refresh task after status transition: %w", err)
+		}
+		task = refreshed
 	}
 
 	// Ensure a model is set before handing off to the agent.

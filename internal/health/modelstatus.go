@@ -444,6 +444,15 @@ func (s *ModelStatusStore) Get(modelID string) *ModelStatus {
 	return &cp
 }
 
+// Reset clears all tracked model status, forcing a fresh probe cycle.
+func (s *ModelStatusStore) Reset() {
+	s.mu.Lock()
+	s.statuses = make(map[string]*ModelStatus)
+	s.allProvidersReady = false
+	s.readyProviders = make(map[string]struct{})
+	s.mu.Unlock()
+}
+
 // GetAll returns copies of all known statuses.
 func (s *ModelStatusStore) GetAll() []*ModelStatus {
 	s.mu.RLock()

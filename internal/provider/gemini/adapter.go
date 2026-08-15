@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -119,10 +120,16 @@ func (p *Provider) ChatCompletionStream(ctx context.Context, req *apitypes.ChatC
 
 	// Streaming must not be capped by the client timeout: long reasoning
 	// budgets stream for minutes. Cancellation is contextual instead.
-	streamClient := &http.Client{Transport: p.client.Transport}
-	if streamClient.Transport == nil {
-		streamClient.Transport = http.DefaultTransport
+	// A dial timeout prevents stuck connections.
+	dialer := &net.Dialer{Timeout: 10 * time.Second}
+	if p.client.Transport == nil {
+		p.client.Transport = &http.Transport{DialContext: dialer.DialContext}
+	} else if t, ok := p.client.Transport.(*http.Transport); ok && t.DialContext == nil {
+		cloned := t.Clone()
+		cloned.DialContext = dialer.DialContext
+		p.client.Transport = cloned
 	}
+	streamClient := &http.Client{Transport: p.client.Transport}
 
 	resp, err := streamClient.Do(httpReq)
 	if err != nil {
@@ -212,11 +219,10 @@ func (p *Provider) Embeddings(ctx context.Context, req *apitypes.EmbeddingReques
 			return nil, provider.NewProviderError(p.name, http.StatusBadGateway,
 				provider.ErrorTypeProviderUnavailable, "embedding request failed: "+doErr.Error(), doErr)
 		}
+		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			perr := p.handleErrorResponse(resp)
-			resp.Body.Close()
-			return nil, perr
+			return nil, p.handleErrorResponse(resp)
 		}
 
 		var embedResp struct {
@@ -225,7 +231,6 @@ func (p *Provider) Embeddings(ctx context.Context, req *apitypes.EmbeddingReques
 			} `json:"embedding"`
 		}
 		decodeErr := json.NewDecoder(resp.Body).Decode(&embedResp)
-		resp.Body.Close()
 		if decodeErr != nil {
 			return nil, provider.NewProviderError(p.name, http.StatusInternalServerError,
 				provider.ErrorTypeServerError, "failed to decode embedding response", decodeErr)

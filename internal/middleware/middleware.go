@@ -96,13 +96,15 @@ func Logging(logger *zap.Logger) fiber.Handler {
 		err := c.Next()
 		duration := time.Since(start)
 
+		requestID, _ := c.Locals("request_id").(string)
+		correlationID, _ := c.Locals("correlation_id").(string)
 		logger.Info("request",
 			zap.String("method", c.Method()),
 			zap.String("path", c.Path()),
 			zap.Int("status", c.Response().StatusCode()),
 			zap.Duration("duration", duration),
-			zap.String("request_id", c.Locals("request_id").(string)),
-			zap.String("correlation_id", c.Locals("correlation_id").(string)),
+			zap.String("request_id", requestID),
+			zap.String("correlation_id", correlationID),
 		)
 
 		return err

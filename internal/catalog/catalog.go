@@ -245,6 +245,7 @@ func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {
 			if baseID == "" {
 				baseID = m.ProviderModelID
 			}
+			baseID = stripProviderPrefix(baseID, p.Name())
 			entries = append(entries, Entry{
 				ModelID:         p.Name() + "/" + baseID,
 				Provider:        p.Name(),
@@ -275,6 +276,7 @@ func (c *Catalog) listCuratedOrDynamic(ctx context.Context) ([]Entry, error) {
 			if baseID == "" {
 				baseID = m.ProviderModelID
 			}
+			baseID = stripProviderPrefix(baseID, p.Name())
 			entries = append(entries, Entry{
 				ModelID:         p.Name() + "/" + baseID,
 				Provider:        p.Name(),
@@ -301,6 +303,34 @@ func (c *Catalog) staticEntries(providerName string) []Entry {
 		})
 	}
 	return entries
+}
+
+// stripProviderPrefix removes a leading org prefix from a model ID when that
+// prefix would be redundant with the gateway provider name. For example, NIM
+// returns "nvidia/nemotron-3-nano-30b" but the gateway ID is already prefixed
+// with "nvidia_nim/", so we drop the leading "nvidia/" to avoid
+// "nvidia_nim/nvidia/nemotron-3-nano-30b".
+func stripProviderPrefix(id, providerName string) string {
+	// Normalize provider name to a prefix pattern.
+	prefixes := map[string][]string{
+		"nvidia_nim": {"nvidia/", "deepseek-ai/", "meta/", "google/", "mistralai/", "minimaxai/", "stepfun-ai/", "z-ai/", "poolside/", "thinkingmachines/", "openai/", "bytedance-seed/"},
+		"gemini":     {"models/", "gemini/"},
+		"groq":       {"groq/", "meta-llama/", "openai/", "qwen/", "canopylabs/"},
+		"kilocode":   {"kilocode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "mistralai/", "nvidia/", "qwen/", "x-ai/", "cohere/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "stealth/", "gryphe/", "arcee-ai/", "rekaai/", "morph/", "aedans/", "inception/", "relace/", "sao10k/", "perceptron/", "deepcogito/", "cognitivecomputations/", "nex-agi/"},
+		"nous_portal": {"nous_portal/", "openai/", "anthropic/", "google/", "mistralai/", "deepseek/", "meta-llama/", "qwen/", "minimax/", "upstage/", "stepfun/", "poolside/", "tencent/", "bytedance-seed/", "moonshotai/", "inclusionai/", "arcee-ai/", "aion-labs/", "nex-agi/", "sao10k/", "kwaipilot/", "sentence-transformers/", "intfloat/", "ai21/", "x-ai/"},
+		"opencode":   {"opencode/", "google/", "openai/", "anthropic/", "deepseek/", "meta-llama/", "x-ai/", "poolside/", "nemotron/"},
+		"openrouter": {"openrouter/", "openai/", "anthropic/", "google/", "mistralai/", "deepseek/", "meta-llama/", "qwen/", "x-ai/", "poolside/", "tencent/", "upstage/", "bytedance-seed/", "moonshotai/", "minimax/", "inclusionai/", "liquid/", "morph/", "aedans/", "rekaai/", "nex-agi/", "sao10k/", "inflection/", "arcee-ai/", "thinkingmachines/", "openrouter/"},
+		"ollama":     {"ollama/"},
+		"mistral":    {"mistral/", "mistralai/"},
+	}
+	if skip, ok := prefixes[providerName]; ok {
+		for _, prefix := range skip {
+			if strings.HasPrefix(id, prefix) {
+				return strings.TrimPrefix(id, prefix)
+			}
+		}
+	}
+	return id
 }
 
 func sortEntries(entries []Entry) {

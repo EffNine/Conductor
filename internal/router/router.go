@@ -329,26 +329,31 @@ func (e *Engine) ResolveWithFallbackAndContext(ctx context.Context, modelID stri
 		return primary, nil, nil
 	}
 
-	fallbacks := make([]ResolvedRoute, 0, len(fallbackCfgs))
-	for _, fb := range fallbackCfgs {
-		p, found := e.registry.Get(fb.Provider)
-		if !found {
-			continue
-		}
+		fallbacks := make([]ResolvedRoute, 0, len(fallbackCfgs))
+		for _, fb := range fallbackCfgs {
+			p, found := e.registry.Get(fb.Provider)
+			if !found {
+				continue
+			}
 
-		modelName := fb.ModelID
-		if modelName == "" {
-			modelName = primary.ModelID
-		}
+			modelName := fb.ModelID
+			if modelName == "" {
+				modelName = primary.ModelID
+			}
 
-		fallbacks = append(fallbacks, ResolvedRoute{
-			Provider:        p,
-			ProviderName:    fb.Provider,
-			ProviderModelID: modelName,
-			ModelID:         primary.ModelID,
-			Breaker:         e.breakers.Get(fb.Provider),
-		})
-	}
+			b := e.breakers.Get(fb.Provider)
+			if b != nil && b.Allow() != breaker.ResultAllowed {
+				continue
+			}
+
+			fallbacks = append(fallbacks, ResolvedRoute{
+				Provider:        p,
+				ProviderName:    fb.Provider,
+				ProviderModelID: modelName,
+				ModelID:         primary.ModelID,
+				Breaker:         b,
+			})
+		}
 
 	return primary, fallbacks, nil
 }

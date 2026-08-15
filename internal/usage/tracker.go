@@ -57,22 +57,24 @@ func (t *Tracker) Record(r *Record) {
 
 	t.mu.Lock()
 	t.buffer = append(t.buffer, r)
+	t.flushLocked()
 	t.mu.Unlock()
-
-	t.flush()
 }
 
 func (t *Tracker) flush() {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.flushLocked()
+}
+
+func (t *Tracker) flushLocked() {
 	if len(t.buffer) == 0 {
-		t.mu.Unlock()
 		return
 	}
 
 	batch := make([]*Record, len(t.buffer))
 	copy(batch, t.buffer)
 	t.buffer = t.buffer[:0]
-	t.mu.Unlock()
 
 	for _, r := range batch {
 		durationMs := r.DurationMs

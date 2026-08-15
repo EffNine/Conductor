@@ -143,6 +143,29 @@ func TestDiscoveryEmbeddings(t *testing.T) {
 	}
 }
 
+func TestDiscoveryImages(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(newTestProvider("openai", Capabilities{Images: true}))
+	reg.Register(newTestProvider("anthropic", Capabilities{Images: true}))
+	reg.Register(newTestProvider("groq", Capabilities{}))
+
+	result := reg.DiscoverImages(context.Background())
+	if result.Count != 2 {
+		t.Errorf("expected 2 images providers, got %d", result.Count)
+	}
+}
+
+func TestDiscoveryAudio(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(newTestProvider("openai", Capabilities{Audio: true}))
+	reg.Register(newTestProvider("anthropic", Capabilities{}))
+
+	result := reg.DiscoverAudio(context.Background())
+	if result.Count != 1 {
+		t.Errorf("expected 1 audio provider, got %d", result.Count)
+	}
+}
+
 func TestDiscoveryConcurrent(t *testing.T) {
 	reg := NewRegistry()
 	for i := 0; i < 10; i++ {

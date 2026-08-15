@@ -31,17 +31,23 @@ import (
 	"github.com/EffNine/conductor/internal/worker"
 	"github.com/EffNine/conductor/internal/provider/agnesai"
 	"github.com/EffNine/conductor/internal/provider/anthropic"
+	"github.com/EffNine/conductor/internal/provider/cerebras"
+	"github.com/EffNine/conductor/internal/provider/cloudflare"
 	"github.com/EffNine/conductor/internal/provider/deepseek"
 	"github.com/EffNine/conductor/internal/provider/gemini"
 	"github.com/EffNine/conductor/internal/provider/groq"
+	"github.com/EffNine/conductor/internal/provider/kilocode"
 	"github.com/EffNine/conductor/internal/provider/lmstudio"
+	"github.com/EffNine/conductor/internal/provider/mistral"
 	"github.com/EffNine/conductor/internal/provider/nousportal"
 	"github.com/EffNine/conductor/internal/provider/nvidianim"
 	"github.com/EffNine/conductor/internal/provider/ollama"
 	"github.com/EffNine/conductor/internal/provider/openai"
 	"github.com/EffNine/conductor/internal/provider/opencode"
 	"github.com/EffNine/conductor/internal/provider/openrouter"
+	"github.com/EffNine/conductor/internal/provider/requesty"
 	"github.com/EffNine/conductor/internal/provider/xai"
+	"github.com/EffNine/conductor/internal/provider/zai"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/task"
 	"github.com/EffNine/conductor/internal/usage"
@@ -241,6 +247,7 @@ func main() {
 
 	// Register handlers
 	h := handler.New(routerEngine, registry, usageTracker, logger, modelCatalog, db)
+	h.SetConfig(cfg)
 	h.SetModelStatus(modelStatus, modelProber)
 	if routingEngine != nil {
 		h.SetRoutingEngine(routingEngine)
@@ -515,6 +522,36 @@ func registerProviders(cfg *config.Config, registry *provider.Registry, logger *
 	// Agnes AI
 	if cfg.Providers.AgnesAI.Enabled {
 		registerOne("agnesai", agnesai.NewProvider(cfg.Providers.AgnesAI.APIKey, cfg.Providers.AgnesAI.BaseURL, cfg.Providers.AgnesAI.Timeout))
+	}
+
+	// KiloCode
+	if cfg.Providers.KiloCode.Enabled {
+		registerOne("kilocode", kilocode.NewProvider(cfg.Providers.KiloCode.APIKey, cfg.Providers.KiloCode.BaseURL, cfg.Providers.KiloCode.Timeout))
+	}
+
+	// Mistral AI
+	if cfg.Providers.Mistral.Enabled {
+		registerOne("mistral", mistral.NewProvider(cfg.Providers.Mistral.APIKey, cfg.Providers.Mistral.BaseURL, cfg.Providers.Mistral.Timeout))
+	}
+
+	// Z.AI
+	if cfg.Providers.ZAI.Enabled {
+		registerOne("zai", zai.NewProvider(cfg.Providers.ZAI.APIKey, cfg.Providers.ZAI.BaseURL, cfg.Providers.ZAI.Timeout))
+	}
+
+	// Cerebras
+	if cfg.Providers.Cerebras.Enabled {
+		registerOne("cerebras", cerebras.NewProvider(cfg.Providers.Cerebras.APIKey, cfg.Providers.Cerebras.BaseURL, cfg.Providers.Cerebras.Timeout))
+	}
+
+	// Requesty
+	if cfg.Providers.Requesty.Enabled {
+		registerOne("requesty", requesty.NewProvider(cfg.Providers.Requesty.APIKey, cfg.Providers.Requesty.BaseURL, cfg.Providers.Requesty.Timeout))
+	}
+
+	// Cloudflare Workers AI
+	if cfg.Providers.Cloudflare.Enabled {
+		registerOne("cloudflare", cloudflare.NewProvider(cfg.Providers.Cloudflare.APIKey, cfg.Providers.Cloudflare.BaseURL, cfg.Providers.Cloudflare.Timeout))
 	}
 }
 

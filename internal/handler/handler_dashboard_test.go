@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -276,4 +277,105 @@ func (s *stubProvider) SupportsModel(string) bool { return false }
 
 func (s *stubProvider) GetMetadata() provider.Metadata {
 	return provider.DefaultMetadata(s.name)
+}
+
+func TestHandleConfigReturnsRedactedConfig(t *testing.T) {
+	cfg := &config.Config{
+		APIKey: "my-secret-key",
+		Providers: config.ProvidersConfig{
+			OpenAI:    config.ProviderConfig{Enabled: true, APIKey: "sk-openai", BaseURL: "https://api.openai.com/v1"},
+			Ollama:    config.ProviderConfig{Enabled: true, APIKey: "ollama-key", BaseURL: "http://localhost:11434/v1"},
+			NvidiaNim: config.ProviderConfig{Enabled: false, APIKey: "", BaseURL: "https://integrate.api.nvidia.com/v1"},
+		},
+		Server: config.ServerConfig{Host: "0.0.0.0", Port: 8080},
+		Routes: map[string]config.RouteConfig{
+			"gpt-4o": {Provider: "openai"},
+		},
+	}
+
+	app, _ := setupTestApp(t)
+	_ = app
+	// Wire the config into the handler via the unexported field through a
+	// handler-level accessor we add for testing. Instead we just set it on the
+	// handler by creating one directly.
+	reg := provider.NewRegistry()
+	reg.Register(&stubProvider{name: "openai"})
+	db := openTestDB(t)
+	routerEngine := router.NewEngine(cfg, reg)
+	modelCatalog := catalog.New(reg, nil)
+	usageTracker := usage.NewTracker(db, nil, zap.NewNop())
+	h := handler.New(routerEngine, reg, usageTracker, zap.NewNop(), modelCatalog, db)
+	h.SetConfig(cfg)
+
+	testApp := fiber.New()
+	authService := auth.NewService("test-key")
+	testApp.Use(func(c *fiber.Ctx) error {
+		c.Locals("correlation_id", "test-corr-"+uuid.New().String()[:8])
+		c.Locals("request_id", "test-req-"+uuid.New().String()[:8])
+		key := c.Get("Authorization")
+		if len(key) > 7 && key[:7] == "Bearer " {
+			key = key[7:]
+		}
+		if err := authService.Authenticate(key); err != nil {
+			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+		}
+		return c.Next()
+	})
+	h.Register(testApp)
+
+	req := httptest.NewRequest("GET", "/api/config", nil)
+	req.Header.Set("Authorization", "Bearer test-key")
+	resp, err := testApp.Test(req)
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, body = %s", resp.StatusCode, body)
+	}
+
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if result["APIKey"] != "[REDACTED]" {
+		t.Errorf("APIKey = %v, want [REDACTED]", result["APIKey"])
+	}
+
+	providers, ok := result["Providers"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Providers key missing or not an object")
+	}
+	// Only providers with a non-empty APIKey should show [REDACTED].
+	for name, v := range providers {
+		p, ok := v.(map[string]interface{})
+		if !ok {
+			t.Fatalf("Providers.%s is not an object", name)
+		}
+		key, exists := p["APIKey"]
+		if !exists {
+			continue
+		}
+		switch name {
+		case "OpenAI", "Ollama":
+			if key != "[REDACTED]" {
+				t.Errorf("Providers.%s.APIKey = %v, want [REDACTED]", name, key)
+			}
+		default:
+			if key != "" {
+				t.Errorf("Providers.%s.APIKey = %v, want empty", name, key)
+			}
+		}
+	}
+
+	server, ok := result["Server"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Server key missing or not an object")
+	}
+	if server["Port"] != float64(8080) {
+		t.Errorf("Server.Port = %v, want 8080", server["Port"])
+	}
 }

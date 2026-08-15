@@ -237,7 +237,12 @@ func (c *Coordinator) Delegate(ctx context.Context, parent *TaskInfo) ([]string,
 			zap.Int("child_count", len(existingIDs)),
 		)
 		childrenJSON, _ := json.Marshal(existingIDs)
-		_ = c.store.UpdateTaskSelective(&TaskInfo{ID: parent.ID, ChildrenJSON: string(childrenJSON)})
+		if err := c.store.UpdateTaskSelective(&TaskInfo{ID: parent.ID, ChildrenJSON: string(childrenJSON)}); err != nil {
+			c.logger.Error("failed to persist coordinator children on resume",
+				zap.String("parent_id", parent.ID),
+				zap.Error(err),
+			)
+		}
 		return existingIDs, nil
 	}
 

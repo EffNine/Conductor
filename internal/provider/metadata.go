@@ -166,6 +166,18 @@ func defaultCapabilities(name string) Capabilities {
 		return Capabilities{Streaming: true, ToolCalling: true, LongContext: true}
 	case "generic":
 		return Capabilities{Streaming: true, ToolCalling: true}
+	case "kilocode":
+		return Capabilities{Streaming: true, Vision: true, Reasoning: true, ToolCalling: true, Structured: true, LongContext: true, Embeddings: true}
+	case "mistral":
+		return Capabilities{Streaming: true, Vision: true, Reasoning: true, ToolCalling: true, Structured: true, LongContext: true, Embeddings: true}
+	case "zai":
+		return Capabilities{Streaming: true, Vision: true, Reasoning: true, ToolCalling: true, Structured: true, LongContext: true}
+	case "cerebras":
+		return Capabilities{Streaming: true, Reasoning: true, ToolCalling: true, LongContext: true}
+	case "requesty":
+		return Capabilities{Streaming: true, Vision: true, Reasoning: true, ToolCalling: true, Structured: true, LongContext: true, Embeddings: true}
+	case "cloudflare":
+		return Capabilities{Streaming: false, Reasoning: true, LongContext: true}
 	default:
 		return Capabilities{Streaming: true}
 	}
@@ -201,6 +213,18 @@ func displayName(name string) string {
 		return "Agnes AI"
 	case "generic":
 		return "Generic"
+	case "kilocode":
+		return "KiloCode"
+	case "mistral":
+		return "Mistral AI"
+	case "zai":
+		return "Z.AI"
+	case "cerebras":
+		return "Cerebras"
+	case "requesty":
+		return "Requesty"
+	case "cloudflare":
+		return "Cloudflare Workers AI"
 	default:
 		return name
 	}
@@ -236,6 +260,18 @@ func description(name string) string {
 		return "Agnes AI API"
 	case "generic":
 		return "Generic OpenAI-compatible API endpoint"
+	case "kilocode":
+		return "KiloCode multi-provider gateway"
+	case "mistral":
+		return "Mistral AI chat, embeddings, and vision API"
+	case "zai":
+		return "Z.AI (01.AI) GLM chat completion API"
+	case "cerebras":
+		return "Cerebras Wafer-Scale Engine inference API"
+	case "requesty":
+		return "Requesty multi-provider routing gateway"
+	case "cloudflare":
+		return "Cloudflare Workers AI inference on the edge"
 	default:
 		return "AI provider"
 	}

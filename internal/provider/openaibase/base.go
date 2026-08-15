@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -135,9 +136,14 @@ func (b *Base) ChatCompletionStream(ctx context.Context, req *apitypes.ChatCompl
 	// Do not apply http.Client.Timeout to streaming: it caps the entire body read
 	// and cuts off long reasoning models (e.g. NVIDIA NIM Seed-OSS) mid-stream.
 	// Cancellation comes from the request context instead.
+	// A dial timeout prevents stuck connections.
 	streamClient := &http.Client{Transport: b.client.Transport}
 	if streamClient.Transport == nil {
 		streamClient.Transport = http.DefaultTransport
+	} else if t, ok := streamClient.Transport.(*http.Transport); ok && t.DialContext == nil {
+		cloned := t.Clone()
+		cloned.DialContext = (&net.Dialer{Timeout: 10 * time.Second}).DialContext
+		streamClient.Transport = cloned
 	}
 
 	resp, err := streamClient.Do(httpReq)

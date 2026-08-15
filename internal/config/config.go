@@ -169,6 +169,12 @@ type ProvidersConfig struct {
 	NousPortal ProviderConfig `mapstructure:"nous_portal"`
 	XAI        ProviderConfig `mapstructure:"xai"`
 	AgnesAI    ProviderConfig `mapstructure:"agnesai"`
+	KiloCode   ProviderConfig `mapstructure:"kilocode"`
+	Mistral    ProviderConfig `mapstructure:"mistral"`
+	ZAI        ProviderConfig `mapstructure:"zai"`
+	Cerebras   ProviderConfig `mapstructure:"cerebras"`
+	Requesty   ProviderConfig `mapstructure:"requesty"`
+	Cloudflare ProviderConfig `mapstructure:"cloudflare"`
 }
 
 // ProviderConfig holds configuration for a single provider
@@ -710,6 +716,11 @@ func autoEnableProviders(cfg *Config) {
 	hydrate(&cfg.Providers.NousPortal, "NOUS_PORTAL_API_KEY")
 	hydrate(&cfg.Providers.XAI, "XAI_API_KEY")
 	hydrate(&cfg.Providers.AgnesAI, "AGNES_API_KEY")
+	hydrate(&cfg.Providers.KiloCode, "KILO_API_KEY")
+	hydrate(&cfg.Providers.Mistral, "MISTRAL_API_KEY")
+	hydrate(&cfg.Providers.ZAI, "ZAI_API_KEY")
+	hydrate(&cfg.Providers.Cerebras, "CEREBRAS_API_KEY")
+	hydrate(&cfg.Providers.Requesty, "REQUESTY_API_KEY")
 
 	// Ollama: local by default; OLLAMA_API_KEY enables Ollama Cloud when no host is set.
 	// OLLAMA_BASE_URL only overrides the host (compose always sets a default — do not
@@ -751,6 +762,11 @@ func hydrateProviderModelsFromEnv(cfg *Config) {
 	apply(&cfg.Providers.NousPortal, "CONDUCTOR_PROVIDERS_NOUS_PORTAL_MODELS")
 	apply(&cfg.Providers.XAI, "CONDUCTOR_PROVIDERS_XAI_MODELS")
 	apply(&cfg.Providers.AgnesAI, "CONDUCTOR_PROVIDERS_AGNESAI_MODELS")
+	apply(&cfg.Providers.KiloCode, "CONDUCTOR_PROVIDERS_KILOCODE_MODELS")
+	apply(&cfg.Providers.Mistral, "CONDUCTOR_PROVIDERS_MISTRAL_MODELS")
+	apply(&cfg.Providers.ZAI, "CONDUCTOR_PROVIDERS_ZAI_MODELS")
+	apply(&cfg.Providers.Cerebras, "CONDUCTOR_PROVIDERS_CEREBRAS_MODELS")
+	apply(&cfg.Providers.Requesty, "CONDUCTOR_PROVIDERS_REQUESTY_MODELS")
 }
 
 func splitCSV(raw string) []string {
@@ -961,4 +977,63 @@ func APIKeyFilePath(cfg *Config) string {
 		}
 	}
 	return filepath.Join(dir, DefaultAPIKeyFileName)
+}
+
+// Redacted returns a shallow copy of c with all API keys replaced by "[REDACTED]".
+// The original config is not modified.
+func (c *Config) Redacted() *Config {
+	if c == nil {
+		return nil
+	}
+	p := c.Providers
+	return &Config{
+		Server:              c.Server,
+		APIKey:              "[REDACTED]",
+		Providers: ProvidersConfig{
+			OpenAI:     redactProvider(p.OpenAI),
+			Anthropic:  redactProvider(p.Anthropic),
+			Gemini:     redactProvider(p.Gemini),
+			DeepSeek:   redactProvider(p.DeepSeek),
+			OpenRouter: redactProvider(p.OpenRouter),
+			Groq:       redactProvider(p.Groq),
+			Ollama:     redactProvider(p.Ollama),
+			LMStudio:   redactProvider(p.LMStudio),
+			Opencode:   redactProvider(p.Opencode),
+			NvidiaNim:  redactProvider(p.NvidiaNim),
+			NousPortal: redactProvider(p.NousPortal),
+			XAI:        redactProvider(p.XAI),
+			AgnesAI:    redactProvider(p.AgnesAI),
+			KiloCode:   redactProvider(p.KiloCode),
+			Mistral:    redactProvider(p.Mistral),
+			ZAI:        redactProvider(p.ZAI),
+			Cerebras:   redactProvider(p.Cerebras),
+			Requesty:   redactProvider(p.Requesty),
+			Cloudflare: redactProvider(p.Cloudflare),
+		},
+		Catalog:             c.Catalog,
+		Routes:              c.Routes,
+		Aliases:             c.Aliases,
+		Fallbacks:           c.Fallbacks,
+		Retry:               c.Retry,
+		Database:            c.Database,
+		Logging:             c.Logging,
+		RateLimit:           c.RateLimit,
+		Health:              c.Health,
+		Usage:               c.Usage,
+		Cost:                c.Cost,
+		Routing:             c.Routing,
+		Circuit:             c.Circuit,
+		Cache:               c.Cache,
+		Stream:              c.Stream,
+		APIKeyJustGenerated: c.APIKeyJustGenerated,
+		DisplayNames:        c.DisplayNames,
+		Agent:               c.Agent,
+	}
+}
+
+func redactProvider(p ProviderConfig) ProviderConfig {
+	if p.APIKey != "" {
+		p.APIKey = "[REDACTED]"
+	}
+	return p
 }

@@ -263,3 +263,51 @@ func TestIsLoopbackBaseURL(t *testing.T) {
 		}
 	}
 }
+
+func TestConfigRedacted(t *testing.T) {
+	cfg := &Config{
+		APIKey: "secret-gateway-key",
+		Providers: ProvidersConfig{
+			OpenAI:     ProviderConfig{Enabled: true, APIKey: "sk-openai", BaseURL: "https://api.openai.com/v1"},
+			Anthropic:  ProviderConfig{Enabled: false, APIKey: "", BaseURL: "https://api.anthropic.com"},
+			Ollama:     ProviderConfig{Enabled: true, APIKey: "ollama-key", BaseURL: "http://localhost:11434/v1"},
+			NvidiaNim:  ProviderConfig{Enabled: true, APIKey: "nim-key", BaseURL: "https://integrate.api.nvidia.com/v1"},
+		},
+		Server: ServerConfig{Host: "0.0.0.0", Port: 8080},
+		Routes: map[string]RouteConfig{
+			"gpt-4o": {Provider: "openai"},
+		},
+	}
+
+	redacted := cfg.Redacted()
+
+	if redacted.APIKey != "[REDACTED]" {
+		t.Errorf("APIKey = %q, want [REDACTED]", redacted.APIKey)
+	}
+	if cfg.APIKey != "secret-gateway-key" {
+		t.Error("Redacted() must not mutate the original config")
+	}
+	if redacted.Providers.OpenAI.APIKey != "[REDACTED]" {
+		t.Errorf("OpenAI APIKey = %q, want [REDACTED]", redacted.Providers.OpenAI.APIKey)
+	}
+	if redacted.Providers.Anthropic.APIKey != "" {
+		t.Errorf("Anthropic APIKey = %q, want empty", redacted.Providers.Anthropic.APIKey)
+	}
+	if redacted.Providers.Ollama.APIKey != "[REDACTED]" {
+		t.Errorf("Ollama APIKey = %q, want [REDACTED]", redacted.Providers.Ollama.APIKey)
+	}
+	if redacted.Providers.NvidiaNim.APIKey != "[REDACTED]" {
+		t.Errorf("NvidiaNim APIKey = %q, want [REDACTED]", redacted.Providers.NvidiaNim.APIKey)
+	}
+
+	// Non-secret fields are preserved.
+	if redacted.Server.Port != 8080 {
+		t.Errorf("Server.Port = %d, want 8080", redacted.Server.Port)
+	}
+	if len(redacted.Routes) != 1 {
+		t.Errorf("Routes length = %d, want 1", len(redacted.Routes))
+	}
+	if redacted.Routes["gpt-4o"].Provider != "openai" {
+		t.Errorf("Routes[gpt-4o].Provider = %q, want openai", redacted.Routes["gpt-4o"].Provider)
+	}
+}

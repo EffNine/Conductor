@@ -1,0 +1,13 @@
+services:
+  conductor:
+    image: effnine/conductor:latest
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    volumes:
+      - conductor-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  conductor-data:

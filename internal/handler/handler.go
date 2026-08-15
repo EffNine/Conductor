@@ -13,6 +13,7 @@ import (
 	"github.com/EffNine/conductor/internal/breaker"
 	"github.com/EffNine/conductor/internal/cache"
 	"github.com/EffNine/conductor/internal/catalog"
+	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/metrics"
@@ -46,6 +47,7 @@ type Handler struct {
 	usageAdapter      *runtimeadapter.UsageToRuntimeAdapter
 	breakerAdapter    *runtimeadapter.BreakerToRuntimeAdapter
 	runtimeManager    runtime.Manager
+	cfg               *config.Config
 }
 
 // New creates a new Handler
@@ -65,6 +67,11 @@ func New(r *router.Engine, reg *provider.Registry, ut *usage.Tracker, logger *za
 // SetReloadFunc sets the optional config reload callback used by PUT /api/config/reload.
 func (h *Handler) SetReloadFunc(fn func() error) {
 	h.reloadFn = fn
+}
+
+// SetConfig stores the application config for the /api/config endpoint.
+func (h *Handler) SetConfig(cfg *config.Config) {
+	h.cfg = cfg
 }
 
 // SetModelStatus wires per-model reachability tracking (probe + reactive updates).
@@ -134,6 +141,7 @@ func (h *Handler) Register(app *fiber.App) {
 	// Dashboard endpoints
 	app.Get("/api/models", h.HandleDashboardModels)
 	app.Get("/api/models/status", h.HandleModelStatus)
+	app.Post("/api/models/reset-status", h.HandleResetModelStatus)
 	app.Post("/api/models/force-probe", h.HandleForceProbe)
 	app.Get("/api/auto/status", h.HandleAutoStatus)
 	app.Get("/api/health", h.HandleProviderHealth)
@@ -957,6 +965,17 @@ func (h *Handler) HandleModelStatus(c *fiber.Ctx) error {
 	})
 }
 
+// HandleResetModelStatus handles POST /api/models/reset-status — clears health cache.
+func (h *Handler) HandleResetModelStatus(c *fiber.Ctx) error {
+	if h.modelStatus == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "model status store not available",
+		})
+	}
+	h.modelStatus.Reset()
+	return c.JSON(fiber.Map{"status": "ok", "message": "Model health status reset"})
+}
+
 // HandleForceProbe handles POST /api/models/force-probe — admin re-probe of one model.
 // Accepts model_id as query (?model_id=...) or JSON body {"model_id":"..."}.
 func (h *Handler) HandleForceProbe(c *fiber.Ctx) error {
@@ -1255,10 +1274,12 @@ func defaultLimit(q string, fallback int) int {
 
 // HandleConfig handles GET /api/config
 func (h *Handler) HandleConfig(c *fiber.Ctx) error {
-	// TODO: Return current config with secrets redacted
-	return c.JSON(fiber.Map{
-		"message": "Config endpoint - coming soon",
-	})
+	if h.cfg == nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "configuration not available",
+		})
+	}
+	return c.JSON(h.cfg.Redacted())
 }
 
 // HandleReloadConfig handles PUT /api/config/reload

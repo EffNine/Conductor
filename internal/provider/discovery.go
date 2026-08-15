@@ -119,3 +119,13 @@ func (r *Registry) DiscoverLongContext(ctx context.Context) DiscoveryResult {
 func (r *Registry) DiscoverEmbeddings(ctx context.Context) DiscoveryResult {
 	return r.DiscoverByCapability(ctx, "embeddings")
 }
+
+// DiscoverImages returns providers that support image generation.
+func (r *Registry) DiscoverImages(ctx context.Context) DiscoveryResult {
+	return r.DiscoverByCapability(ctx, "images")
+}
+
+// DiscoverAudio returns providers that support audio generation.
+func (r *Registry) DiscoverAudio(ctx context.Context) DiscoveryResult {
+	return r.DiscoverByCapability(ctx, "audio")
+}
