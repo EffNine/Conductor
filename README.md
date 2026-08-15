@@ -155,9 +155,9 @@ See [Configuration Reference](docs/configuration.md) for full details.
 ## Architecture
 
 ```
-Client → API Key Check → Rate Limit → Validate → Route → Provider Adapter → Normalize → Response
-                                        ↓              ↓                              ↓
-                                    Alias/Routes   Health/Probes               Usage + Cost → SQLite
+Client → API Key Check → Validate → Route → Provider Adapter → Normalize → Response
+                             ↓              ↓                              ↓
+                        Alias/Routes   Health/Probes               Usage + Cost → SQLite
 
 Task API Flow (V2.5):
   POST /api/tasks
@@ -169,8 +169,7 @@ Task API Flow (V2.5):
   VERIFY → COMPLETE
 ```
 
-- **Auth** — Single gateway API key via `CONDUCTOR_API_KEY` (auto-generated to `data/conductor.api_key` if unset).
-- **Rate Limiter** — Global and per-provider limits.
+- **Auth** — Single gateway API key via `CONDUCTOR_API_KEY` (auto-generated to `data/conductor.api_key` if unset). Use `make gen-key` to generate one without starting the server.
 - **Router** — Alias → route → provider-prefix dispatch → fallbacks.
 - **Decision Pipeline** — Intent → Capability → Candidate → Selection stages with intelligent scoring (health, latency, cost, capability).
 - **Provider Adapters** — Common `Provider` interface; OpenAI-compatible passthrough plus a custom Anthropic Messages adapter.
@@ -303,6 +302,19 @@ Useful targets: `make lint`, `make docker-build` (uses context `.`; prefer `dock
 - [Architecture](docs/architecture.md)
 - [Deployment Guide](docs/deployment.md)
 - [Contributing](docs/contributing.md)
+
+## Security
+
+- **API key**: `CONDUCTOR_API_KEY` is required in production. If unset locally, a random key is generated and written to `data/conductor.api_key` (mode `0600`) — do not rely on this file on ephemeral disks.
+- **CORS defaults to `*`**. Restrict origins in `config.yaml`:
+  ```yaml
+  server:
+    cors:
+      origins: ["https://your-domain.com"]
+  ```
+- **No built-in rate limiting**. Place the gateway behind a reverse proxy (Caddy, Nginx) with `limit_req`, or use a CDN/WAF to throttle requests.
+- **SQLite database file** is stored at `./data/conductor.db`. Restrict directory permissions to the running user.
+- See [Deployment Guide → Security Best Practices](docs/deployment.md#security-best-practices) for full guidance.
 
 ## License
 
