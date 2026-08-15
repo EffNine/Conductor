@@ -284,19 +284,19 @@ func TestV27_RetryBackoffAndMaxRetries(t *testing.T) {
 	defer pool0.Stop()
 
 	deadline := time.After(2 * time.Second)
+	var got *task.Task
 	for {
 		select {
 		case <-deadline:
 			break
 		default:
 		}
-		got, _ := store.GetTask(id0)
+		got, _ = store.GetTask(id0)
 		if got != nil && got.Status == task.StatusFailed {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	got, _ := store.GetTask(id0)
 	if got.RetryCount != 0 {
 		t.Errorf("max_retries=0: retry_count = %d, want 0", got.RetryCount)
 	}
@@ -317,7 +317,7 @@ func TestV27_RetryBackoffAndMaxRetries(t *testing.T) {
 			t.Fatal("timeout waiting for permanent failure")
 		default:
 		}
-		got, _ := store.GetTask(id2)
+		got, _ = store.GetTask(id2)
 		if got != nil && got.Status == task.StatusFailed && got.RetryCount >= 2 {
 			break
 		}

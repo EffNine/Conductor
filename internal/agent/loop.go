@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -268,8 +269,8 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 
 	// Max steps exceeded — fail the task.
 	errStr := fmt.Sprintf("max steps (%d) exceeded", maxSteps)
-	a.failTask(t.ID, fmt.Errorf(errStr))
-	return t, fmt.Errorf("%s", errStr)
+	a.failTask(t.ID, errors.New(errStr))
+	return t, errors.New(errStr)
 }
 
 func (a *AgentImpl) executeToolCalls(ctx context.Context, taskID string, calls []apitypes.ToolCall, ctx2 *AgentContext) ([]tool.ToolResult, error) {

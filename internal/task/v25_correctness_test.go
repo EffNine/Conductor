@@ -385,7 +385,7 @@ func TestV25_PlanCurrentStepAdvances(t *testing.T) {
 	// Mark completed.
 	reloaded.Status = orchestration.PlanCompleted
 	reloaded.CurrentStep = 3
-	if err := store.UpdatePlan(reloaded); err != nil {
+	if err = store.UpdatePlan(reloaded); err != nil {
 		t.Fatalf("UpdatePlan: %v", err)
 	}
 

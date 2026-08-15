@@ -602,7 +602,7 @@ func (c *Coordinator) createCodingChildren(ctx context.Context, parent *TaskInfo
 		{"coding", "implement the solution"},
 		{"testing", "verify the solution"},
 	}
-	var ids []string
+	ids := make([]string, 0, len(roles))
 	maxCtx := c.cfg.MaxChildContext
 	if maxCtx <= 0 {
 		maxCtx = DefaultMaxChildContext

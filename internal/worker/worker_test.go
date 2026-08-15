@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/task"
@@ -22,7 +21,6 @@ import (
 
 // fakeExecutor wraps an agent for testing.
 type fakeExecutor struct {
-	resp  *apitypes.ChatCompletionResponse
 	err   error
 	calls int
 	mu    sync.Mutex
@@ -52,7 +50,6 @@ func (f *fakeExecutor) Execute(_ context.Context, taskID string) error {
 // fakeSyncExecutor simulates synchronous POST /api/tasks execution: it
 // transitions the task through running and finalizes terminal state itself.
 type fakeSyncExecutor struct {
-	resp  *apitypes.ChatCompletionResponse
 	err   error
 	store task.Store
 }
@@ -296,7 +293,7 @@ func TestReleaseLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ClaimTask: %v", err)
 	}
-	if err := store.ReleaseLease(id, "w1"); err != nil {
+	if err = store.ReleaseLease(id, "w1"); err != nil {
 		t.Fatalf("ReleaseLease: %v", err)
 	}
 	got, err := store.GetTask(id)

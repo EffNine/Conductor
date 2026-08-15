@@ -351,7 +351,8 @@ func TestHandleConfigReturnsRedactedConfig(t *testing.T) {
 	}
 	// Only providers with a non-empty APIKey should show [REDACTED].
 	for name, v := range providers {
-		p, ok := v.(map[string]interface{})
+		var p map[string]interface{}
+		p, ok = v.(map[string]interface{})
 		if !ok {
 			t.Fatalf("Providers.%s is not an object", name)
 		}

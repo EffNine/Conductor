@@ -522,7 +522,7 @@ func TestCheckpoint_SerializesCorrectly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
-	if err := store.SaveCheckpoint("task-resume", data); err != nil {
+	if err = store.SaveCheckpoint("task-resume", data); err != nil {
 		t.Fatalf("SaveCheckpoint: %v", err)
 	}
 
