@@ -1356,7 +1356,7 @@ ticker:
 			t.Fatal("timeout waiting for scheduler promotion")
 		default:
 		}
-		got, _ := store.GetTask(id)
+		got, _ = store.GetTask(id)
 		if got != nil && got.Status == task.StatusQueued {
 			break ticker
 		}
