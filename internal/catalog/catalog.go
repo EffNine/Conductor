@@ -32,6 +32,11 @@ type Entry struct {
 	Provider        string `json:"provider"`
 	ProviderModelID string `json:"provider_model_id"`
 	OwnedBy         string `json:"owned_by,omitempty"`
+	// Capabilities is optional model-specific capability metadata from the
+	// provider's ListModels() response. When non-nil, it overrides provider
+	// defaults for routing decisions.
+	Capabilities     *provider.Capabilities `json:"capabilities,omitempty"`
+	MaxContextLength int                    `json:"max_context_length,omitempty"`
 }
 
 // DisplayName returns a short picker label without the gateway provider prefix.
@@ -268,12 +273,17 @@ func (c *Catalog) listDynamic(ctx context.Context) ([]Entry, error) {
 				baseID = m.ProviderModelID
 			}
 			baseID = stripProviderPrefix(baseID, p.Name())
-			entries = append(entries, Entry{
+			entry := Entry{
 				ModelID:         p.Name() + "/" + baseID,
 				Provider:        p.Name(),
 				ProviderModelID: m.ProviderModelID,
 				OwnedBy:         m.OwnedBy,
-			})
+			}
+			if m.Capabilities != nil {
+				entry.Capabilities = m.Capabilities
+				entry.MaxContextLength = m.MaxContextLength
+			}
+			entries = append(entries, entry)
 		}
 	}
 
@@ -299,12 +309,17 @@ func (c *Catalog) listCuratedOrDynamic(ctx context.Context) ([]Entry, error) {
 				baseID = m.ProviderModelID
 			}
 			baseID = stripProviderPrefix(baseID, p.Name())
-			entries = append(entries, Entry{
+			entry := Entry{
 				ModelID:         p.Name() + "/" + baseID,
 				Provider:        p.Name(),
 				ProviderModelID: m.ProviderModelID,
 				OwnedBy:         m.OwnedBy,
-			})
+			}
+			if m.Capabilities != nil {
+				entry.Capabilities = m.Capabilities
+				entry.MaxContextLength = m.MaxContextLength
+			}
+			entries = append(entries, entry)
 		}
 	}
 	sortEntries(entries)

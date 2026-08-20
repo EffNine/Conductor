@@ -128,7 +128,10 @@ func setupTestEnvironment(t testing.TB) (*router.Engine, *provider.Registry, *me
 		},
 		Circuit: config.CircuitBreakerConfig{Enabled: true},
 	}
-	eng := router.NewEngine(cfg, reg)
+	eng, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	cacheCfg := config.CacheConfig{
 		Enabled:        true,

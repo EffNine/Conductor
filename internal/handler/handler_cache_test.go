@@ -106,7 +106,10 @@ func setupCachedTestApp(t *testing.T, cacheEnabled bool) (*fiber.App, *metrics.C
 			MaxEntries: 100,
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, zap.NewNop(), nil, nil)
 
 	m := metrics.NewCollector()
@@ -220,7 +223,10 @@ func TestFailedRequestBypassesCache(t *testing.T) {
 			MaxEntries: 100,
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, zap.NewNop(), nil, nil)
 
 	m := metrics.NewCollector()
@@ -334,7 +340,10 @@ func TestCacheTTLExpiration(t *testing.T) {
 			MaxEntries: 100,
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, zap.NewNop(), nil, nil)
 
 	m := metrics.NewCollector()
@@ -404,7 +413,10 @@ func TestCacheEviction(t *testing.T) {
 			MaxEntries: 2,
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, zap.NewNop(), nil, nil)
 
 	m := metrics.NewCollector()

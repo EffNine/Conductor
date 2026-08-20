@@ -16,11 +16,14 @@ func TestResolveStripsProviderPrefix(t *testing.T) {
 	reg.Register(&stubProvider{name: "groq"})
 	reg.Register(&stubProvider{name: "openai"})
 
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Routes: map[string]config.RouteConfig{
 			"llama3-8b": {Provider: "groq"},
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	resolved, err := engine.Resolve("groq/llama3-8b")
 	if err != nil {
@@ -42,13 +45,16 @@ func TestResolveRejectsMismatchedProviderPrefix(t *testing.T) {
 	reg.Register(&stubProvider{name: "groq"})
 	reg.Register(&stubProvider{name: "openai"})
 
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Routes: map[string]config.RouteConfig{
 			"llama3-8b": {Provider: "groq"},
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
-	_, err := engine.Resolve("openai/llama3-8b")
+	_, err = engine.Resolve("openai/llama3-8b")
 	if err == nil {
 		t.Fatal("expected error for mismatched provider prefix")
 	}
@@ -58,11 +64,14 @@ func TestResolveBareModelIDUsesRoute(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "openai"})
 
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Routes: map[string]config.RouteConfig{
 			"gpt-4o": {Provider: "openai", ModelID: "gpt-4o-2024-08-06"},
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	resolved, err := engine.Resolve("gpt-4o")
 	if err != nil {
@@ -80,7 +89,10 @@ func TestResolveAutoSelectsWhenWired(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "nvidia_nim"})
 
-	engine := router.NewEngine(&config.Config{}, reg)
+	engine, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	engine.SetAutoSelector(&fixedAutoSelector{modelID: "meta/llama-3.1-8b-instruct"})
 
 	resolved, err := engine.ResolveWithMessages("auto", []apitypes.Message{{Role: "user", Content: "hello"}})
@@ -102,11 +114,14 @@ func TestResolveAutoPassesVisionSignalForImageOnly(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "nvidia_nim"})
 
-	engine := router.NewEngine(&config.Config{}, reg)
+	engine, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	sel := &capturingAutoSelector{modelID: "vision-model"}
 	engine.SetAutoSelector(sel)
 
-	_, err := engine.ResolveWithMessages("auto", []apitypes.Message{{
+	_, err = engine.ResolveWithMessages("auto", []apitypes.Message{{
 		Role: "user",
 		Content: []apitypes.ContentPart{
 			{Type: apitypes.ContentPartImageURL, ImageURL: &apitypes.ImageURLContent{URL: "https://example.com/shot.png"}},
@@ -124,9 +139,12 @@ func TestResolveAutoReturnsErrorWhenNotWired(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "nvidia_nim"})
 
-	engine := router.NewEngine(&config.Config{}, reg)
+	engine, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
-	_, err := engine.Resolve("auto")
+	_, err = engine.Resolve("auto")
 	if err == nil {
 		t.Fatal("expected error when auto selector is not wired")
 	}

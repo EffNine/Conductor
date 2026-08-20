@@ -7,9 +7,9 @@ import (
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/eventbus"
-	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/runtime"
 )
 
 func TestNewDecisionPipeline(t *testing.T) {
@@ -57,14 +57,17 @@ func TestDecisionPipelineExecute(t *testing.T) {
 	reg.Register(&routingStubProvider{name: "openai", supportsAll: true})
 	reg.Register(&routingStubProvider{name: "groq", supportsAll: true})
 
-	healthStore := health.NewModelStatusStore(1, true)
-	metricsStore := router.NewMetricsStore()
+	store := runtime.NewRuntimeStore(nil)
+	pOpenAI, _ := reg.Get("openai")
+	pGroq, _ := reg.Get("groq")
+	_ = store.Register(runtime.NewProviderRuntime("openai", pOpenAI))
+	_ = store.Register(runtime.NewProviderRuntime("groq", pGroq))
+	manager := runtime.NewManager(store)
 
 	pipeline := router.NewDecisionPipeline(router.PipelineConfig{
-		Registry:     reg,
-		HealthStore:  healthStore,
-		MetricsStore: metricsStore,
-		Weights:      config.DefaultRoutingWeights(),
+		Registry:       reg,
+		RuntimeManager: manager,
+		Weights:        config.DefaultRoutingWeights(),
 	})
 
 	req := &apitypes.ChatCompletionRequest{
@@ -80,7 +83,7 @@ func TestDecisionPipelineExecute(t *testing.T) {
 		Weights: config.DefaultRoutingWeights(),
 	}
 
-	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap)
+	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -108,7 +111,7 @@ func TestDecisionPipelineNoProviders(t *testing.T) {
 	env := router.Environment{}
 	cfgSnap := router.ConfigSnapshot{}
 
-	_, err := pipeline.Execute(context.Background(), req, env, cfgSnap)
+	_, err := pipeline.Execute(context.Background(), req, env, cfgSnap, nil)
 	if err == nil {
 		t.Fatal("expected error for no providers")
 	}
@@ -136,7 +139,7 @@ func TestDecisionPipelineCapabilityStage(t *testing.T) {
 	env := router.Environment{}
 	cfgSnap := router.ConfigSnapshot{}
 
-	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap)
+	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -171,7 +174,7 @@ func TestDecisionPipelineEventBus(t *testing.T) {
 		},
 	}
 
-	_, err := pipeline.Execute(context.Background(), req, router.Environment{}, router.ConfigSnapshot{})
+	_, err := pipeline.Execute(context.Background(), req, router.Environment{}, router.ConfigSnapshot{}, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

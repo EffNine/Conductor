@@ -104,8 +104,14 @@ type Fallback struct {
 	ModelID  string // Optional: override model name
 }
 
+// reservedModelIDs are model IDs that are reserved by the gateway and cannot be
+// used as route or alias keys.
+var reservedModelIDs = map[string]struct{}{
+	"auto": {},
+}
+
 // NewEngine creates a new routing engine
-func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
+func NewEngine(cfg *config.Config, registry *provider.Registry) (*Engine, error) {
 	engine := &Engine{
 		routes:    make(map[string]Route),
 		aliases:   make(map[string]string),
@@ -123,6 +129,9 @@ func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
 
 	// Load routes from config
 	for modelID, routeCfg := range cfg.Routes {
+		if _, reserved := reservedModelIDs[modelID]; reserved {
+			return nil, fmt.Errorf("route key %q is reserved and cannot be used", modelID)
+		}
 		engine.routes[modelID] = Route{
 			Provider: routeCfg.Provider,
 			ModelID:  routeCfg.ModelID,
@@ -131,6 +140,9 @@ func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
 
 	// Load aliases from config
 	for alias, modelID := range cfg.Aliases {
+		if _, reserved := reservedModelIDs[alias]; reserved {
+			return nil, fmt.Errorf("alias key %q is reserved and cannot be used", alias)
+		}
 		engine.aliases[alias] = modelID
 	}
 
@@ -146,7 +158,7 @@ func NewEngine(cfg *config.Config, registry *provider.Registry) *Engine {
 		engine.fallbacks[modelID] = fallbacks
 	}
 
-	return engine
+	return engine, nil
 }
 
 // SetAutoSelector wires runtime automatic model selection.
@@ -305,6 +317,31 @@ func (e *Engine) splitProviderPrefix(modelID string) (string, string) {
 func (e *Engine) BreakerPool() *BreakerPool {
 	return e.breakers
 }
+
+// BuildConfigSnapshot returns a point-in-time copy of the engine's routing
+// configuration for use by the DecisionPipeline.
+func (e *Engine) BuildConfigSnapshot() ConfigSnapshot {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	routes := make(map[string]Route, len(e.routes))
+	for k, v := range e.routes {
+		routes[k] = v
+	}
+	aliases := make(map[string]string, len(e.aliases))
+	for k, v := range e.aliases {
+		aliases[k] = v
+	}
+	fallbacks := make(map[string][]Fallback, len(e.fallbacks))
+	for k, v := range e.fallbacks {
+		fallbacks[k] = v
+	}
+	return ConfigSnapshot{
+		Routes:    routes,
+		Aliases:   aliases,
+		Fallbacks: fallbacks,
+	}
+}
+
 func (e *Engine) ResolveWithFallback(modelID string) (*ResolvedRoute, []ResolvedRoute, error) {
 	return e.ResolveWithFallbackAndMessages(modelID, nil)
 }

@@ -4,10 +4,10 @@ import "sync"
 
 // Weights holds the configured (and normalized) scoring weights for the routing engine.
 type Weights struct {
-	Health     float64
-	Latency    float64
-	Cost       float64
-	Capability float64
+	Health     float64 `json:"health"`
+	Latency    float64 `json:"latency"`
+	Cost       float64 `json:"cost"`
+	Capability float64 `json:"capability"`
 }
 
 // Normalize converts raw weights to fractions that sum to 1.

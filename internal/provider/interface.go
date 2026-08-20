@@ -26,6 +26,11 @@ type ModelInfo struct {
 	ProviderModelID string // The exact model ID used in provider API calls
 	ModelID         string // Optional user-facing model ID (may differ from ProviderModelID)
 	OwnedBy         string // Organization or entity that owns the model
+	// Capabilities is optional model-specific capability metadata.
+	// When non-nil, it overrides provider defaults for this model.
+	// When nil, provider defaults apply (unknown).
+	Capabilities     *Capabilities
+	MaxContextLength int // 0 means unknown
 }
 
 // PricingInfo represents pricing for a model.

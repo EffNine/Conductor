@@ -8,8 +8,8 @@ import (
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/eventbus"
-	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/runtime"
 	"go.uber.org/zap"
 )
 
@@ -19,21 +19,20 @@ type DecisionPipeline struct {
 	eventBus      *eventbus.EventBus
 	logger        *zap.Logger
 	routingEngine *RouterEngine
-	traceStore    TraceStore
+	runtimeMgr    runtime.Manager
 }
 
 // PipelineConfig holds configuration for the decision pipeline.
 type PipelineConfig struct {
 	Registry         *provider.Registry
-	HealthStore      *health.ModelStatusStore
-	MetricsStore     *MetricsStore
+	RoutingEngine    *RouterEngine
+	RuntimeManager   runtime.Manager
 	BreakerPool      *BreakerPool
 	Logger           *zap.Logger
 	EventBus         *eventbus.EventBus
 	Weights          config.RoutingWeights
 	CostCeiling      float64
 	HealthyLatencyMs int64
-	TraceStore       TraceStore
 }
 
 // NewDecisionPipeline creates a pipeline with the default stage ordering:
@@ -45,23 +44,25 @@ func NewDecisionPipeline(cfg PipelineConfig) *DecisionPipeline {
 		logger = zap.NewNop()
 	}
 
-	// Build the routing engine first (needed by Selection stage).
-	re := NewRouterEngine(RouterEngineConfig{
-		Registry:         cfg.Registry,
-		HealthStore:      cfg.HealthStore,
-		MetricsStore:     cfg.MetricsStore,
-		BreakerPool:      cfg.BreakerPool,
-		Logger:           logger,
-		Weights:          cfg.Weights,
-		CostCeiling:      cfg.CostCeiling,
-		HealthyLatencyMs: cfg.HealthyLatencyMs,
-	})
+	re := cfg.RoutingEngine
+	if re == nil {
+		// Fallback: construct a minimal engine when none is provided.
+		re = NewRouterEngine(RouterEngineConfig{
+			Registry:         cfg.Registry,
+			Runtime:          cfg.RuntimeManager,
+			BreakerPool:      cfg.BreakerPool,
+			Logger:           logger,
+			Weights:          cfg.Weights,
+			CostCeiling:      cfg.CostCeiling,
+			HealthyLatencyMs: cfg.HealthyLatencyMs,
+		})
+	}
 
 	p := &DecisionPipeline{
 		eventBus:      cfg.EventBus,
 		logger:        logger,
 		routingEngine: re,
-		traceStore:    cfg.TraceStore,
+		runtimeMgr:    cfg.RuntimeManager,
 	}
 
 	// Stages in deterministic order.
@@ -87,6 +88,7 @@ func (p *DecisionPipeline) Execute(
 	req *apitypes.ChatCompletionRequest,
 	env Environment,
 	cfgSnap ConfigSnapshot,
+	candidates []ResolvedRoute,
 ) (*SelectionResult, error) {
 	if p.logger == nil {
 		p.logger = zap.NewNop()
@@ -111,15 +113,21 @@ func (p *DecisionPipeline) Execute(
 		taskMeta.HasTools = true
 	}
 
-	// Build runtime snapshot.
-	rSnap := p.buildRuntimeSnapshot(env)
+	// Acquire the authoritative runtime snapshot — one per decision.
+	var rSnap runtime.RuntimeSnapshot
+	if p.runtimeMgr != nil {
+		rSnap = p.runtimeMgr.Snapshot(ctx)
+	}
 
 	// Create decision context.
 	dc := NewDecisionContext(req, rSnap, cfgSnap, taskMeta, env, p.logger, p.eventBus)
+	if len(candidates) > 0 {
+		dc.SetCandidates(candidates)
+	}
 	defer dc.Close()
 
 	// Create trace builder.
-	builder := NewDecisionTraceBuilder(dc.ID(), 1, rSnap)
+	builder := NewDecisionTraceBuilder(dc.ID(), rSnap)
 
 	// Publish DecisionStarted.
 	p.publishEvent(ctx, eventbus.DecisionStarted, dc)
@@ -145,6 +153,20 @@ func (p *DecisionPipeline) Execute(
 				zap.String("decision_id", string(dc.ID())),
 				zap.Error(err),
 			)
+			// Failure trace: explain the failed decision without logs. Uses
+			// only data already present in the decision context — no second
+			// snapshot, no provider calls, no scoring pass.
+			populateTraceFromContext(builder, dc)
+			builder.AddEvent(EventRecord{
+				Type:      string(eventbus.DecisionFinished),
+				Timestamp: time.Now().UTC(),
+			})
+			failureTrace := builder.Build()
+			// The decision finished — with failure. Publish DecisionFinished
+			// carrying the failure trace so persistence consumers capture
+			// failed decisions too.
+			p.publishEvent(ctx, eventbus.DecisionFinished, failureTrace)
+			p.publishTraceEvent(ctx, failureTrace)
 			return nil, fmt.Errorf("stage %s failed: %w", stage.Name(), err)
 		}
 
@@ -157,6 +179,11 @@ func (p *DecisionPipeline) Execute(
 			builder.AddEvent(EventRecord{
 				Type:      string(eventbus.IntentResolved),
 				Timestamp: time.Now().UTC(),
+				Payload: map[string]any{
+					"resolved_mode":  string(dc.ModeProfile().Mode),
+					"mode_source":    dc.ModeSource(),
+					"requested_mode": dc.RequestedMode(),
+				},
 			})
 		case "capability":
 			p.publishEvent(ctx, eventbus.CapabilityResolved, dc)
@@ -195,59 +222,56 @@ func (p *DecisionPipeline) Execute(
 		winner = &ResolvedRoute{
 			ProviderName:    result.Candidate.ProviderName,
 			ProviderModelID: result.Candidate.ProviderModelID,
-			ModelID:         result.Decision.SelectedModelID,
+			ModelID:         result.Decision.RequestedModelID, // Use original requested model for trace
 		}
 	}
+	populateTraceFromContext(builder, dc)
 	builder.SetWinner(winner)
 	builder.SetRejectionReasons(result.Decision.RejectionReasons)
+	builder.SetCandidateScores(result.Decision.CandidateScores)
 
-	// Publish DecisionFinished.
-	p.publishEvent(ctx, eventbus.DecisionFinished, dc)
+	// Finalize the trace before publishing DecisionFinished so the event
+	// carries the complete decision artifact (mode resolution, candidate
+	// scores, winner, rejections, runtime hash, stage results).
 	builder.AddEvent(EventRecord{
 		Type:      string(eventbus.DecisionFinished),
 		Timestamp: time.Now().UTC(),
 	})
+	trace := builder.Build()
+
+	// Publish DecisionFinished with the final trace as payload. Persistence
+	// consumers subscribe here; routing correctness never depends on them.
+	p.publishEvent(ctx, eventbus.DecisionFinished, trace)
 
 	// Publish trace created event.
-	trace := builder.Build()
 	p.publishTraceEvent(ctx, trace)
-
-	// Persist trace if store is configured.
-	if p.traceStore != nil {
-		if err := p.traceStore.Save(ctx, trace); err != nil {
-			p.logger.Warn("failed to persist trace",
-				zap.String("decision_id", string(trace.DecisionID)),
-				zap.Error(err),
-			)
-		}
-	}
 
 	return result, nil
 }
 
-func (p *DecisionPipeline) buildRuntimeSnapshot(env Environment) RuntimeSnapshot {
-	snap := RuntimeSnapshot{
-		Providers: make(map[string]ProviderHealthInfo),
-	}
-	if p.routingEngine == nil {
-		return snap
-	}
-	scores := p.routingEngine.GetProviderScores(CapabilityHint{})
-	for _, s := range scores {
-		snap.Providers[s.Provider] = ProviderHealthInfo{
-			State:     "healthy",
-			LatencyMs: 0,
-		}
-	}
-	_ = env
-	return snap
+// populateTraceFromContext copies the canonical mode/intent/capability/policy
+// fields from the decision context into the trace. It reads only data already
+// produced by pipeline stages — it never acquires a snapshot, calls providers,
+// or performs another scoring pass.
+func populateTraceFromContext(builder *DecisionTraceBuilder, dc *DecisionContext) {
+	builder.SetModeResolution(dc.RequestedMode(), dc.ModeProfile(), dc.ModeSource())
+	builder.SetRequestedModel(dc.Request().Model)
+	builder.SetIntent(dc.Intent())
+	builder.SetCapabilityRequirements(dc.Capability())
+	builder.SetContextRequirement(dc.ContextRequirement())
+	builder.SetEffectiveWeights(dc.EffectiveWeights())
+	builder.SetModeBonuses(dc.ModeBonuses())
 }
 
-func (p *DecisionPipeline) publishEvent(ctx context.Context, typ eventbus.EventType, dc *DecisionContext) {
+func (p *DecisionPipeline) publishEvent(ctx context.Context, typ eventbus.EventType, payload any) {
 	if p.eventBus == nil {
 		return
 	}
-	dc.PublishSync(typ, dc)
+	p.eventBus.PublishSync(ctx, eventbus.Event{
+		Type:      typ,
+		Payload:   payload,
+		Timestamp: time.Now().UnixNano(),
+	})
 }
 
 func (p *DecisionPipeline) publishTraceEvent(ctx context.Context, trace *DecisionTrace) {

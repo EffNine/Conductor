@@ -10,6 +10,13 @@ All endpoints except `GET /health` require authentication via the `Authorization
 Authorization: Bearer <your-api-key>
 ```
 
+The scheme is matched case-insensitively (`Bearer` / `bearer`). A bare API key without the scheme, any other scheme (`Basic`, `Key`, …), an empty credential, or an extra token is rejected with `401`.
+
+- Missing credentials → `401` with `error.code = "missing_api_key"`
+- Malformed or invalid credentials → `401` with `error.code = "invalid_api_key"`
+- All `401` responses include a `WWW-Authenticate: Bearer` challenge header
+- Conductor never logs the `Authorization` header or the API key, and the key is never echoed in any response, trace, or metric. `GET /api/config` always reports the gateway key (and all provider keys) as `[REDACTED]`.
+
 The API key is set via the `CONDUCTOR_API_KEY` environment variable (or `api_key` in config). If unset, Conductor generates one on first boot and persists it to `data/conductor.api_key`. Use `conductor gen-key` / `make gen-key` to print a new key.
 
 ---
@@ -38,10 +45,38 @@ Creates a model response for the given chat conversation.
 ```
 
 **Required Fields**:
-- `model` (string): Model ID, alias, or `auto` when auto model selection is enabled
+- `model` (string): Model ID, alias, or a virtual capability model for automatic selection
 - `messages` (array): Array of message objects
 
-When `model: "auto"` is sent and `providers.nvidia_nim.auto.enabled` is `true`, the gateway selects the best available NVIDIA NIM model at runtime using reachability, historical cost, and probe latency scores. The upstream request is rewritten to use the chosen model ID.
+**Virtual Capability Models** (recommended):
+Instead of choosing among dozens of raw upstream model IDs, clients should use one of Conductor's stable virtual models. Each represents a capability category; Conductor internally selects the best concrete provider/model.
+
+| Virtual Model | Purpose |
+|---------------|---------|
+| `frontier` | Best overall / strongest generally available model |
+| `coding` | Software engineering, code generation, debugging, repository work |
+| `reasoning` | Deep reasoning, analysis, difficult problem solving |
+| `agentic` | Tool use, multi-step execution, autonomous workflows |
+| `planning` | Task decomposition, architecture planning, strategy |
+| `long_horizon` | Large context and long-running tasks |
+| `fast` | Low latency / responsive workloads |
+| `light` | Lightweight / economical workloads |
+| `vision` | Multimodal / image-capable workloads |
+| `auto` | Generic automatic selection / backward-compatible fallback |
+
+When a virtual model is sent (e.g. `model: "coding"`), Conductor selects the best concrete provider/model from all registered providers based on the category's capability requirements and the configured routing weights. The selection considers health, latency, cost, and capability match. The upstream provider **never** receives the virtual model ID — the gateway resolves it to a concrete provider and model ID before dispatching.
+
+The `mode` field (optional) can be used to further influence selection within a virtual model category:
+- `coding` — prefers tool-calling and reasoning capable models
+- `reasoning` — prefers reasoning-capable models
+- `vision` — requires vision/image capability when request contains image content
+- `fast` — strongly prefers low-latency healthy models
+- `planning` — requires reasoning + tool-calling capabilities
+- `agentic` — requires reasoning + tool-calling + sufficient context capacity
+- `long_horizon` — requires sufficient context capacity
+- `auto` (default) — uses the classifier to infer the task type
+
+If `mode` is omitted, the classifier infers the task type from the message content (for `auto` model) or the virtual model's implicit category is used.
 
 **Optional Fields**:
 - `temperature` (number): Sampling temperature (0-2). Default: 1.0
@@ -112,7 +147,7 @@ data: [DONE]
 
 **Endpoint**: `GET /v1/models`
 
-Lists available models from configured providers. With `catalog.curated_only`, only the Static Model List under each provider is advertised (see [Configuration — Curated catalog](configuration.md#curated-catalog)). When model reachability probing is enabled (`health.models`), models that fail consecutive probes are omitted (see [Model Reachability](#model-reachability)).
+Returns exactly 10 virtual capability models. Raw provider model IDs are not exposed through this endpoint; the public model catalog is a model abstraction layer that presents only curated capability models. Raw provider catalog powering virtual resolution, health filtering, circuit breaker filtering, capability matching, latency scoring, cost scoring, and deterministic selection remains internal. With `catalog.curated_only`, only the Static Model List under each provider is advertised in addition to the 10 virtual models (see [Configuration — Curated catalog](configuration.md#curated-catalog)). When model reachability probing is enabled (`health.models`), unreachable raw models are omitted from internal catalog use but are still accessible via `GET /api/models?include_unreachable=true`.
 
 #### Response
 
@@ -121,30 +156,87 @@ Lists available models from configured providers. With `catalog.curated_only`, o
   "object": "list",
   "data": [
     {
-      "id": "openai/gpt-4o",
+      "id": "frontier",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "openai",
-      "name": "gpt-4o"
+      "owned_by": "conductor",
+      "name": "Frontier"
     },
     {
-      "id": "nvidia_nim/meta/llama-3.1-8b-instruct",
+      "id": "coding",
       "object": "model",
       "created": 1677652288,
-      "owned_by": "meta",
-      "name": "meta/llama-3.1-8b-instruct"
+      "owned_by": "conductor",
+      "name": "Coding"
+    },
+    {
+      "id": "reasoning",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Reasoning"
+    },
+    {
+      "id": "agentic",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Agentic"
+    },
+    {
+      "id": "planning",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Planning"
+    },
+    {
+      "id": "long_horizon",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Long Horizon"
+    },
+    {
+      "id": "fast",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Fast"
+    },
+    {
+      "id": "light",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Light"
+    },
+    {
+      "id": "vision",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Vision"
+    },
+    {
+      "id": "auto",
+      "object": "model",
+      "created": 1677652288,
+      "owned_by": "conductor",
+      "name": "Auto"
     }
   ]
 }
 ```
 
 **Notes**:
-- Every Model ID is provider-prefixed (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) so clients can send the listed ID directly to `/v1/chat/completions`.
-- `name` is a shorter display label (the upstream Provider Model ID without the gateway provider prefix), e.g. `meta/llama-3.1-8b-instruct`. Pickers that support `name` can show it; chat requests must still use `id`.
-- `owned_by` reflects the provider or the upstream owner when reported.
-- Aliases are never listed.
-- With `catalog.curated_only: true`, only `providers.*.models` entries appear.
-- Unreachable models (when probing + `hide_unreachable` are on) are not listed; use `GET /api/models?include_unreachable=true` to inspect them.
+- The response contains exactly **10 virtual capability models**, all with `owned_by: "conductor"`. These are the recommended models for clients to use for capability-based routing.
+- Raw provider model IDs are **not** exposed through `/v1/models`. The public model catalog is a model abstraction layer that presents only curated capability models.
+- Raw provider catalog remains internal, powering virtual model resolution, health filtering, circuit breaker filtering, capability matching, latency scoring, cost scoring, and deterministic selection.
+- Virtual models have `owned_by: "conductor"` and a human-readable `name` to indicate they're gateway-managed.
+- Raw provider models can still be accessed internally through the catalog and via `GET /api/models` / `GET /api/models?include_unreachable=true` for administration/debugging.
+- With `catalog.curated_only: true`, only `providers.*.models` entries appear in the internal catalog (plus all 10 virtual models).
+- Raw provider models are not reachable through the OpenAI-compatible `/v1/models` contract; use the dashboard API `GET /api/models` for full catalog access.
 
 ---
 
@@ -164,7 +256,7 @@ Creates an embedding vector representing the input text.
 ```
 
 **Required Fields**:
-- `model` (string): Model ID to use
+- `model` (string): Concrete embedding model ID to use. Virtual capability models (`frontier`, `coding`, `reasoning`, `agentic`, `planning`, `long_horizon`, `fast`, `light`, `vision`, `auto`) are **not** supported for embeddings — you must specify a concrete embedding model (e.g. `text-embedding-3-small`, `openai/text-embedding-3-small`).
 - `input` (string|array): Input text to embed
 
 #### Response
@@ -310,23 +402,47 @@ or JSON body: `{"model_id":"openai/gpt-4o"}`
 
 ---
 
-### Auto Mode Status
+### Virtual Model Selection
 
-**Endpoint**: `GET /api/auto/status`
+Conductor exposes **10 virtual capability models** as the primary client-facing model catalog. These are always available and do not require any provider-specific configuration. When a client sends a virtual model (e.g. `model: "coding"`), Conductor resolves it to a concrete provider and model using the merged catalog and the configured routing weights.
 
-Reports whether runtime automatic model selection is enabled and the provider it targets.
+| Virtual Model | Purpose | Key Characteristics |
+|---------------|---------|---------------------|
+| `frontier` | Best overall / strongest generally available model | Balanced weights, high capability preference |
+| `coding` | Software engineering, code generation, debugging | Strong tool-calling & reasoning preference |
+| `reasoning` | Deep reasoning, analysis, difficult problem solving | Highest capability weight, reasoning bonus |
+| `agentic` | Tool use, multi-step execution, autonomous workflows | Requires reasoning + tool-calling + context |
+| `planning` | Task decomposition, architecture planning, strategy | Requires reasoning + tool-calling |
+| `long_horizon` | Large context and long-running tasks | Requires sufficient context capacity |
+| `fast` | Low latency / responsive workloads | Latency-dominated, health-protected |
+| `light` | Lightweight / economical workloads | Cost-dominated, reasonable capability |
+| `vision` | Multimodal / image-capable workloads | Vision capability hard requirement |
+| `auto` | Generic automatic selection / backward-compatible fallback | Balanced, uses classifier when no mode |
 
-#### Response
+The optional `mode` field can further influence selection within a virtual model category:
+- `coding` — prefers tool-calling and reasoning capable models
+- `reasoning` — prefers reasoning-capable models
+- `vision` — requires vision capability when image content is present (hard filter)
+- `fast` — strongly prefers low-latency healthy models
+- `planning` — requires reasoning + tool-calling; prefers execution reliability
+- `agentic` — requires reasoning + tool-calling + sufficient context; strongest execution reliability
+- `long_horizon` — requires sufficient context capacity; prefers sustained reliability
+- `auto` (default) — uses the classifier to infer task type from message content
+
+If `mode` is omitted, the classifier infers the task type (for `auto` model) or the virtual model's implicit category guides selection.
+
+**The upstream provider NEVER receives a virtual model ID** — the gateway always resolves it to a concrete provider and model ID before dispatching.
+
+The legacy NVIDIA NIM `auto` configuration (`providers.nvidia_nim.auto`) is preserved for backward compatibility. When enabled and the request is routed to NVIDIA NIM, the NIM-specific auto selector takes precedence. Otherwise, the catalog-backed virtual resolver is used.
+
+**Dashboard Endpoint**: `GET /api/auto/status` reports whether the catalog-backed virtual resolver is available.
 
 ```json
 {
   "enabled": true,
-  "provider": "nvidia_nim",
-  "note": "auto mode selects from NVIDIA NIM catalog using task, health, cost, and latency"
+  "note": "virtual model selection from all registered providers using health, cost, latency, and capability scoring"
 }
 ```
-
-When `enabled` is `true`, clients can send `"model": "auto"` to `POST /v1/chat/completions` (and `POST /v1/embeddings`). The gateway classifies the request text into a task type (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`), picks the matching `task_profile` (or the built-in NIM defaults), and then scores candidate models by reachability, historical cost, and probe latency to choose the upstream model at request time.
 
 ---
 
@@ -524,6 +640,215 @@ Returns recent request logs.
 
 ---
 
+### Routing Trace List
+
+**Endpoint**: `GET /api/routing/traces`
+
+Returns a paginated, filterable list of persisted routing decision traces. Most recent first.
+This endpoint is **read-only observability** — it never participates in routing, provider selection, runtime state updates, or cache behavior.
+
+#### Authentication
+
+Protected by the gateway API key (same as all other dashboard endpoints).
+
+#### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `mode` | string | Canonical resolved mode. Uses `ParseMode` normalization (case-insensitive). Supported values: `auto`, `coding`, `reasoning`, `vision`, `fast`, `planning`, `agentic`, `long_horizon`. Invalid values return HTTP 400. |
+| `provider` | string | Exact match on `selected_provider`. |
+| `model` | string | Exact match on `selected_model`. |
+| `requested_model` | string | Exact match on the original virtual/model ID before resolution (e.g. `"coding"`, `"frontier"`, `"auto"`). |
+| `runtime_hash` | string | Exact match on the deterministic hash of the scoring-relevant runtime snapshot. |
+| `outcome` | string | Exact match on outcome. One of: `selected`, `rejected`, `failed`. |
+| `from` | string | Inclusive lower bound on decision timestamp. RFC3339 format (e.g. `2026-08-19T00:00:00Z`). |
+| `to` | string | Inclusive upper bound on decision timestamp. RFC3339 format. Must not be before `from`. |
+| `limit` | integer | Maximum rows to return. Default: `50`. Range: `1`–`200`. Values outside this range return HTTP 400. |
+| `offset` | integer | Number of rows to skip. Default: `0`. Must be non-negative. Invalid values return HTTP 400. |
+
+Invalid or unrecognised parameters return HTTP 400 with the offending parameter named:
+
+```json
+{
+  "error": {
+    "message": "invalid mode \"foo\": supported values are auto, coding, reasoning, vision, fast, planning, agentic, long_horizon",
+    "type": "invalid_request_error",
+    "param": "mode",
+    "code": "invalid_request"
+  }
+}
+```
+
+#### Response
+
+```json
+{
+  "data": [
+    {
+      "decision_id": "d7f8a9b0-1234-5678-9abc-def012345678",
+      "timestamp": "2026-08-20T14:30:00Z",
+      "schema_version": 2,
+      "requested_mode": "coding",
+      "resolved_mode": "coding",
+      "mode_source": "explicit",
+      "task_type": "code_generation",
+      "selected_provider": "openai",
+      "selected_model": "gpt-4o",
+      "requested_model": "coding",
+      "runtime_hash": "a3f2c1...",
+      "selected_score": 0.87,
+      "candidate_count": 5,
+      "outcome": "selected",
+      "created_at": "2026-08-20T14:30:01Z"
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "offset": 0,
+    "count": 1
+  }
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `decision_id` | string | Unique identifier for this routing decision. |
+| `timestamp` | string | When the routing decision was made (RFC3339 UTC). |
+| `schema_version` | int64 | Trace schema version (currently `2`). |
+| `requested_mode` | string | The raw mode string from the request (before normalization). |
+| `resolved_mode` | string | The canonical mode after `ParseMode` resolution. |
+| `mode_source` | string | How the mode was determined: `explicit` (client-supplied), `classifier` (inferred), or `virtual` (implicit from virtual model category). |
+| `task_type` | string | Classifed task type from the request classifier (e.g. `code_generation`, `reasoning`, `chat`). |
+| `selected_provider` | string | Provider name chosen for this decision (e.g. `openai`, `anthropic`). |
+| `selected_model` | string | Concrete provider model ID dispatched to upstream (e.g. `gpt-4o`). |
+| `requested_model` | string | Original virtual or concrete model ID from the request before resolution. |
+| `runtime_hash` | string | Deterministic hash of the scoring-relevant runtime snapshot at decision time. |
+| `selected_score` | float64 | Total score of the winning candidate. |
+| `candidate_count` | int | Number of candidates scored in this decision. |
+| `outcome` | string | `selected` (winner chosen), `rejected` (decision completed, no winner), or `failed` (pipeline stage failed before selection). |
+| `created_at` | string | Row insertion time in the trace store (RFC3339 UTC). |
+
+Results are ordered by `timestamp DESC, decision_id DESC`.
+
+When the trace store is not available (routing disabled), returns HTTP 503:
+
+```json
+{
+  "error": {
+    "message": "Routing trace store not available",
+    "type": "server_error",
+    "code": "trace_store_unavailable"
+  }
+}
+```
+
+---
+
+### Routing Trace Detail
+
+**Endpoint**: `GET /api/routing/traces/:id`
+
+Returns the full canonical `DecisionTrace` for a single routing decision. Unknown IDs return HTTP 404.
+
+#### Authentication
+
+Protected by the gateway API key.
+
+#### Path Parameter
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | The `decision_id` value from a list response or another trace reference. |
+
+#### Response (HTTP 404 for unknown IDs)
+
+```json
+{
+  "error": {
+    "message": "Routing trace 'd7f8a9b0-1234-5678-9abc-def012345678' not found",
+    "type": "invalid_request_error",
+    "code": "trace_not_found"
+  }
+}
+```
+
+#### Response Fields (full DecisionTrace)
+
+The full trace contains every field from the P3.14 canonical contract:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `decision_id` | string | Unique routing decision identifier. |
+| `trace_schema_ver` | int64 | Trace schema version (currently `2`). |
+| `timestamp` | string | Decision timestamp (RFC3339 UTC). |
+| `requested_mode` | string | Raw mode string from the request. |
+| `requested_model` | string | Original model ID before resolution. |
+| `resolved_mode` | string | Canonical resolved mode. |
+| `mode_source` | string | Mode source: `explicit`, `classifier`, or `virtual`. |
+| `mode_description` | string | Static prose summary of the mode's routing policy. |
+| `mode_traits` | array[string] | Machine-readable tags describing the mode's policy. |
+| `intent` | object\|null | Request intent: `{ "task_type": "...", "confidence": 0.95 }`. |
+| `capability_requirements` | object\|null | Resolved capability requirements for this decision. |
+| `context_requirement` | int | Estimated token budget the mode enforced. |
+| `effective_weights` | object | Normalized routing weights used for this decision (`health`, `latency`, `cost`, `capability`). |
+| `mode_bonuses` | object | Per-mode capability bonuses applied (`tool_calling`, `reasoning`, `structured`, `context_capacity`). |
+| `runtime_hash` | string | Deterministic hash of the scoring-relevant runtime snapshot. |
+| `candidate_scores` | array[object] | Per-candidate score breakdown (see below). |
+| `winner` | object\|null | The selected route (`provider_name`, `provider_model_id`, `model_id`). |
+| `rejection_reasons` | array[object] | Why each non-winning candidate was rejected. |
+| `stage_results` | array[object] | Pipeline stage execution results (`name`, `duration_ms`, `status`, `metadata`, `output_ref`). |
+| `events` | array[object] | Timeline events (`type`, `timestamp`, `payload`). |
+
+**CandidateScore fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | Provider name. |
+| `provider_model_id` | string | Upstream model ID for this candidate. |
+| `total_score` | float64 | Final weighted score. |
+| `health_score` | float64 | Health factor contribution. |
+| `latency_score` | float64 | Latency factor contribution. |
+| `cost_score` | float64 | Cost factor contribution. |
+| `capability_score` | float64 | Capability match factor contribution. |
+| `mode_bonus` | float64 | Additive bonus for mode-relevant capability. |
+| `context_bonus` | float64 | Additive bonus for context capacity match. |
+| `telemetry_pref` | float64 | Execution telemetry preference contribution. |
+| `selected` | bool | True for the winning candidate. |
+| `rejected` | bool | True for candidates filtered out before scoring. |
+| `rejection_reason` | string | Why this candidate was rejected, if applicable. |
+
+**RejectionReason fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `provider` | string | Provider name. |
+| `reason` | string | Human-readable rejection explanation. |
+
+**StageResult fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Stage name (e.g. `classifier`, `scoring`, `selection`). |
+| `duration_ms` | int64 | Stage duration in milliseconds. |
+| `status` | string | `pending`, `running`, `completed`, `failed`, or `skipped`. |
+| `metadata` | object\|null | Stage-specific metadata. |
+| `output_ref` | string\|null | Opaque handle to the stage's output payload. |
+
+#### Security Contract
+
+The trace API **never exposes**:
+- API keys or provider credentials
+- Request prompts, messages, or raw request bodies
+- Response tokens or content
+- Authorization headers or cookies
+- Any secrets
+
+The original request is intentionally **not embedded** in traces. Traces contain only routing metadata, scoring breakdowns, and pipeline stage outcomes.
+
+---
+
 ### Current Configuration
 
 **Endpoint**: `GET /api/config`
@@ -627,7 +952,7 @@ server:
 
 ## Examples
 
-### Basic Chat Completion
+### Basic Chat Completion (Concrete Model)
 
 ```bash
 curl http://localhost:8080/v1/chat/completions \
@@ -638,6 +963,90 @@ curl http://localhost:8080/v1/chat/completions \
     "messages": [
       {"role": "user", "content": "Hello!"}
     ]
+  }'
+```
+
+### Virtual Capability Models (Recommended)
+
+```bash
+# Frontier - best overall model
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "frontier",
+    "messages": [{"role": "user", "content": "Solve this complex problem"}]
+  }'
+
+# Coding - software engineering tasks
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "coding",
+    "messages": [{"role": "user", "content": "Write a Go HTTP server"}]
+  }'
+
+# Reasoning - deep analysis
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "reasoning",
+    "messages": [{"role": "user", "content": "Analyze the trade-offs of microservices vs monolith"}]
+  }'
+
+# Agentic - autonomous workflows
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "agentic",
+    "messages": [{"role": "user", "content": "Build a complete REST API with tests"}],
+    "tools": [...]
+  }'
+
+# Fast - low latency
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "fast",
+    "messages": [{"role": "user", "content": "Quick answer: what is 2+2?"}]
+  }'
+
+# Vision - image understanding
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "vision",
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "Describe this image"},
+        {"type": "image_url", "image_url": {"url": "https://example.com/image.png"}}
+      ]
+    }]
+  }'
+
+# Auto - generic automatic selection
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+
+# Auto with explicit mode hint
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "auto",
+    "mode": "reasoning",
+    "messages": [{"role": "user", "content": "Explain quantum computing"}]
   }'
 ```
 

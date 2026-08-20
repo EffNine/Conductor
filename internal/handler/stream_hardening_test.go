@@ -73,7 +73,10 @@ func newStreamTestApp(t testing.TB, p provider.Provider, opts ...func(*handler.H
 			"seed": {Provider: p.Name(), ModelID: "seed-model"},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	cat := catalog.New(reg, nil)
 	db := openTestDB(t)
 	h := handler.New(engine, reg, nil, zap.NewNop(), cat, db)

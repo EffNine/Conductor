@@ -10,6 +10,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/runtime"
 	"github.com/EffNine/conductor/internal/tool"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ type AgentImpl struct {
 	registry     *tool.Registry
 	roleRegistry *Registry
 	usageTracker *usage.Tracker
+	runtimeMgr   runtime.Manager
 	logger       *zap.Logger
 }
 
@@ -45,6 +47,11 @@ func New(cfg Config, store AgentStore, r *router.Engine, reg *tool.Registry, ut 
 // WithRoleRegistry wires the agent definition registry for role-aware execution.
 func (a *AgentImpl) WithRoleRegistry(rr *Registry) {
 	a.roleRegistry = rr
+}
+
+// WithRuntimeManager wires the runtime manager for execution telemetry.
+func (a *AgentImpl) WithRuntimeManager(m runtime.Manager) {
+	a.runtimeMgr = m
 }
 
 func (a *AgentImpl) Name() string { return "single-agent" }
@@ -123,6 +130,9 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 		resp, callErr := resolved.Provider.ChatCompletion(ctx, req)
 		latencyMs := time.Since(stepStart).Milliseconds()
 
+		// Record execution start on runtime after resolution.
+		a.recordExecutionStart(resolved.ProviderName)
+
 		stepRecord := &Step{
 			ID:               newUUID(),
 			TaskID:           t.ID,
@@ -142,6 +152,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 			stepRecord.Error = &errStr
 			a.persistStep(stepRecord)
 			a.recordUsage(t.ID, resolved, nil, latencyMs, true, callErr)
+			a.recordExecutionFinish(resolved.ProviderName, resolved.ProviderModelID, false)
 			a.failTask(t.ID, fmt.Errorf("provider call at step %d: %w", ctx2.Step, callErr))
 			return t, callErr
 		}
@@ -167,6 +178,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 		choice := resp.Choices[0].Message
 		a.persistStep(stepRecord)
 		a.recordUsage(t.ID, resolved, resp.Usage, latencyMs, false, nil)
+		a.recordExecutionFinish(resolved.ProviderName, resolved.ProviderModelID, true)
 
 		// Emit step completed event.
 		_ = a.store.CreateTaskEvent(&Event{
@@ -176,7 +188,6 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 			EventData: mustMarshal(map[string]any{"step": ctx2.Step, "latency_ms": latencyMs}),
 		})
 
-		// Check for tool calls.
 		if len(choice.ToolCalls) > 0 {
 			results, err := a.executeToolCalls(ctx, t.ID, choice.ToolCalls, ctx2)
 			if err != nil {
@@ -185,6 +196,9 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 					zap.Int("step", ctx2.Step),
 					zap.Error(err),
 				)
+				for range choice.ToolCalls {
+					a.recordToolCallOutcome(resolved.ProviderName, resolved.ProviderModelID, false)
+				}
 				ctx2.Messages = append(ctx2.Messages, apitypes.Message{
 					Role: "assistant", ToolCalls: choice.ToolCalls,
 				})
@@ -225,6 +239,7 @@ func (a *AgentImpl) Execute(ctx context.Context, t *TaskRef) (*TaskRef, error) {
 					Role: "tool", Content: results[i].Content,
 					ToolCallID: tc.ID,
 				})
+				a.recordToolCallOutcome(resolved.ProviderName, resolved.ProviderModelID, !results[i].IsError)
 			}
 			if saveErr := Save(ctx, a.store, ctx2); saveErr != nil {
 				a.logger.Error("failed to save checkpoint", zap.Error(saveErr))
@@ -386,6 +401,36 @@ func (a *AgentImpl) recordUsage(taskID string, resolved *router.ResolvedRoute, u
 		IsStream:         false,
 		ErrorMessage:     errStr,
 		CreatedAt:        time.Now().UTC(),
+	})
+}
+
+func (a *AgentImpl) recordExecutionStart(providerName string) {
+	if a.runtimeMgr == nil {
+		return
+	}
+	_ = a.runtimeMgr.Update(providerName, func(r runtime.ProviderRuntime) error {
+		r.RecordExecutionOutcome(true, 0)
+		return nil
+	})
+}
+
+func (a *AgentImpl) recordExecutionFinish(providerName string, modelID string, success bool) {
+	if a.runtimeMgr == nil {
+		return
+	}
+	_ = a.runtimeMgr.Update(providerName, func(r runtime.ProviderRuntime) error {
+		r.RecordExecutionOutcomeModel(modelID, success, 0)
+		return nil
+	})
+}
+
+func (a *AgentImpl) recordToolCallOutcome(providerName string, modelID string, success bool) {
+	if a.runtimeMgr == nil {
+		return
+	}
+	_ = a.runtimeMgr.Update(providerName, func(r runtime.ProviderRuntime) error {
+		r.RecordToolCallOutcomeModel(modelID, success)
+		return nil
 	})
 }
 

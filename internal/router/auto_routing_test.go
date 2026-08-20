@@ -24,7 +24,10 @@ func TestAutoMode_WithNVIDIA(t *testing.T) {
 	mockProv := &mockProvider{name: "nvidia_nim"}
 	reg.Register(mockProv)
 
-	engine := NewEngine(&config.Config{}, reg)
+	engine, err := NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "meta/llama-3.1-8b-instruct"})
 
 	route, err := engine.Resolve("auto")
@@ -44,7 +47,10 @@ func TestAutoMode_WithoutNVIDIA(t *testing.T) {
 	mockProv := &mockProvider{name: "openai"}
 	reg.Register(mockProv)
 
-	engine := NewEngine(&config.Config{}, reg)
+	engine, err := NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "gpt-4o"})
 
 	route, err := engine.Resolve("auto")
@@ -64,7 +70,10 @@ func TestAutoMode_MultipleProviders_PicksHealthy(t *testing.T) {
 	reg.Register(&mockProvider{name: "anthropic"})
 	reg.Register(&mockProvider{name: "openai"})
 
-	engine := NewEngine(&config.Config{}, reg)
+	engine, err := NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "claude-3-5-sonnet"})
 
 	route, err := engine.Resolve("auto")
@@ -82,10 +91,13 @@ func TestAutoMode_MultipleProviders_PicksHealthy(t *testing.T) {
 
 func TestAutoMode_NoProviders_FailsGracefully(t *testing.T) {
 	reg := provider.NewRegistry()
-	engine := NewEngine(&config.Config{}, reg)
+	engine, err := NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "gpt-4o"})
 
-	_, err := engine.Resolve("auto")
+	_, err = engine.Resolve("auto")
 	if err == nil {
 		t.Fatal("expected error with no providers")
 	}
@@ -95,12 +107,15 @@ func TestAutoMode_AllBreakersOpen(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&mockProvider{name: "openai"})
 
-	engine := NewEngine(&config.Config{
+	engine, err := NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
 			Enabled:          true,
 			FailureThreshold: 3,
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "gpt-4o"})
 
 	// Open the breaker
@@ -111,7 +126,7 @@ func TestAutoMode_AllBreakersOpen(t *testing.T) {
 		}
 	}
 
-	_, err := engine.Resolve("auto")
+	_, err = engine.Resolve("auto")
 	if err == nil {
 		t.Fatal("expected error when all breakers open")
 	}
@@ -122,7 +137,10 @@ func TestExplicitProviderRouting_Unaffected(t *testing.T) {
 	mockProv := &mockProvider{name: "openai"}
 	reg.Register(mockProv)
 
-	engine := NewEngine(&config.Config{}, reg)
+	engine, err := NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("unexpected error creating engine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "gpt-4o"})
 
 	// Explicit provider-prefixed model should bypass auto mode

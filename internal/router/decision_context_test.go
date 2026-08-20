@@ -7,6 +7,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/runtime"
 )
 
 func TestDecisionContextLifecycle(t *testing.T) {
@@ -17,7 +18,7 @@ func TestDecisionContextLifecycle(t *testing.T) {
 
 	dc := router.NewDecisionContext(
 		req,
-		router.RuntimeSnapshot{},
+		runtime.RuntimeSnapshot{},
 		router.ConfigSnapshot{},
 		router.TaskMetadata{ModelID: "gpt-4o"},
 		router.Environment{},

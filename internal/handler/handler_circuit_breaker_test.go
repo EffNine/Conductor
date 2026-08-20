@@ -17,7 +17,7 @@ import (
 func TestHandleCircuitBreakerStatusReturnsJSON(t *testing.T) {
 	app := fiber.New()
 	reg := provider.NewRegistry()
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
 			Enabled:          true,
 			FailureThreshold: 3,
@@ -25,6 +25,9 @@ func TestHandleCircuitBreakerStatusReturnsJSON(t *testing.T) {
 			SuccessThreshold: 2,
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, nil, nil, nil)
 	h.Register(app)
 
@@ -37,11 +40,14 @@ func TestHandleCircuitBreakerStatusReturnsJSON(t *testing.T) {
 func TestHandleCircuitBreakerStatusDisabled(t *testing.T) {
 	app := fiber.New()
 	reg := provider.NewRegistry()
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
 			Enabled: false,
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	h := handler.New(engine, reg, nil, nil, nil, nil)
 	h.Register(app)
 

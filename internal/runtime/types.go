@@ -48,6 +48,28 @@ type ProviderStateSnapshot struct {
 	ErrorRate       float64
 	Capacity        float64 // 0.0 to 1.0
 	Tags            map[string]string
+	// Execution telemetry (P3.7) — cumulative counters at provider level.
+	ExecutionCount        int64
+	ExecutionSuccessCount int64
+	ExecutionFailureCount int64
+	ToolCallSuccessCount  int64
+	ToolCallFailureCount  int64
+	RetryCount            int64
+	// Model-level execution telemetry (P3.10).
+	// Keys are provider model IDs (e.g. "gpt-4o", "claude-3-5-sonnet").
+	// Populated when model identity is available at telemetry emission time.
+	ModelExecutions map[string]ModelExecutionState
+}
+
+// ModelExecutionState holds cumulative execution counters for a specific model
+// within a provider. Used by Agentic/Planning modes for finer-grained attribution.
+type ModelExecutionState struct {
+	ExecutionCount        int64
+	ExecutionSuccessCount int64
+	ExecutionFailureCount int64
+	ToolCallSuccessCount  int64
+	ToolCallFailureCount  int64
+	RetryCount            int64
 }
 
 // GlobalRuntimeState captures system-wide runtime state.
@@ -108,6 +130,25 @@ type ProviderRuntime interface {
 
 	// GetTag returns a provider tag.
 	GetTag(key string) (string, bool)
+
+	// RecordExecutionOutcome records a chat completion execution result.
+	// success=true means the provider returned a response; retryCount is
+	// the number of fallback retries consumed before this outcome.
+	// This records at the provider level (all models share the counter).
+	RecordExecutionOutcome(success bool, retryCount int)
+
+	// RecordExecutionOutcomeModel records a chat completion execution result
+	// attributed to a specific model. When modelID is empty, falls back to
+	// provider-level recording.
+	RecordExecutionOutcomeModel(modelID string, success bool, retryCount int)
+
+	// RecordToolCallOutcome records the result of a single tool call.
+	// This records at the provider level (all models share the counter).
+	RecordToolCallOutcome(success bool)
+
+	// RecordToolCallOutcomeModel records a tool call result attributed to a
+	// specific model. When modelID is empty, falls back to provider-level.
+	RecordToolCallOutcomeModel(modelID string, success bool)
 }
 
 // RuntimeFactory is used to create provider runtime instances.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/EffNine/conductor/internal/automode"
 	"github.com/EffNine/conductor/internal/policy"
+	"github.com/EffNine/conductor/internal/router"
 	"github.com/google/uuid"
 )
 
@@ -20,14 +20,15 @@ type Intent struct {
 }
 
 // ClassifyIntent analyzes task input and returns the best-matching intent.
+// It delegates to the canonical router.ClassifyRequest.
 func ClassifyIntent(ctx context.Context, input string) *Intent {
 	_ = ctx
-	profile := automode.ClassifyTask(input)
-	desc := profileDescription(profile)
+	profile := router.ClassifyRequest(input)
+	desc := profile.Description
 
 	intent := &Intent{
-		TaskType:     profile,
-		Confidence:   computeConfidence(input, profile),
+		TaskType:     string(profile.Mode),
+		Confidence:   computeConfidence(input, profile.Mode),
 		Description:  desc,
 		Metadata:     map[string]any{"classifier": "keyword_heuristics"},
 		ClassifiedAt: time.Now().UTC(),
@@ -35,60 +36,43 @@ func ClassifyIntent(ctx context.Context, input string) *Intent {
 	return intent
 }
 
-func profileDescription(profile string) string {
-	switch profile {
-	case string(automode.TaskElite):
-		return "complex agentic coding task requiring multi-step execution"
-	case string(automode.TaskCoding):
-		return "code generation, debugging, or refactoring"
-	case string(automode.TaskReasoning):
-		return "analysis, comparison, or multi-step logical reasoning"
-	case string(automode.TaskVision):
-		return "image or visual content understanding"
-	case string(automode.TaskFast):
-		return "short, simple request requiring minimal processing"
-	default:
-		return "general task with no strong signal"
-	}
-}
-
-func computeConfidence(input, profile string) float64 {
-	if profile == string(automode.TaskDefault) {
+func computeConfidence(input string, mode router.Mode) float64 {
+	if mode == router.ModeDefault {
 		return 0.3
 	}
 	lower := strings.ToLower(input)
 	matched := 0
 	total := 0
-	switch profile {
-	case string(automode.TaskElite):
+	switch mode {
+	case router.ModeElite:
 		for _, kw := range []string{"implement", "refactor", "build", "create"} {
 			total++
 			if strings.Contains(lower, kw) {
 				matched++
 			}
 		}
-	case string(automode.TaskCoding):
+	case router.ModeCoding:
 		for _, kw := range []string{"code", "debug", "fix", "function", "test"} {
 			total++
 			if strings.Contains(lower, kw) {
 				matched++
 			}
 		}
-	case string(automode.TaskReasoning):
+	case router.ModeReasoning:
 		for _, kw := range []string{"analyze", "compare", "explain", "why", "how"} {
 			total++
 			if strings.Contains(lower, kw) {
 				matched++
 			}
 		}
-	case string(automode.TaskVision):
+	case router.ModeVision:
 		for _, kw := range []string{"image", "picture", "screenshot", "describe"} {
 			total++
 			if strings.Contains(lower, kw) {
 				matched++
 			}
 		}
-	case string(automode.TaskFast):
+	case router.ModeFast:
 		for _, kw := range []string{"hi", "hello", "quick", "simple"} {
 			total++
 			if strings.Contains(lower, kw) {
@@ -113,13 +97,13 @@ func computeConfidence(input, profile string) float64 {
 func ToPolicyIntent(i *Intent) *policy.Intent {
 	var tt policy.TaskType
 	switch i.TaskType {
-	case string(automode.TaskElite), string(automode.TaskCoding):
+	case string(router.ModeElite), string(router.ModeCoding):
 		tt = policy.TaskTypeCode
-	case string(automode.TaskReasoning):
+	case string(router.ModeReasoning):
 		tt = policy.TaskTypeReasoning
-	case string(automode.TaskVision):
+	case string(router.ModeVision):
 		tt = policy.TaskTypeVision
-	case string(automode.TaskFast):
+	case string(router.ModeFast):
 		tt = policy.TaskTypeChat
 	default:
 		tt = policy.TaskTypeChat

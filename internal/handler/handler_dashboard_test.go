@@ -187,7 +187,10 @@ func setupTestApp(t *testing.T) (*fiber.App, *database.Database) {
 	reg.Register(&stubProvider{name: "groq"})
 
 	db := openTestDB(t)
-	routerEngine := router.NewEngine(cfg, reg)
+	routerEngine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	modelCatalog := catalog.New(reg, nil)
 	usageTracker := usage.NewTracker(db, nil, zap.NewNop())
 	h := handler.New(routerEngine, reg, usageTracker, zap.NewNop(), modelCatalog, db)
@@ -301,7 +304,10 @@ func TestHandleConfigReturnsRedactedConfig(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "openai"})
 	db := openTestDB(t)
-	routerEngine := router.NewEngine(cfg, reg)
+	routerEngine, engErr := router.NewEngine(cfg, reg)
+	if engErr != nil {
+		t.Fatalf("NewEngine: %v", engErr)
+	}
 	modelCatalog := catalog.New(reg, nil)
 	usageTracker := usage.NewTracker(db, nil, zap.NewNop())
 	h := handler.New(routerEngine, reg, usageTracker, zap.NewNop(), modelCatalog, db)
@@ -316,7 +322,7 @@ func TestHandleConfigReturnsRedactedConfig(t *testing.T) {
 		if len(key) > 7 && key[:7] == "Bearer " {
 			key = key[7:]
 		}
-		if err := authService.Authenticate(key); err != nil {
+		if authErr := authService.Authenticate(key); authErr != nil {
 			return c.Status(http.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 		}
 		return c.Next()

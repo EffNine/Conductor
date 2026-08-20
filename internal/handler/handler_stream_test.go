@@ -90,7 +90,10 @@ func TestStreamFlushesReasoningBeforeFinishReason(t *testing.T) {
 			"seed": {Provider: "nvidia_nim", ModelID: "bytedance/seed-oss-36b-instruct"},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	cat := catalog.New(reg, nil)
 	db := openTestDB(t)
 	h := handler.New(engine, reg, nil, zap.NewNop(), cat, db)
@@ -171,7 +174,10 @@ func TestStreamFlushesReasoningOnAbruptClose(t *testing.T) {
 			"seed": {Provider: "nvidia_nim"},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	cat := catalog.New(reg, nil)
 	db := openTestDB(t)
 	h := handler.New(engine, reg, nil, zap.NewNop(), cat, db)
@@ -258,7 +264,10 @@ func TestStreamSkipsEmptyChunksAndOmitsEmptyRole(t *testing.T) {
 			"deepseek-v4-flash-free": {Provider: "nvidia_nim", ModelID: "deepseek-v4-flash-free"},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	cat := catalog.New(reg, nil)
 	db := openTestDB(t)
 	h := handler.New(engine, reg, nil, zap.NewNop(), cat, db)

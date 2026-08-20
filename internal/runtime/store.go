@@ -35,6 +35,28 @@ type ProviderRuntimeImpl struct {
 	metadata        map[string]any
 	tags            map[string]string
 	breakerState    atomic.Int32 // maps to breaker.State
+
+	// Execution telemetry counters (P3.7).
+	executionCount        atomic.Int64
+	executionSuccessCount atomic.Int64
+	executionFailureCount atomic.Int64
+	toolCallSuccessCount  atomic.Int64
+	toolCallFailureCount  atomic.Int64
+	retryCount            atomic.Int64
+
+	// Model-level execution telemetry counters (P3.10).
+	modelMu         sync.RWMutex
+	modelExecutions map[string]*modelExecState
+}
+
+// modelExecState holds per-model atomic counters.
+type modelExecState struct {
+	execCount   atomic.Int64
+	execSuccess atomic.Int64
+	execFailure atomic.Int64
+	toolSuccess atomic.Int64
+	toolFailure atomic.Int64
+	retryCount  atomic.Int64
 }
 
 // Ensure ProviderRuntimeImpl implements ProviderRuntime.
@@ -43,11 +65,12 @@ var _ ProviderRuntime = (*ProviderRuntimeImpl)(nil)
 // NewProviderRuntime creates a new provider runtime instance.
 func NewProviderRuntime(name string, p provider.Provider) *ProviderRuntimeImpl {
 	r := &ProviderRuntimeImpl{
-		name:      name,
-		state:     StateUnknown,
-		createdAt: time.Now().UTC(),
-		metadata:  make(map[string]any),
-		tags:      make(map[string]string),
+		name:            name,
+		state:           StateUnknown,
+		createdAt:       time.Now().UTC(),
+		metadata:        make(map[string]any),
+		tags:            make(map[string]string),
+		modelExecutions: make(map[string]*modelExecState),
 	}
 	r.isHealthy.Store(true)
 	r.capacity.Store(100)
@@ -82,12 +105,19 @@ func (r *ProviderRuntimeImpl) Snapshot(ctx context.Context) ProviderStateSnapsho
 	capacity := float64(r.capacity.Load()) / 100.0
 
 	return ProviderStateSnapshot{
-		State:           r.state,
-		LastHealthCheck: r.lastHealthCheck,
-		LatencyMs:       r.latencyMs.Load(),
-		ErrorRate:       errorRate,
-		Capacity:        capacity,
-		Tags:            copyTags(r.tags),
+		State:                 r.state,
+		LastHealthCheck:       r.lastHealthCheck,
+		LatencyMs:             r.latencyMs.Load(),
+		ErrorRate:             errorRate,
+		Capacity:              capacity,
+		Tags:                  copyTags(r.tags),
+		ExecutionCount:        r.executionCount.Load(),
+		ExecutionSuccessCount: r.executionSuccessCount.Load(),
+		ExecutionFailureCount: r.executionFailureCount.Load(),
+		ToolCallSuccessCount:  r.toolCallSuccessCount.Load(),
+		ToolCallFailureCount:  r.toolCallFailureCount.Load(),
+		RetryCount:            r.retryCount.Load(),
+		ModelExecutions:       r.copyModelExecutions(),
 	}
 }
 
@@ -190,6 +220,96 @@ func (r *ProviderRuntimeImpl) SetTag(key, value string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tags[key] = value
+}
+
+// RecordExecutionOutcome records a chat completion execution result.
+func (r *ProviderRuntimeImpl) RecordExecutionOutcome(success bool, retryCount int) {
+	r.executionCount.Add(1)
+	if success {
+		r.executionSuccessCount.Add(1)
+	} else {
+		r.executionFailureCount.Add(1)
+	}
+	if retryCount > 0 {
+		r.retryCount.Add(int64(retryCount))
+	}
+}
+
+// RecordExecutionOutcomeModel records a chat completion execution result
+// attributed to a specific model. When modelID is empty, falls back to
+// provider-level recording.
+func (r *ProviderRuntimeImpl) RecordExecutionOutcomeModel(modelID string, success bool, retryCount int) {
+	r.RecordExecutionOutcome(success, retryCount)
+	if modelID == "" {
+		return
+	}
+	r.modelMu.Lock()
+	st, ok := r.modelExecutions[modelID]
+	if !ok {
+		st = &modelExecState{}
+		r.modelExecutions[modelID] = st
+	}
+	r.modelMu.Unlock()
+	st.execCount.Add(1)
+	if success {
+		st.execSuccess.Add(1)
+	} else {
+		st.execFailure.Add(1)
+	}
+	if retryCount > 0 {
+		st.retryCount.Add(int64(retryCount))
+	}
+}
+
+// RecordToolCallOutcome records the result of a single tool call.
+func (r *ProviderRuntimeImpl) RecordToolCallOutcome(success bool) {
+	if success {
+		r.toolCallSuccessCount.Add(1)
+	} else {
+		r.toolCallFailureCount.Add(1)
+	}
+}
+
+// RecordToolCallOutcomeModel records a tool call result attributed to a
+// specific model. When modelID is empty, falls back to provider-level.
+func (r *ProviderRuntimeImpl) RecordToolCallOutcomeModel(modelID string, success bool) {
+	r.RecordToolCallOutcome(success)
+	if modelID == "" {
+		return
+	}
+	r.modelMu.Lock()
+	st, ok := r.modelExecutions[modelID]
+	if !ok {
+		st = &modelExecState{}
+		r.modelExecutions[modelID] = st
+	}
+	r.modelMu.Unlock()
+	if success {
+		st.toolSuccess.Add(1)
+	} else {
+		st.toolFailure.Add(1)
+	}
+}
+
+// copyModelExecutions returns a snapshot of per-model execution state.
+func (r *ProviderRuntimeImpl) copyModelExecutions() map[string]ModelExecutionState {
+	r.modelMu.RLock()
+	defer r.modelMu.RUnlock()
+	if len(r.modelExecutions) == 0 {
+		return nil
+	}
+	out := make(map[string]ModelExecutionState, len(r.modelExecutions))
+	for id, st := range r.modelExecutions {
+		out[id] = ModelExecutionState{
+			ExecutionCount:        st.execCount.Load(),
+			ExecutionSuccessCount: st.execSuccess.Load(),
+			ExecutionFailureCount: st.execFailure.Load(),
+			ToolCallSuccessCount:  st.toolSuccess.Load(),
+			ToolCallFailureCount:  st.toolFailure.Load(),
+			RetryCount:            st.retryCount.Load(),
+		}
+	}
+	return out
 }
 
 // GetUptime returns how long the runtime has been active.

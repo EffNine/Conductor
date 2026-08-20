@@ -130,7 +130,10 @@ func newTestDB2(t *testing.T) *database.Database {
 func newTestExecutorWithOrchestration(t *testing.T, db *database.Database, reg *provider.Registry, a agent.Agent, re *router.RouterEngine) *task.TaskExecutor {
 	t.Helper()
 	store := task.NewSQLiteStore(db)
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cat := catalog.New(reg, nil)
 	exec := task.NewTaskExecutor(store, eng, a, cat, ut, zap.NewNop())
@@ -267,7 +270,10 @@ func TestV25_TaskWithoutOrchestration_BackwardCompatible(t *testing.T) {
 
 	// No orchestration wired — legacy behavior must still work.
 	store := task.NewSQLiteStore(db)
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cat := catalog.New(reg, nil)
 	exec := task.NewTaskExecutor(store, eng, fake, cat, ut, zap.NewNop())
@@ -328,7 +334,7 @@ func TestV25_RouterPipeline_IntentStage(t *testing.T) {
 	env := router.Environment{}
 	cfgSnap := router.ConfigSnapshot{Weights: config.DefaultRoutingWeights()}
 
-	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap)
+	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
@@ -364,7 +370,7 @@ func TestV25_RouterPipeline_CandidateStage(t *testing.T) {
 	env := router.Environment{}
 	cfgSnap := router.ConfigSnapshot{Weights: config.DefaultRoutingWeights()}
 
-	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap)
+	result, err := pipeline.Execute(context.Background(), req, env, cfgSnap, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

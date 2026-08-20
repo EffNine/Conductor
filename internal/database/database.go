@@ -162,6 +162,7 @@ func (d *Database) Migrate() error {
 		&CostRate{},
 		&ModelStatusRecord{},
 		&ModelProbeMeta{},
+		&RoutingTrace{},
 	)
 }
 

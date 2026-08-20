@@ -386,7 +386,10 @@ func TestV27_AutoRoutingWithoutNVIDIA(t *testing.T) {
 	reg.Register(&noopProvider{name: "openai"})
 	reg.Register(&noopProvider{name: "anthropic"})
 
-	engine := router.NewEngine(&config.Config{}, reg)
+	engine, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	engine.SetAutoSelector(&mockAutoSelector{model: "gpt-4o"})
 
 	route, err := engine.Resolve("auto")
@@ -421,7 +424,10 @@ func TestV27_FallbackRouting(t *testing.T) {
 			"my-model": {{Provider: "fallback"}},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	primary, fallbacks, err := engine.ResolveWithFallback("my-model")
 	if err != nil {
@@ -636,7 +642,10 @@ func TestV27_GatewayBackwardCompat(t *testing.T) {
 			"gpt-4": {Provider: "openai", ModelID: "gpt-4-turbo"},
 		},
 	}
-	engine := router.NewEngine(cfg, reg)
+	engine, err := router.NewEngine(cfg, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	route, err := engine.Resolve("gpt-4")
 	if err != nil {

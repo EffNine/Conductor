@@ -13,7 +13,7 @@ func TestEngineBreakerPool(t *testing.T) {
 	reg.Register(&stubProvider{name: "openai"})
 	reg.Register(&stubProvider{name: "groq"})
 
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
 			Enabled:          true,
 			FailureThreshold: 3,
@@ -24,6 +24,9 @@ func TestEngineBreakerPool(t *testing.T) {
 			"gpt-4o": {Provider: "openai"},
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	pool := engine.BreakerPool()
 	if pool == nil {
@@ -51,7 +54,7 @@ func TestEngineNoBreakerWhenDisabled(t *testing.T) {
 	reg := provider.NewRegistry()
 	reg.Register(&stubProvider{name: "openai"})
 
-	engine := router.NewEngine(&config.Config{
+	engine, err := router.NewEngine(&config.Config{
 		Circuit: config.CircuitBreakerConfig{
 			Enabled: false,
 		},
@@ -59,6 +62,9 @@ func TestEngineNoBreakerWhenDisabled(t *testing.T) {
 			"gpt-4o": {Provider: "openai"},
 		},
 	}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 
 	if engine.BreakerPool() != nil {
 		t.Fatal("expected nil breaker pool when disabled")

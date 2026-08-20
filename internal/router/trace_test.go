@@ -10,17 +10,18 @@ import (
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
+	"github.com/EffNine/conductor/internal/runtime"
 )
 
 func TestDecisionTraceBuilder(t *testing.T) {
 	dcID := router.NewDecisionID()
-	snap := router.RuntimeSnapshot{
-		Providers: map[string]router.ProviderHealthInfo{
-			"openai": {State: "healthy", LatencyMs: 100},
+	snap := runtime.RuntimeSnapshot{
+		Providers: map[string]runtime.ProviderStateSnapshot{
+			"openai": {State: runtime.StateHealthy, LatencyMs: 100},
 		},
 	}
 
-	builder := router.NewDecisionTraceBuilder(dcID, 1, snap)
+	builder := router.NewDecisionTraceBuilder(dcID, snap)
 	if builder == nil {
 		t.Fatal("expected non-nil builder")
 	}
@@ -29,8 +30,8 @@ func TestDecisionTraceBuilder(t *testing.T) {
 	if trace.DecisionID != dcID {
 		t.Errorf("DecisionID = %q, want %q", trace.DecisionID, dcID)
 	}
-	if trace.RuntimeSnapshotVer != 1 {
-		t.Errorf("RuntimeSnapshotVer = %d, want 1", trace.RuntimeSnapshotVer)
+	if trace.TraceSchemaVer != router.TraceSchemaVersion() {
+		t.Errorf("TraceSchemaVer = %d, want %d", trace.TraceSchemaVer, router.TraceSchemaVersion())
 	}
 	if trace.RuntimeHash == "" {
 		t.Fatal("expected non-empty runtime hash")
@@ -39,9 +40,9 @@ func TestDecisionTraceBuilder(t *testing.T) {
 
 func TestDecisionTraceBuilderStageResults(t *testing.T) {
 	dcID := router.NewDecisionID()
-	snap := router.RuntimeSnapshot{Providers: map[string]router.ProviderHealthInfo{}}
+	snap := runtime.RuntimeSnapshot{Providers: map[string]runtime.ProviderStateSnapshot{}}
 
-	builder := router.NewDecisionTraceBuilder(dcID, 1, snap)
+	builder := router.NewDecisionTraceBuilder(dcID, snap)
 
 	stage1 := router.NewStageResult("intent")
 	stage1.Complete(5, nil, "")
@@ -68,9 +69,9 @@ func TestDecisionTraceBuilderStageResults(t *testing.T) {
 
 func TestDecisionTraceBuilderEventRecord(t *testing.T) {
 	dcID := router.NewDecisionID()
-	snap := router.RuntimeSnapshot{Providers: map[string]router.ProviderHealthInfo{}}
+	snap := runtime.RuntimeSnapshot{Providers: map[string]runtime.ProviderStateSnapshot{}}
 
-	builder := router.NewDecisionTraceBuilder(dcID, 1, snap)
+	builder := router.NewDecisionTraceBuilder(dcID, snap)
 
 	builder.AddEvent(router.EventRecord{
 		Type:      "decision.started",
@@ -89,9 +90,9 @@ func TestDecisionTraceBuilderEventRecord(t *testing.T) {
 
 func TestDecisionTraceBuilderWinner(t *testing.T) {
 	dcID := router.NewDecisionID()
-	snap := router.RuntimeSnapshot{Providers: map[string]router.ProviderHealthInfo{}}
+	snap := runtime.RuntimeSnapshot{Providers: map[string]runtime.ProviderStateSnapshot{}}
 
-	builder := router.NewDecisionTraceBuilder(dcID, 1, snap)
+	builder := router.NewDecisionTraceBuilder(dcID, snap)
 
 	winner := &router.ResolvedRoute{
 		ProviderName:    "openai",
@@ -111,9 +112,9 @@ func TestDecisionTraceBuilderWinner(t *testing.T) {
 
 func TestDecisionTraceBuilderRejectionReasons(t *testing.T) {
 	dcID := router.NewDecisionID()
-	snap := router.RuntimeSnapshot{Providers: map[string]router.ProviderHealthInfo{}}
+	snap := runtime.RuntimeSnapshot{Providers: map[string]runtime.ProviderStateSnapshot{}}
 
-	builder := router.NewDecisionTraceBuilder(dcID, 1, snap)
+	builder := router.NewDecisionTraceBuilder(dcID, snap)
 
 	reasons := []router.RejectionReason{
 		{Provider: "groq", Reason: "circuit breaker open"},
@@ -130,10 +131,10 @@ func TestDecisionTraceBuilderRejectionReasons(t *testing.T) {
 }
 
 func TestDecisionTraceRuntimeHash(t *testing.T) {
-	snap := router.RuntimeSnapshot{
-		Providers: map[string]router.ProviderHealthInfo{
-			"openai": {State: "healthy", LatencyMs: 100},
-			"groq":   {State: "unhealthy", LatencyMs: 500},
+	snap := runtime.RuntimeSnapshot{
+		Providers: map[string]runtime.ProviderStateSnapshot{
+			"openai": {State: runtime.StateHealthy, LatencyMs: 100},
+			"groq":   {State: runtime.StateUnhealthy, LatencyMs: 500},
 		},
 	}
 	hash := router.RuntimeHash(snap)
@@ -173,7 +174,7 @@ func TestDecisionPipelineTraceIntegration(t *testing.T) {
 		},
 	}
 
-	_, err := pipeline.Execute(context.Background(), req, router.Environment{}, router.ConfigSnapshot{})
+	_, err := pipeline.Execute(context.Background(), req, router.Environment{}, router.ConfigSnapshot{}, nil)
 	if err != nil {
 		t.Fatalf("Execute: %v", err)
 	}

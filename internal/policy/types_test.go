@@ -68,6 +68,35 @@ func TestCapabilityRequirement(t *testing.T) {
 	}
 }
 
+func TestCapabilityRequirementFutureFields(t *testing.T) {
+	// Future-ready fields should not affect current routing behavior.
+	req := CapabilityRequirement{
+		NeedsStreaming:   true,
+		NeedsVision:      false,
+		NeedsReasoning:   true,
+		NeedsToolCalling: false,
+		NeedsStructured:  false,
+		MaxTokens:        2048,
+		// Future fields left at zero values.
+		NeedsPlanning:    false,
+		NeedsAutonomy:    false,
+		MinContextLength: 0,
+	}
+
+	if !req.NeedsStreaming {
+		t.Error("expected streaming to be required")
+	}
+	if req.NeedsPlanning {
+		t.Error("expected planning to be false by default")
+	}
+	if req.NeedsAutonomy {
+		t.Error("expected autonomy to be false by default")
+	}
+	if req.MinContextLength != 0 {
+		t.Errorf("expected min context length to be 0 by default, got %d", req.MinContextLength)
+	}
+}
+
 func TestPolicyResult(t *testing.T) {
 	result := PolicyResult{
 		Allowed: true,

@@ -134,7 +134,10 @@ func newTestDB(t *testing.T) *database.Database {
 func newTestExecutor(t *testing.T, db *database.Database, reg *provider.Registry, a agent.Agent) *task.TaskExecutor {
 	t.Helper()
 	store := task.NewSQLiteStore(db)
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cat := catalog.New(reg, nil)
 	return task.NewTaskExecutor(store, eng, a, cat, ut, zap.NewNop())

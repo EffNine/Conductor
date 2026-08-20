@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/breaker"
@@ -42,11 +43,16 @@ type Handler struct {
 	modelStatus       *health.ModelStatusStore
 	metrics           *metrics.Collector
 	routingEngine     *router.RouterEngine
+	autoResolver      *router.AutoResolver
+	virtualResolver   *router.VirtualResolver
+	decisionPipeline  *router.DecisionPipeline
 	cacheEngine       *cache.Engine
 	streamIdleTimeout time.Duration
 	usageAdapter      *runtimeadapter.UsageToRuntimeAdapter
 	breakerAdapter    *runtimeadapter.BreakerToRuntimeAdapter
+	executionAdapter  *runtimeadapter.ExecutionToRuntimeAdapter
 	runtimeManager    runtime.Manager
+	traceStore        router.TraceStore
 	cfg               *config.Config
 }
 
@@ -102,6 +108,28 @@ func (h *Handler) SetRoutingEngine(re *router.RouterEngine) {
 	h.routingEngine = re
 }
 
+// SetAutoModelResolver wires the catalog-backed auto model resolver
+// (model="auto"). Unlike the routing engine, it is available regardless of
+// routing.enabled — the public auto contract is independent of the
+// DecisionPipeline / intelligent routing feature.
+func (h *Handler) SetAutoModelResolver(r *router.AutoResolver) {
+	h.autoResolver = r
+}
+
+// SetVirtualResolver wires the catalog-backed virtual model resolver for
+// capability-based virtual models (frontier, coding, reasoning, agentic,
+// planning, long_horizon, fast, light, vision, auto). It is available
+// regardless of routing.enabled — the virtual model contract is independent
+// of the DecisionPipeline / intelligent routing feature.
+func (h *Handler) SetVirtualResolver(r *router.VirtualResolver) {
+	h.virtualResolver = r
+}
+
+// SetDecisionPipeline wires the decision pipeline for chat completion routing.
+func (h *Handler) SetDecisionPipeline(p *router.DecisionPipeline) {
+	h.decisionPipeline = p
+}
+
 // SetCacheEngine wires the response cache engine.
 func (h *Handler) SetCacheEngine(e *cache.Engine) {
 	h.cacheEngine = e
@@ -121,6 +149,11 @@ func (h *Handler) SetUsageAdapter(a *runtimeadapter.UsageToRuntimeAdapter) {
 // SetBreakerAdapter wires the breaker-to-runtime adapter.
 func (h *Handler) SetBreakerAdapter(a *runtimeadapter.BreakerToRuntimeAdapter) {
 	h.breakerAdapter = a
+}
+
+// SetExecutionAdapter wires the execution-to-runtime adapter.
+func (h *Handler) SetExecutionAdapter(a *runtimeadapter.ExecutionToRuntimeAdapter) {
+	h.executionAdapter = a
 }
 
 // SetRuntimeManager exposes the runtime manager for dashboard access.
@@ -154,6 +187,8 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/api/metrics", h.HandleMetrics)
 	app.Get("/api/circuit-breaker", h.HandleCircuitBreakerStatus)
 	app.Get("/api/routing", h.HandleRouting)
+	app.Get("/api/routing/traces", h.HandleRoutingTraces)
+	app.Get("/api/routing/traces/:id", h.HandleRoutingTraceByID)
 	app.Get("/api/cache", h.HandleCacheStatus)
 	app.Get("/api/streams", h.HandleStreamStatus)
 	app.Get("/api/runtime", h.HandleRuntime)
@@ -206,27 +241,203 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		})
 	}
 
-	// Resolve route (context-aware and task-aware for auto mode)
-	resolved, fallbacks, err := h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
-	if err != nil {
-		h.metrics.IncrementErrors()
-		h.logger.Warn("route resolution failed",
-			zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
-			zap.String("model", req.Model),
-			zap.Error(err),
-		)
-		return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
-			Error: apitypes.ErrorDetail{
-				Message: fmt.Sprintf("Model '%s' not found", req.Model),
-				Type:    "invalid_request_error",
-				Param:   "model",
-				Code:    "model_not_found",
-			},
-		})
+	// Validate explicit mode if provided.
+	if req.Mode != "" {
+		if _, err := router.ParseMode(req.Mode); err != nil {
+			h.metrics.IncrementErrors()
+			return c.Status(fiber.StatusBadRequest).JSON(apitypes.ErrorResponse{
+				Error: apitypes.ErrorDetail{
+					Message: err.Error(),
+					Type:    "invalid_request_error",
+					Param:   "mode",
+					Code:    "invalid_request",
+				},
+			})
+		}
 	}
 
-	// Log routing decision if intelligent routing is enabled.
-	if h.routingEngine != nil {
+	// Handle virtual models (frontier, coding, reasoning, agentic, planning,
+	// long_horizon, fast, light, vision, auto) with the catalog-backed virtual resolver.
+	// These are first-class virtual models: they work regardless of routing.enabled
+	// (the resolver is injected independently of the routing engine / DecisionPipeline).
+	var resolved *router.ResolvedRoute
+	var fallbacks []router.ResolvedRoute
+	var err error
+
+	if router.IsVirtualModel(req.Model) && h.virtualResolver != nil {
+		vm, parseErr := router.ParseVirtualModel(req.Model)
+		if parseErr != nil {
+			h.metrics.IncrementErrors()
+			return c.Status(fiber.StatusBadRequest).JSON(apitypes.ErrorResponse{
+				Error: apitypes.ErrorDetail{
+					Message: parseErr.Error(),
+					Type:    "invalid_request_error",
+					Param:   "model",
+					Code:    "invalid_virtual_model",
+				},
+			})
+		}
+		selection, selErr := h.virtualResolver.Resolve(c.Context(), vm, &req)
+		if selErr != nil {
+			h.metrics.IncrementErrors()
+			h.logger.Warn("virtual model selection failed",
+				zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
+				zap.String("virtual_model", req.Model),
+				zap.Error(selErr),
+			)
+			return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
+				Error: apitypes.ErrorDetail{
+					Message: selErr.Error(),
+					Type:    "invalid_request_error",
+					Param:   "model",
+					Code:    "virtual_selection_failed",
+				},
+			})
+		}
+		if selection == nil || selection.Candidate == nil {
+			h.metrics.IncrementErrors()
+			return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
+				Error: apitypes.ErrorDetail{
+					Message: fmt.Sprintf("no eligible model for virtual model '%s'", req.Model),
+					Type:    "invalid_request_error",
+					Param:   "model",
+					Code:    "no_model_available",
+				},
+			})
+		}
+		p, found := h.registry.Get(selection.Candidate.ProviderName)
+		if !found {
+			h.metrics.IncrementErrors()
+			return c.Status(fiber.StatusInternalServerError).JSON(apitypes.ErrorResponse{
+				Error: apitypes.ErrorDetail{
+					Message: fmt.Sprintf("selected provider '%s' not registered", selection.Candidate.ProviderName),
+					Type:    "server_error",
+					Code:    "provider_not_found",
+				},
+			})
+		}
+		resolved = &router.ResolvedRoute{
+			Provider:        p,
+			ProviderName:    selection.Candidate.ProviderName,
+			ProviderModelID: selection.Candidate.ProviderModelID,
+			ModelID:         req.Model, // Preserve virtual model ID for traceability
+			Breaker:         h.router.BreakerPool().Get(selection.Candidate.ProviderName),
+		}
+		fallbacks = nil
+	} else {
+		// Legacy Engine normalization: model/alias/route resolution and candidate construction.
+		resolved, fallbacks, err = h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
+		if err != nil {
+			// Legacy engine could not resolve. If a decision pipeline or routing engine
+			// is available, fall back to auto-selection across all registered providers.
+			if h.decisionPipeline != nil || h.routingEngine != nil {
+				var selection *router.SelectionResult
+				if h.decisionPipeline != nil {
+					cfgSnap := h.buildConfigSnapshot()
+					env := router.Environment{
+						CircuitBreakerEnabled: h.router.BreakerPool() != nil,
+					}
+					result, pplineErr := h.decisionPipeline.Execute(c.Context(), &req, env, cfgSnap, nil)
+					if pplineErr == nil && result != nil && result.Candidate != nil {
+						selection = result
+					}
+				}
+				if selection == nil && h.routingEngine != nil {
+					sel, selErr := h.routingEngine.SelectBestProvider(c.Context(), req.Model, &req)
+					if selErr == nil && sel != nil {
+						selection = sel
+					}
+				}
+				if selection != nil && selection.Candidate != nil {
+					p, found := h.registry.Get(selection.Candidate.ProviderName)
+					if found {
+						resolved = &router.ResolvedRoute{
+							Provider:        p,
+							ProviderName:    selection.Candidate.ProviderName,
+							ProviderModelID: selection.Candidate.ProviderModelID,
+							ModelID:         req.Model,
+							Breaker:         h.router.BreakerPool().Get(selection.Candidate.ProviderName),
+						}
+						fallbacks = nil
+					}
+				}
+			}
+			if resolved == nil {
+				h.metrics.IncrementErrors()
+				h.logger.Warn("route resolution failed",
+					zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
+					zap.String("model", req.Model),
+					zap.Error(err),
+				)
+				return c.Status(fiber.StatusNotFound).JSON(apitypes.ErrorResponse{
+					Error: apitypes.ErrorDetail{
+						Message: fmt.Sprintf("Model '%s' not found", req.Model),
+						Type:    "invalid_request_error",
+						Param:   "model",
+						Code:    "model_not_found",
+					},
+				})
+			}
+		}
+	}
+
+	// Build candidate set from primary route + configured fallbacks.
+	candidates := make([]router.ResolvedRoute, 0, 1+len(fallbacks))
+	candidates = append(candidates, *resolved)
+	candidates = append(candidates, fallbacks...)
+
+	// DecisionPipeline: intent → capability → candidate → RouterEngine selection.
+	if h.decisionPipeline != nil {
+		cfgSnap := h.buildConfigSnapshot()
+		env := router.Environment{
+			CircuitBreakerEnabled: h.router.BreakerPool() != nil,
+		}
+		result, pplineErr := h.decisionPipeline.Execute(c.Context(), &req, env, cfgSnap, candidates)
+		if pplineErr != nil {
+			h.logger.Warn("decision pipeline failed, using legacy resolution",
+				zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
+				zap.String("model", req.Model),
+				zap.Error(pplineErr),
+			)
+		} else if result != nil && result.Candidate != nil {
+			// Map the pipeline selection back to a ResolvedRoute in the candidate set.
+			for i := range candidates {
+				if candidates[i].ProviderName == result.Candidate.ProviderName {
+					resolved = &candidates[i]
+					break
+				}
+			}
+			// Rebuild fallbacks: keep remaining candidates in their original order.
+			newFallbacks := make([]router.ResolvedRoute, 0, len(fallbacks))
+			for _, fb := range fallbacks {
+				if fb.ProviderName != resolved.ProviderName {
+					newFallbacks = append(newFallbacks, fb)
+				}
+			}
+			fallbacks = newFallbacks
+		}
+	} else if h.routingEngine != nil {
+		// Legacy path: RouterEngine selects from pre-resolved candidates.
+		selection, selErr := h.routingEngine.SelectFromRoutes(c.Context(), candidates, &req)
+		if selErr == nil && selection != nil && selection.Candidate != nil {
+			for i := range candidates {
+				if candidates[i].ProviderName == selection.Candidate.ProviderName {
+					resolved = &candidates[i]
+					break
+				}
+			}
+			newFallbacks := make([]router.ResolvedRoute, 0, len(fallbacks))
+			for _, fb := range fallbacks {
+				if fb.ProviderName != resolved.ProviderName {
+					newFallbacks = append(newFallbacks, fb)
+				}
+			}
+			fallbacks = newFallbacks
+		}
+	}
+
+	// Log routing decision if intelligent routing is active.
+	if h.decisionPipeline != nil || h.routingEngine != nil {
 		h.logRoutingDecision(req.Model, resolved.ProviderName)
 	}
 
@@ -245,6 +456,11 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 
 	// Handle non-streaming
 	return h.handleNonStreaming(c, &req, resolved, fallbacks)
+}
+
+// buildConfigSnapshot exports the legacy engine's routing config for the pipeline.
+func (h *Handler) buildConfigSnapshot() router.ConfigSnapshot {
+	return h.router.BuildConfigSnapshot()
 }
 
 // handleNonStreaming handles a non-streaming chat completion request
@@ -324,6 +540,7 @@ miss:
 		h.metrics.RecordProviderLatency(latency)
 		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
 		h.recordModelResult(resolved, nil, latency)
+		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, 0)
 		h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 		h.logRequestComplete(correlationID, requestID, resolved, latency, fiber.StatusOK, false, nil)
 		if h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
@@ -350,6 +567,7 @@ miss:
 	}
 	h.metrics.IncrementErrors()
 	h.recordModelResult(resolved, err, latency)
+	h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, false, 0)
 	h.logger.Warn("request:provider_error",
 		zap.String("correlation_id", correlationID),
 		zap.String("request_id", requestID),
@@ -374,6 +592,7 @@ miss:
 			h.metrics.RecordProviderLatency(fbLatency)
 			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
 			h.recordModelResult(&fb, nil, fbLatency)
+			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+1)
 			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, fbResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 			h.logRequestComplete(correlationID, requestID, &fb, fbLatency, fiber.StatusOK, false, nil)
 			return c.JSON(fbResp)
@@ -383,6 +602,7 @@ miss:
 		}
 		h.metrics.IncrementRetries()
 		h.recordModelResult(&fb, fbErr, fbLatency)
+		h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, false, i+1)
 		h.logger.Warn("request:fallback_error",
 			zap.String("correlation_id", correlationID),
 			zap.String("request_id", requestID),
@@ -463,6 +683,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		h.metrics.RecordProviderLatency(latency)
 		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
 		h.recordModelResult(resolved, nil, latency)
+		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, 0)
 		return h.streamResponse(c, ch, &streamSession{
 			requestID:       requestID,
 			correlationID:   correlationID,
@@ -478,6 +699,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	}
 	h.metrics.IncrementErrors()
 	h.recordModelResult(resolved, err, latency)
+	h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, false, 0)
 	h.logger.Warn("request:stream_provider_error",
 		zap.String("correlation_id", correlationID),
 		zap.String("request_id", requestID),
@@ -502,6 +724,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			h.metrics.RecordProviderLatency(fbLatency)
 			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
 			h.recordModelResult(&fb, nil, fbLatency)
+			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+1)
 			return h.streamResponse(c, fbCh, &streamSession{
 				requestID:       requestID,
 				correlationID:   correlationID,
@@ -517,6 +740,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		}
 		h.metrics.IncrementRetries()
 		h.recordModelResult(&fb, fbErr, fbLatency)
+		h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, false, i+1)
 		h.logger.Warn("request:stream_fallback_error",
 			zap.String("correlation_id", correlationID),
 			zap.String("request_id", requestID),
@@ -839,30 +1063,16 @@ func (h *Handler) logStreamWriteError(s *streamSession, err error, chunkCount, b
 
 // HandleListModels handles GET /v1/models
 func (h *Handler) HandleListModels(c *fiber.Ctx) error {
-	entries, err := h.catalog.List(c.Context())
-	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(apitypes.ErrorResponse{
-			Error: apitypes.ErrorDetail{
-				Message: "Failed to list models",
-				Type:    "server_error",
-				Code:    "catalog_error",
-			},
-		})
-	}
+	modelList := make([]apitypes.ModelInfo, 0, len(router.AllVirtualModels()))
 
-	labels := h.catalog.DisplayLabels(entries)
-	modelList := make([]apitypes.ModelInfo, 0, len(entries))
-	for _, e := range entries {
-		ownedBy := e.OwnedBy
-		if ownedBy == "" {
-			ownedBy = e.Provider
-		}
+	// Add all virtual models as the primary catalog entries.
+	for _, vm := range router.AllVirtualModels() {
 		modelList = append(modelList, apitypes.ModelInfo{
-			ID:      e.ModelID,
+			ID:      string(vm),
 			Object:  "model",
 			Created: h.startTime.Unix(),
-			OwnedBy: ownedBy,
-			Name:    labels[e.ModelID],
+			OwnedBy: "conductor",
+			Name:    capitalize(string(vm)),
 		})
 	}
 
@@ -911,7 +1121,21 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 	}
 
 	labels := h.catalog.DisplayLabels(entries)
-	rows := make([]modelRow, 0, len(entries))
+	rows := make([]modelRow, 0, len(entries)+len(router.AllVirtualModels()))
+
+	// Add all virtual models as the primary catalog entries.
+	for _, vm := range router.AllVirtualModels() {
+		rows = append(rows, modelRow{
+			ModelID:         string(vm),
+			Name:            capitalize(string(vm)),
+			Provider:        "conductor",
+			ProviderModelID: "",
+			OwnedBy:         "conductor",
+			Reachable:       nil,
+			State:           "virtual",
+		})
+	}
+
 	for _, e := range entries {
 		row := modelRow{
 			ModelID:         e.ModelID,
@@ -1047,6 +1271,18 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 				Message: "Invalid request body",
 				Type:    "invalid_request_error",
 				Code:    "invalid_request",
+			},
+		})
+	}
+
+	// model="auto" is not supported for embeddings - embeddings require a concrete model.
+	if req.Model == "auto" {
+		return c.Status(fiber.StatusBadRequest).JSON(apitypes.ErrorResponse{
+			Error: apitypes.ErrorDetail{
+				Message: "model 'auto' is not supported for embeddings; specify a concrete embedding model",
+				Type:    "invalid_request_error",
+				Param:   "model",
+				Code:    "model_not_supported",
 			},
 		})
 	}
@@ -1404,6 +1640,16 @@ func (h *Handler) recordModelResult(resolved *router.ResolvedRoute, err error, l
 	h.modelProber.RecordLiveResult(catalogID, resolved.ProviderName, resolved.ProviderModelID, err, latencyMs)
 }
 
+// recordExecutionTelemetry records execution outcome on the runtime adapter.
+// retryCount is the number of fallback retries consumed (0 for primary).
+// modelID is the provider model ID; empty string records at provider level only.
+func (h *Handler) recordExecutionTelemetry(providerName string, modelID string, success bool, retryCount int) {
+	if h.executionAdapter == nil {
+		return
+	}
+	h.executionAdapter.OnExecutionFinished(providerName, modelID, success, retryCount)
+}
+
 // logRequestComplete logs the completion of a request with timing and outcome.
 func (h *Handler) logRequestComplete(correlationID, requestID string, resolved *router.ResolvedRoute, latencyMs int64, statusCode int, isStream bool, err error) {
 	fields := []zap.Field{
@@ -1494,6 +1740,23 @@ func (h *Handler) HandleRouting(c *fiber.Ctx) error {
 }
 
 // buildCacheKey constructs a cache key from the request and resolved route.
+//
+// Cache identity contract (P3.12):
+//   - Model dimension: the RESOLVED provider model ID (upstream slug), not the
+//     request alias — two aliases resolving to the same provider/model share a
+//     key, while different resolved models never collide.
+//   - Provider dimension: the resolved provider name participates in the key.
+//     Two requests that can legitimately execute against different providers
+//     (explicit routes, provider prefixes, aliases resolving to different
+//     providers, fallback selection changes, auto mode) must never share a
+//     cache entry, because provider-specific responses can differ.
+//   - Mode dimension: the CANONICAL mode (NormalizeMode) participates in the
+//     key so equivalent spellings ("coding" vs "Coding") share a key while
+//     different routing identities do not. Omitted mode (empty) stays distinct
+//     from explicit "auto" — they are distinct inputs at the API boundary.
+//   - Request dimensions: routing-relevant parameters (tools, reasoning,
+//     response_format, multimodal content, sampling params) participate via
+//     the params map.
 func (h *Handler) buildCacheKey(req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute) string {
 	if h.cacheEngine == nil {
 		return ""
@@ -1521,6 +1784,10 @@ func (h *Handler) buildCacheKey(req *apitypes.ChatCompletionRequest, resolved *r
 		"include_reasoning":    req.IncludeReasoning,
 		"thinking_budget":      req.ThinkingBudget,
 		"chat_template_kwargs": req.ChatTemplateKwargs,
+		"mode":                 router.NormalizeMode(req.Mode),
+	}
+	if resolved != nil {
+		params["provider"] = resolved.ProviderName
 	}
 	if len(req.Tools) > 0 {
 		params["tools"] = req.Tools
@@ -1681,4 +1948,13 @@ func (h *Handler) HandleRuntime(c *fiber.Ctx) error {
 		},
 		"providers": providers,
 	})
+}
+
+// capitalize returns s with the first rune upper-cased.
+func capitalize(s string) string {
+	runes := []rune(s)
+	if len(runes) == 0 {
+		return s
+	}
+	return string(append([]rune{unicode.ToUpper(runes[0])}, runes[1:]...))
 }

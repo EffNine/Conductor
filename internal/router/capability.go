@@ -13,6 +13,11 @@ type Capabilities struct {
 	Reasoning   bool
 	ToolCalling bool
 	Structured  bool
+	LongContext bool
+	Embeddings  bool
+	Images      bool
+	Audio       bool
+	Functions   bool
 	MaxContext  int // 0 means unknown
 }
 

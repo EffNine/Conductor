@@ -97,16 +97,16 @@ func main() {
 	)
 
 	// Initialize database
-	db, err := database.Connect(&cfg.Database)
-	if err != nil {
-		logger.Fatal("Failed to connect to database", zap.Error(err))
+	db, dbErr := database.Connect(&cfg.Database)
+	if dbErr != nil {
+		logger.Fatal("Failed to connect to database", zap.Error(dbErr))
 	}
 
-	if err := db.Migrate(); err != nil {
-		logger.Fatal("Failed to run database migrations", zap.Error(err))
+	if migrateErr := db.Migrate(); migrateErr != nil {
+		logger.Fatal("Failed to run database migrations", zap.Error(migrateErr))
 	}
-	if err := task.MigrateTasks(db.DB); err != nil {
-		logger.Fatal("Failed to run task migrations", zap.Error(err))
+	if migrateErr := task.MigrateTasks(db.DB); migrateErr != nil {
+		logger.Fatal("Failed to run task migrations", zap.Error(migrateErr))
 	}
 	logger.Info("Database connected and migrated")
 
@@ -134,7 +134,10 @@ func main() {
 	}
 
 	// Initialize router
-	routerEngine := router.NewEngine(cfg, registry)
+	routerEngine, err := router.NewEngine(cfg, registry)
+	if err != nil {
+		logger.Fatal("Failed to initialize router", zap.Error(err))
+	}
 
 	// Initialize runtime store and manager
 	runtimeStore := runtime.NewRuntimeStore(eventBus)
@@ -217,6 +220,33 @@ func main() {
 		logger.Info("auto mode enabled for provider", zap.String("provider", "nvidia_nim"))
 	}
 
+	// Catalog-backed auto model selection (model="auto") is a first-class
+	// virtual model. The resolver is constructed whenever the catalog exists —
+	// it does NOT depend on routing.enabled, the DecisionPipeline, or NIM
+	// automode. The routing engine reuses the same instance when enabled so
+	// weights, capability overrides, and scoring state stay consistent.
+	autoResolver := router.NewAutoResolver(router.AutoResolverConfig{
+		Registry:    registry,
+		Catalog:     modelCatalog,
+		Runtime:     runtimeManager,
+		BreakerPool: routerEngine.BreakerPool(),
+		Weights:     cfg.Routing.Weights,
+		Logger:      logger,
+	})
+
+	// Catalog-backed virtual model selection for all capability-based virtual
+	// models (frontier, coding, reasoning, agentic, planning, long_horizon,
+	// fast, light, vision, auto). This is a first-class feature independent
+	// of routing.enabled and the DecisionPipeline.
+	virtualResolver := router.NewVirtualResolver(router.VirtualModelResolverConfig{
+		Registry:    registry,
+		Catalog:     modelCatalog,
+		Runtime:     runtimeManager,
+		BreakerPool: routerEngine.BreakerPool(),
+		Weights:     cfg.Routing.Weights,
+		Logger:      logger,
+	})
+
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
 		ReadTimeout:  cfg.Server.ReadTimeout,
@@ -226,15 +256,18 @@ func main() {
 
 	// Initialize intelligent routing engine (optional, enabled by config)
 	var routingEngine *router.RouterEngine
+	var decisionPipeline *router.DecisionPipeline
+	var traceStore router.TraceStore
 	if cfg.Routing.Enabled {
 		routingEngine = router.NewRouterEngine(router.RouterEngineConfig{
 			Registry:     registry,
-			HealthStore:  modelStatus,
 			MetricsStore: router.NewMetricsStore(),
 			BreakerPool:  routerEngine.BreakerPool(),
 			Runtime:      runtimeManager,
 			Logger:       logger,
 			Weights:      cfg.Routing.Weights,
+			Catalog:      modelCatalog,
+			AutoResolver: autoResolver,
 		})
 		logger.Info("intelligent routing engine enabled",
 			zap.Float64("health_weight", cfg.Routing.Weights.Health),
@@ -242,6 +275,27 @@ func main() {
 			zap.Float64("cost_weight", cfg.Routing.Weights.Cost),
 			zap.Float64("capability_weight", cfg.Routing.Weights.Capability),
 		)
+
+		// DecisionPipeline wraps RouterEngine as the final provider-selection authority.
+		decisionPipeline = router.NewDecisionPipeline(router.PipelineConfig{
+			RoutingEngine:  routingEngine,
+			RuntimeManager: runtimeManager,
+			EventBus:       eventBus,
+			BreakerPool:    routerEngine.BreakerPool(),
+			Logger:         logger,
+			Weights:        cfg.Routing.Weights,
+		})
+
+		// Persist completed routing decisions asynchronously. DecisionPipeline
+		// publishes DecisionFinished with the final DecisionTrace; the
+		// consumer saves it to SQLite off the request path. Persistence
+		// failures never affect routing. The same store instance also backs
+		// the read-only trace query API (GET /api/routing/traces).
+		traceStore = database.NewSQLiteTraceStore(db)
+		tracePersistence := database.NewTracePersistence(eventBus, traceStore, logger)
+		tracePersistence.Start()
+		defer tracePersistence.Stop()
+		logger.Info("routing trace persistence enabled")
 	}
 
 	// Register middleware
@@ -251,8 +305,13 @@ func main() {
 	h := handler.New(routerEngine, registry, usageTracker, logger, modelCatalog, db)
 	h.SetConfig(cfg)
 	h.SetModelStatus(modelStatus, modelProber)
+	h.SetAutoModelResolver(autoResolver)
+	h.SetVirtualResolver(virtualResolver)
 	if routingEngine != nil {
 		h.SetRoutingEngine(routingEngine)
+	}
+	if decisionPipeline != nil {
+		h.SetDecisionPipeline(decisionPipeline)
 	}
 	// Wire usage → runtime adapter so live traffic updates runtime stats.
 	usageAdapter := adapter.NewUsageToRuntimeAdapter(runtimeStore)
@@ -268,6 +327,9 @@ func main() {
 	}
 	// Expose runtime manager for the /api/runtime endpoint.
 	h.SetRuntimeManager(runtimeManager)
+	// Expose the trace store for the read-only trace query API. Nil when
+	// routing is disabled: the endpoints then answer 503.
+	h.SetTraceStore(traceStore)
 	cacheEngine := cache.NewEngine(cfg.Cache, h.Metrics(), logger)
 	h.SetCacheEngine(cacheEngine)
 	h.SetStreamIdleTimeout(cfg.Stream.IdleTimeout)

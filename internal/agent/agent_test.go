@@ -101,7 +101,10 @@ func newTestDB(t *testing.T) *database.Database {
 func newTestAgent(t *testing.T, db *database.Database, reg *provider.Registry, toolReg *toolregistry.Registry) *agent.AgentImpl {
 	t.Helper()
 	store := task.NewStoreAdapter(task.NewSQLiteStore(db))
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cfg := agent.Config{MaxSteps: 10, MaxOutputBytes: 65536, MaxWriteBytes: 1048576}
 	return agent.New(cfg, store, eng, toolReg, ut, zap.NewNop())

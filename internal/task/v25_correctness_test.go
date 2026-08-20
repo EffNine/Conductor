@@ -136,7 +136,10 @@ func newTestDB4(t *testing.T) *database.Database {
 func newTestExecutorFull(t *testing.T, db *database.Database, reg *provider.Registry, a agent.Agent, re *router.RouterEngine) *task.TaskExecutor {
 	t.Helper()
 	store := task.NewSQLiteStore(db)
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cat := catalog.New(reg, nil)
 	exec := task.NewTaskExecutor(store, eng, a, cat, ut, zap.NewNop())
@@ -627,7 +630,10 @@ func TestV25_BackwardCompatibility_NoOrchestration(t *testing.T) {
 
 	// No orchestration wired.
 	store := task.NewSQLiteStore(db)
-	eng := router.NewEngine(&config.Config{}, reg)
+	eng, err := router.NewEngine(&config.Config{}, reg)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
 	ut := usage.NewTracker(db, usage.NewEstimator(reg, nil), zap.NewNop())
 	cat := catalog.New(reg, nil)
 	exec := task.NewTaskExecutor(store, eng, fake, cat, ut, zap.NewNop())

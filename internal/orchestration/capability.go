@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/EffNine/conductor/internal/policy"
+	"github.com/EffNine/conductor/internal/router"
 )
 
 // CapabilityRequirement describes what the task execution needs.
@@ -24,7 +25,7 @@ func ResolveCapabilities(ctx context.Context, input string, intent *Intent, tool
 	req := &CapabilityRequirement{}
 
 	// Detect filesystem needs from tool availability and intent.
-	if intent != nil && (intent.TaskType == "coding" || intent.TaskType == "elite") {
+	if intent != nil && (intent.TaskType == string(router.ModeCoding) || intent.TaskType == string(router.ModeElite)) {
 		req.NeedsFileSystem = true
 	}
 	for _, name := range toolNames {
@@ -40,9 +41,9 @@ func ResolveCapabilities(ctx context.Context, input string, intent *Intent, tool
 
 	// Infer from intent type.
 	switch intent.TaskType {
-	case "reasoning", "elite":
+	case string(router.ModeReasoning), string(router.ModeElite):
 		req.NeedsReasoning = true
-	case "vision":
+	case string(router.ModeVision):
 		req.NeedsVision = true
 	}
 

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"strings"
 	"sync"
 	"time"
 )
@@ -11,6 +12,13 @@ type Registry struct {
 	providers     map[string]Provider
 	metadata      map[string]Metadata
 	registerTimes map[string]time.Time
+	modelCaps     map[string]modelCapabilities // keyed by "provider/modelID"
+}
+
+// modelCapabilities holds model-level overrides for routing.
+type modelCapabilities struct {
+	Caps             Capabilities
+	MaxContextLength int
 }
 
 // NewRegistry creates a new provider registry
@@ -19,6 +27,7 @@ func NewRegistry() *Registry {
 		providers:     make(map[string]Provider),
 		metadata:      make(map[string]Metadata),
 		registerTimes: make(map[string]time.Time),
+		modelCaps:     make(map[string]modelCapabilities),
 	}
 }
 
@@ -53,6 +62,12 @@ func (r *Registry) Unregister(name string) bool {
 	delete(r.providers, name)
 	delete(r.metadata, name)
 	delete(r.registerTimes, name)
+	// Also remove all model-level capabilities for this provider.
+	for key := range r.modelCaps {
+		if strings.HasPrefix(key, name+"/") {
+			delete(r.modelCaps, key)
+		}
+	}
 	return true
 }
 
@@ -101,6 +116,7 @@ func (r *Registry) Clear() {
 	r.providers = make(map[string]Provider)
 	r.metadata = make(map[string]Metadata)
 	r.registerTimes = make(map[string]time.Time)
+	r.modelCaps = make(map[string]modelCapabilities)
 }
 
 // Names returns the names of all registered providers
@@ -192,4 +208,24 @@ func (r *Registry) ForEach(fn func(name string, p Provider, meta Metadata)) {
 		meta := r.metadata[name]
 		fn(name, p, meta)
 	}
+}
+
+// SetModelCapabilities registers explicit model-level capability overrides.
+// Keyed by "provider/modelID". These take priority over provider defaults.
+func (r *Registry) SetModelCapabilities(providerName, modelID string, caps Capabilities, maxContext int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.modelCaps[providerName+"/"+modelID] = modelCapabilities{
+		Caps:             caps,
+		MaxContextLength: maxContext,
+	}
+}
+
+// GetModelCapabilities returns model-specific capabilities if explicitly registered.
+// Returns zero modelCapabilities and false when no model-level override exists.
+func (r *Registry) GetModelCapabilities(providerName, modelID string) (modelCapabilities, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	caps, ok := r.modelCaps[providerName+"/"+modelID]
+	return caps, ok
 }

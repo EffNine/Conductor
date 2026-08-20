@@ -42,6 +42,7 @@ type IntentResolver interface {
 }
 
 // CapabilityRequirement describes what a request needs from a provider.
+// Extended with future-ready fields that do not affect current routing behavior.
 type CapabilityRequirement struct {
 	NeedsStreaming   bool
 	NeedsVision      bool
@@ -51,6 +52,10 @@ type CapabilityRequirement struct {
 	MaxTokens        int
 	MinLatencyMs     int64
 	CostCeiling      float64
+	// Future fields — not yet consumed by routing.
+	NeedsPlanning    bool
+	NeedsAutonomy    bool
+	MinContextLength int
 }
 
 // CapabilityResolver determines what capabilities a request requires.

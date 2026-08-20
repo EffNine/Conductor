@@ -41,7 +41,7 @@ Full guide → [docs/quickstart.md](docs/quickstart.md)
 | **Model Reachability** | Background probes hide unreachable models; status exposed at `/api/models/status` |
 | **Explicit Routing + Aliases** | Map bare IDs to providers and upstream slugs. Provider-prefixed IDs route without config |
 | **Fallback Chains** | Automatic failover when a provider fails |
-| **Auto Model Selection** | Send `"model": "auto"` with NVIDIA NIM enabled — gateway picks the best model by health, cost, and latency |
+| **Auto Model Selection** | Send `"model": "auto"` — gateway picks the best model by health, cost, latency, and capability match |
 | **Task Orchestration (V2.5)** | `POST /api/tasks` creates persistent tasks with intent classification, plan generation, agent loops, and verification |
 | **Multi-Step Agents** | Bounded loops with tool calls (fs, shell, git), checkpoint/resume, retry/backoff |
 | **Usage & Cost Tracking** | Per-request tokens, latency, and USD cost aggregated in SQLite |
@@ -115,6 +115,7 @@ See [docs/deployment.md](docs/deployment.md) for Docker, Render, Railway, and ot
 
 ## Security
 
+- **All endpoints require the gateway key** (`Authorization: Bearer <key>`) except `GET /health`, which stays open for load balancer / Fly.io liveness checks. Scheme is case-insensitive; bare keys or other schemes (`Basic`, …) are rejected. The key is never logged, never echoed in responses, and is always redacted (`[REDACTED]`) in `GET /api/config`.
 - **CORS defaults to `*`** — restrict origins in config for production
 - **No built-in rate limiting** — place behind a reverse proxy (Caddy, Nginx) or CDN
 - **SQLite database** stored at `./data/conductor.db` — restrict directory permissions

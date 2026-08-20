@@ -70,6 +70,11 @@ const (
 	TaskAggregationStarted    EventType = "task.aggregation.started"
 	TaskAggregationCompleted  EventType = "task.aggregation.completed"
 	TaskCoordinationCompleted EventType = "task.coordination.completed"
+
+	// Execution telemetry events (P3.7)
+	ExecutionStarted  EventType = "execution.started"
+	ExecutionFinished EventType = "execution.finished"
+	ToolCallCompleted EventType = "tool_call.completed"
 )
 
 // Event represents a single message in the bus.

@@ -38,6 +38,11 @@ type ChatCompletionRequest struct {
 	// ChatTemplateKwargs are provider-specific chat-template options (NVIDIA NIM
 	// DeepSeek V4, vLLM, etc.). Forwarded as a top-level JSON object when set.
 	ChatTemplateKwargs map[string]any `json:"chat_template_kwargs,omitempty"`
+
+	// Mode is an explicit routing mode override. When set, it takes precedence
+	// over classifier-derived intent. Supported values: auto, coding, planning,
+	// agentic, reasoning, long_horizon, fast, vision.
+	Mode string `json:"mode,omitempty"`
 }
 
 // StreamOptions configures streaming behavior (OpenAI-compatible).
