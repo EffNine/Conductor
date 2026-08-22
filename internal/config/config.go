@@ -240,6 +240,9 @@ type ExecutionConfig struct {
 type AttemptsConfig struct {
 	// Enabled persists one row per candidate attempt asynchronously.
 	Enabled bool `mapstructure:"enabled"`
+	// Retention bounds storage: rows older than this are pruned. 0
+	// disables pruning. Default 168h.
+	Retention time.Duration `mapstructure:"retention"`
 }
 
 // ExecutionBudgetConfig bounds a candidate chain. Disabled budgets restore
@@ -605,6 +608,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("execution.budget.max_total_attempts", 8)
 	v.SetDefault("execution.budget.max_estimated_tokens", 200000)
 	v.SetDefault("execution.attempts.enabled", true)
+	v.SetDefault("execution.attempts.retention", 168*time.Hour)
 
 	// Retry defaults (P4.2: cause-aware same-provider retries; conservative
 	// single retry with bounded backoff, honoring Retry-After hints).

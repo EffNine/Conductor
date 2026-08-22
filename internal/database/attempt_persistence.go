@@ -19,6 +19,12 @@ const attemptSaveTimeout = 5 * time.Second
 // dropped with a warning (matching the trace persistence semantics).
 const maxConcurrentAttemptSaves = 16
 
+// attemptPruneBatch is the per-statement row cap for retention deletes.
+const attemptPruneBatch = 1000
+
+// attemptPruneInterval is how often periodic retention sweeps run.
+const attemptPruneInterval = time.Hour
+
 // AttemptPersistence is the event-bus consumer that persists chat execution
 // attempts. It subscribes to ExecutionAttemptCompleted (whose payload is an
 // AttemptRecord published by the handler sink) and saves it to SQLite
@@ -64,6 +70,43 @@ func (ap *AttemptPersistence) Stop() {
 	}
 	ap.mu.Unlock()
 	ap.wg.Wait()
+}
+
+// RunRetention prunes attempt rows older than the retention window: one
+// sweep at startup, then periodic sweeps until ctx is done. Cleanup
+// failures are logged and never fatal — retention is best-effort hygiene,
+// not correctness.
+func (ap *AttemptPersistence) RunRetention(ctx context.Context, retention time.Duration) {
+	if retention <= 0 {
+		return // pruning disabled by configuration
+	}
+	sweep := func() {
+		cutoff := time.Now().UTC().Add(-retention)
+		pctx, cancel := context.WithTimeout(context.Background(), attemptSaveTimeout)
+		defer cancel()
+		rows, err := ap.store.PruneBefore(pctx, cutoff, attemptPruneBatch)
+		if err != nil {
+			ap.logger.Warn("attempt retention prune failed",
+				zap.Duration("retention", retention),
+				zap.Error(err))
+			return
+		}
+		if rows > 0 {
+			ap.logger.Info("attempt retention pruned", zap.Int64("rows", rows))
+		}
+	}
+
+	sweep() // startup cleanup: bound a backlog before serving traffic
+	ticker := time.NewTicker(attemptPruneInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			sweep()
+		}
+	}
 }
 
 // handle receives an ExecutionAttemptCompleted event and schedules an async

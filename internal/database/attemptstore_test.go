@@ -105,3 +105,94 @@ func TestAttemptStoreSaveAndList(t *testing.T) {
 		t.Fatalf("field mapping drifted: %+v", rows[0])
 	}
 }
+
+// TestPruneBeforeRemovesOnlyOldRows: retention removes expired attempts and
+// preserves recent ones.
+func TestPruneBeforeRemovesOnlyOldRows(t *testing.T) {
+	db := newFileDB(t)
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	store := NewAttemptStore(db)
+
+	now := time.Now().UTC()
+	seed := func(reqID string, age time.Duration) {
+		row := &RequestAttempt{
+			CreatedAt: now.Add(-age),
+			RequestID: reqID,
+			Provider:  "p",
+			Outcome:   AttemptOutcomeSuccess,
+		}
+		if err := db.DB.Create(row).Error; err != nil {
+			t.Fatalf("seed %s: %v", reqID, err)
+		}
+	}
+	seed("old-1", 200*time.Hour)
+	seed("old-2", 300*time.Hour)
+	seed("recent-1", 24*time.Hour)
+	seed("recent-2", time.Hour)
+
+	removed, err := store.PruneBefore(context.Background(), now.Add(-168*time.Hour), 1000)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if removed != 2 {
+		t.Fatalf("removed = %d, want 2", removed)
+	}
+	rows, err := store.ListAttempts(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("remaining = %d, want the 2 recent rows", len(rows))
+	}
+	for _, r := range rows {
+		if r.RequestID == "old-1" || r.RequestID == "old-2" {
+			t.Fatalf("old row survived: %+v", r)
+		}
+	}
+
+	// Idempotent: a second sweep finds nothing.
+	again, err := store.PruneBefore(context.Background(), now.Add(-168*time.Hour), 1000)
+	if err != nil || again != 0 {
+		t.Fatalf("second prune = (%d, %v), want (0, nil)", again, err)
+	}
+}
+
+// TestPruneBeforeBatchesDeletes proves multi-batch pruning drains a backlog
+// larger than one batch.
+func TestPruneBeforeBatchesDeletes(t *testing.T) {
+	db := newFileDB(t)
+	if err := db.Migrate(); err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	store := NewAttemptStore(db)
+
+	now := time.Now().UTC()
+	for i := 0; i < 5; i++ {
+		row := &RequestAttempt{
+			CreatedAt: now.Add(-200 * time.Hour),
+			RequestID: "old-" + string(rune('a'+i)),
+			Outcome:   AttemptOutcomeFailed,
+		}
+		if err := db.DB.Create(row).Error; err != nil {
+			t.Fatalf("seed %d: %v", i, err)
+		}
+	}
+
+	// Batch size smaller than the backlog forces multiple delete rounds.
+	removed, err := store.PruneBefore(context.Background(), now.Add(-168*time.Hour), 2)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if removed != 5 {
+		t.Fatalf("removed = %d, want 5 across batches", removed)
+	}
+	var remaining int64
+	if err := db.DB.Model(&RequestAttempt{}).Count(&remaining).Error; err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if remaining != 0 {
+		t.Fatalf("rows remaining = %d, want 0", remaining)
+	}
+}

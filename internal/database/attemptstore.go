@@ -103,3 +103,29 @@ func (s *AttemptStore) ListAttempts(ctx context.Context, limit int) ([]RequestAt
 		Find(&rows).Error
 	return rows, err
 }
+
+// PruneBefore deletes attempt rows older than the cutoff in bounded
+// batches, returning the total number of rows removed. Batching keeps each
+// statement short so a large backlog cannot hold the SQLite writer for long.
+func (s *AttemptStore) PruneBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error) {
+	if batchSize <= 0 {
+		batchSize = 1000
+	}
+	var total int64
+	for {
+		res := s.db.DB.WithContext(ctx).Exec(
+			"DELETE FROM request_attempts WHERE id IN "+
+				"(SELECT id FROM request_attempts WHERE created_at < ? LIMIT ?)",
+			cutoff, batchSize)
+		if res.Error != nil {
+			return total, res.Error
+		}
+		if res.RowsAffected == 0 {
+			return total, nil
+		}
+		total += res.RowsAffected
+		if res.RowsAffected < int64(batchSize) {
+			return total, nil
+		}
+	}
+}

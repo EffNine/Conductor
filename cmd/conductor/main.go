@@ -354,7 +354,13 @@ func main() {
 				Payload: rec,
 			})
 		})
-		logger.Info("execution attempt persistence enabled")
+		// Retention (P4.4.4): bound storage growth. Failures are logged,
+		// never fatal; retention <= 0 disables pruning.
+		retentionCtx, stopRetention := context.WithCancel(context.Background())
+		defer stopRetention()
+		go attemptPersistence.RunRetention(retentionCtx, cfg.Execution.Attempts.Retention)
+		logger.Info("execution attempt persistence enabled",
+			zap.Duration("retention", cfg.Execution.Attempts.Retention))
 	}
 
 	cacheEngine := cache.NewEngine(cfg.Cache, h.Metrics(), logger)
