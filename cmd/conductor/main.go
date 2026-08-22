@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/auth"
@@ -101,6 +102,14 @@ func main() {
 	if dbErr != nil {
 		logger.Fatal("Failed to connect to database", zap.Error(dbErr))
 	}
+	// Ensure the SQLite handle is released on exit: closes WAL cleanly so
+	// the -wal/-shm files do not linger and the next start finds a
+	// consistent database.
+	defer func() {
+		if closeErr := db.Close(); closeErr != nil {
+			logger.Warn("database close failed during shutdown", zap.Error(closeErr))
+		}
+	}()
 
 	if migrateErr := db.Migrate(); migrateErr != nil {
 		logger.Fatal("Failed to run database migrations", zap.Error(migrateErr))
@@ -487,7 +496,15 @@ func main() {
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
 		logger.Info("Shutting down...")
-		_ = app.Shutdown()
+		// Bound the drain window: Fiber's Shutdown waits for in-flight
+		// requests indefinitely, and long-lived SSE/streaming responses
+		// would otherwise block process exit forever. 60s is generous
+		// enough for most completions; after that we force exit.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+			logger.Warn("graceful shutdown timed out or failed; forcing exit", zap.Error(err))
+		}
 	}()
 
 	// Start server
