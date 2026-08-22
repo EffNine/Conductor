@@ -339,6 +339,24 @@ func main() {
 	// Expose the trace store for the read-only trace query API. Nil when
 	// routing is disabled: the endpoints then answer 503.
 	h.SetTraceStore(traceStore)
+
+	// Persist chat execution attempts asynchronously (P4.4.3): the handler
+	// publishes AttemptRecord events; the consumer saves them to SQLite off
+	// the request path. Persistence failures never affect requests.
+	if cfg.Execution.Attempts.Enabled {
+		attemptStore := database.NewAttemptStore(db)
+		attemptPersistence := database.NewAttemptPersistence(eventBus, attemptStore, logger)
+		attemptPersistence.Start()
+		defer attemptPersistence.Stop()
+		h.SetAttemptEmitter(func(rec database.AttemptRecord) {
+			eventBus.Publish(context.Background(), eventbus.Event{
+				Type:    eventbus.ExecutionAttemptCompleted,
+				Payload: rec,
+			})
+		})
+		logger.Info("execution attempt persistence enabled")
+	}
+
 	cacheEngine := cache.NewEngine(cfg.Cache, h.Metrics(), logger)
 	h.SetCacheEngine(cacheEngine)
 	h.SetStreamIdleTimeout(cfg.Stream.IdleTimeout)

@@ -163,6 +163,7 @@ func (d *Database) Migrate() error {
 		&ModelStatusRecord{},
 		&ModelProbeMeta{},
 		&RoutingTrace{},
+		&RequestAttempt{},
 	)
 }
 

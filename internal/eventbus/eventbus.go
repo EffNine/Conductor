@@ -51,6 +51,9 @@ const (
 	DecisionTraceCreated   EventType = "decision.trace.created"
 	DecisionTraceCompleted EventType = "decision.trace.completed"
 
+	// Execution attempt events (P4.4.3)
+	ExecutionAttemptCompleted EventType = "execution.attempt.completed"
+
 	// Health events
 	HealthProbeStarted   EventType = "health.probe.started"
 	HealthProbeCompleted EventType = "health.probe.completed"

@@ -54,6 +54,7 @@ type Handler struct {
 	executionAdapter  *runtimeadapter.ExecutionToRuntimeAdapter
 	runtimeManager    runtime.Manager
 	traceStore        router.TraceStore
+	attemptEmitter    func(database.AttemptRecord)
 	cfg               *config.Config
 }
 
@@ -532,6 +533,7 @@ miss:
 		h:             h,
 		requestID:     requestID,
 		correlationID: correlationID,
+		mode:          req.Mode,
 		start:         start,
 		routes:        routes,
 		usageModelID:  resolved.ModelID,
@@ -644,6 +646,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		isStream:      true,
 		requestID:     requestID,
 		correlationID: correlationID,
+		mode:          req.Mode,
 		start:         start,
 		routes:        routes,
 		usageModelID:  resolved.ModelID,

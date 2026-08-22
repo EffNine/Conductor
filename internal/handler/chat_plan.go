@@ -2,13 +2,25 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/failure"
+	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
 	"go.uber.org/zap"
 )
+
+// SetAttemptEmitter wires the asynchronous execution-attempt publisher
+// (P4.4.3). Nil (the default) disables attempt persistence entirely; the
+// request path never depends on the emitter's behaviour.
+func (h *Handler) SetAttemptEmitter(emit func(database.AttemptRecord)) {
+	h.attemptEmitter = emit
+}
 
 // chatWinner captures the winning operation's result across the executor
 // boundary. Exactly one field is populated when the plan succeeds.
@@ -67,11 +79,15 @@ func buildChatCandidates(req *apitypes.ChatCompletionRequest, routes []*router.R
 // chatPlanSink preserves every log line, metric counter, and telemetry hook
 // of the pre-P4.4.1 candidate loops at identical call timing. It mirrors the
 // old branches' primary-vs-fallback distinctions via Candidate.Index.
+//
+// When an attempt emitter is wired (P4.4.3), each lifecycle notification is
+// also published as a database.AttemptRecord for asynchronous persistence.
 type chatPlanSink struct {
 	h             *Handler
 	isStream      bool
 	requestID     string
 	correlationID string
+	mode          string
 	start         time.Time
 
 	routes []*router.ResolvedRoute // index-aligned with candidates; [0] = primary
@@ -86,7 +102,48 @@ func (s *chatPlanSink) route(c resilience.Candidate) *router.ResolvedRoute {
 	return s.routes[c.Index]
 }
 
+// emitAttempt publishes one attempt record when persistence is wired.
+func (s *chatPlanSink) emitAttempt(c resilience.Candidate, outcome, skipReason string, err error, attempts []resilience.Attempt, duration time.Duration) {
+	emit := s.h.attemptEmitter
+	if emit == nil {
+		return
+	}
+	rec := database.AttemptRecord{
+		RequestID:       s.requestID,
+		CorrelationID:   s.correlationID,
+		VirtualModel:    s.usageModelID,
+		Mode:            s.mode,
+		Provider:        c.ProviderName,
+		ProviderModelID: c.ProviderModelID,
+		CandidateIndex:  c.Index,
+		Outcome:         outcome,
+		SkipReason:      skipReason,
+		LatencyMS:       duration.Milliseconds(),
+	}
+	switch outcome {
+	case database.AttemptOutcomeSuccess:
+		rec.HTTPStatus = http.StatusOK
+		rec.AttemptIndex = len(attempts) - 1
+	case database.AttemptOutcomeFailed:
+		class, _ := failure.Classify(err)
+		rec.FailureClass = string(class)
+		var pe *provider.ProviderError
+		if errors.As(err, &pe) {
+			rec.HTTPStatus = pe.StatusCode
+		}
+		rec.AttemptIndex = len(attempts) - 1
+		for _, a := range attempts {
+			rec.RetryWaitMS += a.RetryWait.Milliseconds()
+			if a.HintHonored {
+				rec.RetryAfterHonored = true
+			}
+		}
+	}
+	emit(rec)
+}
+
 func (s *chatPlanSink) CandidateSkipped(c resilience.Candidate, reason resilience.SkipReason) {
+	s.emitAttempt(c, database.AttemptOutcomeSkipped, string(reason), nil, nil, 0)
 	s.h.metrics.IncrementBreakerRejections()
 	if c.Index == 0 {
 		s.h.metrics.IncrementErrors()
@@ -99,6 +156,7 @@ func (s *chatPlanSink) CandidateSkipped(c resilience.Candidate, reason resilienc
 }
 
 func (s *chatPlanSink) CandidateFailed(c resilience.Candidate, err error, attempts []resilience.Attempt, duration time.Duration) {
+	s.emitAttempt(c, database.AttemptOutcomeFailed, "", err, attempts, duration)
 	s.h.logRetries(c.ProviderName, len(attempts))
 
 	latencyMs := duration.Milliseconds()
@@ -135,6 +193,7 @@ func (s *chatPlanSink) CandidateFailed(c resilience.Candidate, err error, attemp
 }
 
 func (s *chatPlanSink) CandidateSucceeded(c resilience.Candidate, attempts []resilience.Attempt, duration time.Duration) {
+	s.emitAttempt(c, database.AttemptOutcomeSuccess, "", nil, attempts, duration)
 	s.h.logRetries(c.ProviderName, len(attempts))
 
 	latencyMs := duration.Milliseconds()

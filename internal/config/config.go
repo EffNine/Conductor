@@ -232,7 +232,14 @@ type FallbackConfig struct {
 
 // ExecutionConfig holds request-execution reliability settings (P4.4).
 type ExecutionConfig struct {
-	Budget ExecutionBudgetConfig `mapstructure:"budget"`
+	Budget   ExecutionBudgetConfig `mapstructure:"budget"`
+	Attempts AttemptsConfig        `mapstructure:"attempts"`
+}
+
+// AttemptsConfig controls execution-attempt observability (P4.4.3/P4.4.4).
+type AttemptsConfig struct {
+	// Enabled persists one row per candidate attempt asynchronously.
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // ExecutionBudgetConfig bounds a candidate chain. Disabled budgets restore
@@ -597,6 +604,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("execution.budget.total_deadline", 120*time.Second)
 	v.SetDefault("execution.budget.max_total_attempts", 8)
 	v.SetDefault("execution.budget.max_estimated_tokens", 200000)
+	v.SetDefault("execution.attempts.enabled", true)
 
 	// Retry defaults (P4.2: cause-aware same-provider retries; conservative
 	// single retry with bounded backoff, honoring Retry-After hints).
