@@ -1,6 +1,9 @@
 package openai
 
-import "github.com/EffNine/conductor/internal/apitypes"
+import (
+	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
+)
 
 // MapRequest converts a canonical ChatCompletionRequest to an OpenAI-specific request.
 func MapRequest(req *apitypes.ChatCompletionRequest) *openaiChatRequest {
@@ -139,12 +142,13 @@ func mapMessage(m apitypes.Message) openaiMessage {
 }
 
 func mapTool(t apitypes.Tool) openaiTool {
+	params := provider.StripSchemaMetaFields(t.Function.Parameters)
 	return openaiTool{
 		Type: t.Type,
 		Function: openaiFunctionDef{
 			Name:        t.Function.Name,
 			Description: t.Function.Description,
-			Parameters:  t.Function.Parameters,
+			Parameters:  params,
 		},
 	}
 }

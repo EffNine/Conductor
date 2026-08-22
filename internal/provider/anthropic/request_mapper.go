@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // MapRequest converts a canonical ChatCompletionRequest to an Anthropic Messages API request.
@@ -176,10 +177,14 @@ func mapToolInput(arguments string) map[string]any {
 }
 
 func mapTool(t apitypes.Tool) anthropicTool {
+	params := provider.StripSchemaMetaFields(t.Function.Parameters)
+	if params != nil {
+		params = provider.NormalizeSchema(params, provider.NormalizeForAnthropic)
+	}
 	return anthropicTool{
 		Name:        t.Function.Name,
 		Description: t.Function.Description,
-		InputSchema: t.Function.Parameters,
+		InputSchema: params,
 	}
 }
 

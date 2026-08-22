@@ -360,11 +360,11 @@ func mapResponseFormat(format map[string]interface{}) (mime string, schema map[s
 	case "json_schema":
 		if jss, ok := format["json_schema"].(map[string]interface{}); ok {
 			if s, ok := jss["schema"].(map[string]interface{}); ok {
-				return "application/json", s
+				return "application/json", normalizeGeminiSchema(s)
 			}
 		}
 		if s, ok := format["schema"].(map[string]interface{}); ok {
-			return "application/json", s
+			return "application/json", normalizeGeminiSchema(s)
 		}
 		return "application/json", nil
 	default:

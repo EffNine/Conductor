@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/provider"
 )
 
 // toolState tracks a streaming function call while its arguments are
@@ -224,15 +225,206 @@ func extractFunctionName(v map[string]interface{}) string {
 
 // mapTool converts a canonical Tool into a Gemini function declaration.
 func mapTool(t apitypes.Tool) geminiFunctionDeclaration {
-	params := t.Function.Parameters
+	params := provider.StripSchemaMetaFields(t.Function.Parameters)
 	if params == nil {
 		params = map[string]interface{}{"type": "object"}
 	}
+	params = normalizeGeminiSchema(params)
 	return geminiFunctionDeclaration{
 		Name:        t.Function.Name,
 		Description: t.Function.Description,
 		Parameters:  params,
 	}
+}
+
+// normalizeGeminiSchema rewrites a JSON Schema object into the subset of
+// fields that Gemini's native protobuf Schema type actually accepts.
+//
+// Gemini rejects several standard JSON Schema keywords:
+//   - exclusiveMinimum / exclusiveMaximum (no proto equivalent; minimum/maximum
+//     are integer-only in Gemini's Schema)
+//   - type as an array (proto field is singular string, not repeating)
+//   - additionalProperties (rejected by the server in tool schemas)
+//   - anyOf / oneOf / allOf (composition keywords are not part of the proto)
+//
+// Transformations are semantic where possible:
+//   - type:["string","null"] → type:"string", nullable:true
+//   - anyOf with a single non-null option + null → same as above
+//   - anyOf/oneOf/allOf with mixed types → flattened to the first option
+//
+// Supported keywords that pass through unchanged:
+//
+//	type(string), format, description, nullable, properties, items, enum,
+//	required, minimum, maximum, minLength, maxLength, pattern, minItems,
+//	maxItems, default.
+func normalizeGeminiSchema(schema map[string]interface{}) map[string]interface{} {
+	if schema == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(schema))
+	// Track whether nullable was derived from a type array containing "null",
+	// so an explicit nullable:false in the input doesn't overwrite it.
+	typeDerivedNullable := false
+	for k, v := range schema {
+		switch k {
+		case "exclusiveMinimum", "exclusiveMaximum", "additionalProperties":
+			// Not supported by Gemini's protobuf Schema for tool parameters.
+			continue
+		case "$schema", "$ref", "$defs", "$id":
+			// JSON Schema meta-fields are not part of Gemini's proto Schema.
+			continue
+		case "anyOf", "oneOf":
+			// Flatten the union into the parent schema.
+			merged := normalizeGeminiUnion(v)
+			if mergedMap, ok := merged.(map[string]interface{}); ok {
+				for mk, mv := range mergedMap {
+					out[mk] = mv
+				}
+			}
+		case "allOf":
+			// Flatten the first allOf clause into the parent schema.
+			merged := normalizeGeminiAllOf(v)
+			if mergedMap, ok := merged.(map[string]interface{}); ok {
+				for mk, mv := range mergedMap {
+					out[mk] = mv
+				}
+			}
+		case "type":
+			typ := normalizeGeminiType(v)
+			out[k] = typ
+			// If the original type was an array containing "null", set nullable.
+			if arr, ok := v.([]interface{}); ok {
+				for _, item := range arr {
+					if s, ok := item.(string); ok && s == "null" {
+						out["nullable"] = true
+						typeDerivedNullable = true
+						break
+					}
+				}
+			}
+		case "nullable":
+			if typeDerivedNullable {
+				// Preserve the type-derived nullable flag; don't let an
+				// explicit false in the input override a type array that
+				// contains "null".
+				continue
+			}
+			out[k] = normalizeGeminiSchemaValue(v)
+		default:
+			out[k] = normalizeGeminiSchemaValue(v)
+		}
+	}
+	return out
+}
+
+// normalizeGeminiUnion rewrites anyOf / oneOf into a single schema or a
+// type+nullable pair when the union is a nullable type union.
+func normalizeGeminiUnion(v interface{}) interface{} {
+	arr, ok := toSlice(v)
+	if !ok || len(arr) == 0 {
+		return v
+	}
+	// Collect non-null options and check for a null option.
+	var nonNull []map[string]interface{}
+	hasNull := false
+	for _, item := range arr {
+		m, ok := toMap(item)
+		if !ok {
+			continue
+		}
+		t, _ := m["type"].(string)
+		if t == "null" {
+			hasNull = true
+			continue
+		}
+		nonNull = append(nonNull, m)
+	}
+	if hasNull && len(nonNull) == 1 {
+		// Nullable union: promote the single non-null type and set nullable.
+		schema := normalizeGeminiSchema(nonNull[0])
+		schema["nullable"] = true
+		return schema
+	}
+	if len(nonNull) == 1 {
+		return normalizeGeminiSchema(nonNull[0])
+	}
+	// Fallback: use the first option (best-effort, loses disjunctive semantics).
+	if len(arr) > 0 {
+		if m, ok := toMap(arr[0]); ok {
+			return normalizeGeminiSchema(m)
+		}
+	}
+	return v
+}
+
+// normalizeGeminiAllOf merges an allOf array into the first schema. Full
+// merging is complex and error-prone; taking the first clause is the safest
+// lossy fallback that preserves the primary type constraint.
+func normalizeGeminiAllOf(v interface{}) interface{} {
+	arr, ok := toSlice(v)
+	if !ok || len(arr) == 0 {
+		return v
+	}
+	if m, ok := toMap(arr[0]); ok {
+		return normalizeGeminiSchema(m)
+	}
+	return v
+}
+
+// normalizeGeminiType converts a type value to a single Gemini-compatible
+// string. Arrays like ["string","null"] become the non-null type with
+// nullable:true added to the parent schema by the caller.
+func normalizeGeminiType(v interface{}) string {
+	switch tv := v.(type) {
+	case string:
+		return tv
+	case []interface{}:
+		// Pick the first non-null type; callers handle the nullable case.
+		for _, item := range tv {
+			if s, ok := item.(string); ok && s != "null" {
+				return s
+			}
+		}
+		if len(tv) > 0 {
+			if s, ok := tv[0].(string); ok {
+				return s
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// normalizeGeminiSchemaValue recursively normalizes a schema value that is
+// not a top-level map (e.g. an items schema inside an array, or a property
+// schema inside properties).
+func normalizeGeminiSchemaValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		return normalizeGeminiSchema(val)
+	case []interface{}:
+		// Arrays of primitive values (e.g. enum, required) pass through as-is.
+		stripped := make([]interface{}, 0, len(val))
+		for _, item := range val {
+			if m, ok := item.(map[string]interface{}); ok {
+				stripped = append(stripped, normalizeGeminiSchema(m))
+			} else {
+				stripped = append(stripped, item)
+			}
+		}
+		return stripped
+	}
+	return v
+}
+
+func toMap(v interface{}) (map[string]interface{}, bool) {
+	m, ok := v.(map[string]interface{})
+	return m, ok
+}
+
+func toSlice(v interface{}) ([]interface{}, bool) {
+	s, ok := v.([]interface{})
+	return s, ok
 }
 
 // mapToolArgumentsToValue converts a JSON-stringified arguments payload into a
