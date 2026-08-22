@@ -59,6 +59,7 @@ type Config struct {
 	Circuit   CircuitBreakerConfig        `mapstructure:"circuit_breaker"`
 	Cache     CacheConfig                 `mapstructure:"cache"`
 	Stream    StreamConfig                `mapstructure:"stream"`
+	Execution ExecutionConfig             `mapstructure:"execution"`
 
 	// APIKeyJustGenerated is true when Load created and persisted a new gateway key
 	// because none was configured via env, YAML, or an existing key file.
@@ -229,8 +230,21 @@ type FallbackConfig struct {
 	ModelID  string `mapstructure:"model_id"` // Optional: override model name
 }
 
+// ExecutionConfig holds request-execution reliability settings (P4.4).
+type ExecutionConfig struct {
+	Budget ExecutionBudgetConfig `mapstructure:"budget"`
+}
+
+// ExecutionBudgetConfig bounds a candidate chain. Disabled budgets restore
+// pre-P4.4.2 behaviour exactly.
+type ExecutionBudgetConfig struct {
+	Enabled            bool          `mapstructure:"enabled"`
+	TotalDeadline      time.Duration `mapstructure:"total_deadline"`
+	MaxTotalAttempts   int           `mapstructure:"max_total_attempts"`
+	MaxEstimatedTokens int64         `mapstructure:"max_estimated_tokens"`
+}
+
 // RetryConfig configures cause-aware same-provider retries (P4.2).
-//
 // Retryability is class-driven via internal/failure: only rate_limited,
 // timeout, capacity, upstream_error, and network_error are retryable;
 // auth_failed, invalid_request, and unknown never are. The legacy
@@ -575,6 +589,14 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.agnesai.base_url", "https://apihub.agnes-ai.com/v1")
 	v.SetDefault("providers.agnesai.timeout", 60*time.Second)
 	v.SetDefault("providers.agnesai.max_retries", 3)
+
+	// Execution budget defaults (P4.4.2): generous enough that normal
+	// traffic is unaffected; pathological multi-fallback chains become
+	// bounded and deterministic.
+	v.SetDefault("execution.budget.enabled", true)
+	v.SetDefault("execution.budget.total_deadline", 120*time.Second)
+	v.SetDefault("execution.budget.max_total_attempts", 8)
+	v.SetDefault("execution.budget.max_estimated_tokens", 200000)
 
 	// Retry defaults (P4.2: cause-aware same-provider retries; conservative
 	// single retry with bounded backoff, honoring Retry-After hints).

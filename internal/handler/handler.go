@@ -16,7 +16,6 @@ import (
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
-	"github.com/EffNine/conductor/internal/failure"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/middleware"
@@ -516,44 +515,44 @@ func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionR
 	}
 
 miss:
-	// Try primary provider
+	// P4.4.1: the candidate chain (primary + configured fallbacks) is
+	// orchestrated by the shared resilience executor. Ordering, breaker
+	// gating, retry semantics and outcome accounting are preserved exactly;
+	// only post-winner handling stays here (cache + JSON response).
 	policy := h.retryPolicy()
 
-	// P4.3: an open primary no longer aborts the request. The request falls
-	// through to eligible fallback candidates; only when no candidate can
-	// serve does the legacy 503 circuit_breaker_open contract apply.
-	primaryBlocked := resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed
-	var resp *apitypes.ChatCompletionResponse
-	var attempts []resilience.Attempt
-	var err error
-	if primaryBlocked {
-		h.metrics.IncrementErrors()
-		h.metrics.IncrementBreakerRejections()
-		h.logger.Warn("request:primary_breaker_open",
-			zap.String("correlation_id", correlationID),
-			zap.String("request_id", requestID),
-			zap.String("provider", resolved.ProviderName),
-		)
-	} else {
-		resp, attempts, err = resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
-			return resolved.Provider.ChatCompletion(ctx, req)
-		})
-		h.logRetries(resolved.ProviderName, len(attempts))
+	routes := make([]*router.ResolvedRoute, 0, 1+len(fallbacks))
+	routes = append(routes, resolved)
+	for i := range fallbacks {
+		routes = append(routes, &fallbacks[i])
 	}
-	latency := time.Since(start).Milliseconds()
-	// NOTE: when primaryBlocked the provider was never attempted (err==nil);
-	// only a genuine executed-and-succeeded attempt may take the success path.
-	if err == nil && !primaryBlocked {
-		if resolved.Breaker != nil {
-			resolved.Breaker.RecordSuccess()
-		}
-		h.metrics.RecordProviderLatency(latency)
-		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
-		h.recordModelResult(resolved, nil, latency)
-		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, len(attempts)-1)
-		h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
-		h.logRequestComplete(correlationID, requestID, resolved, latency, fiber.StatusOK, false, nil)
-		if h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
+
+	win := &chatWinner{}
+	sink := &chatPlanSink{
+		h:             h,
+		requestID:     requestID,
+		correlationID: correlationID,
+		start:         start,
+		routes:        routes,
+		usageModelID:  resolved.ModelID,
+	}
+	plan := resilience.Plan{
+		Candidates:      buildChatCandidates(req, routes, win),
+		Retry:           policy,
+		Sink:            sink,
+		Budget:          h.executionBudget(),
+		EstimatedTokens: int64(router.EstimateRequestTokens(req)),
+	}
+	res := resilience.ExecutePlan(c.Context(), plan)
+
+	// Winner handling: usage, completion log, cache store (primary only,
+	// as before), then the JSON response.
+	if res.WinnerIndex >= 0 {
+		winner := routes[res.WinnerIndex]
+		resp := win.resp
+		h.trackUsage(requestID, sink.usageModelID, winner.ProviderModelID, winner.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
+		h.logRequestComplete(correlationID, requestID, winner, sink.lastDurationMs, fiber.StatusOK, false, nil)
+		if res.WinnerIndex == 0 && h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
 			if cacheErr := h.cacheEngine.CacheResponse(cacheKey, resp); cacheErr != nil {
 				h.logger.Warn("cache:store_failed",
 					zap.String("correlation_id", correlationID),
@@ -564,7 +563,7 @@ miss:
 				h.logger.Info("cache_store",
 					zap.String("correlation_id", correlationID),
 					zap.String("request_id", requestID),
-					zap.String("provider", resolved.ProviderName),
+					zap.String("provider", winner.ProviderName),
 					zap.String("model", req.Model),
 					zap.String("cache_key", truncateHash(cacheKey, 8)),
 				)
@@ -572,72 +571,10 @@ miss:
 		}
 		return c.JSON(resp)
 	}
-	if !primaryBlocked && resolved.Breaker != nil {
-		class, _ := failure.Classify(err)
-		resolved.Breaker.RecordOutcome(class)
-	}
-	h.metrics.IncrementErrors()
-	h.recordModelResult(resolved, err, latency)
-	h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, false, 0)
-	h.logger.Warn("request:provider_error",
-		zap.String("correlation_id", correlationID),
-		zap.String("request_id", requestID),
-		zap.String("provider", resolved.ProviderName),
-		zap.Int64("latency_ms", latency),
-		classField(err),
-		zap.Error(err),
-	)
 
-	// Try fallbacks
-	for i := range fallbacks {
-		fb := fallbacks[i]
-		// P4.3: candidates with open breakers are ineligible; skip them
-		// instead of hammering a provider we already know is refusing.
-		if fb.Breaker != nil && fb.Breaker.Allow() != breaker.ResultAllowed {
-			h.metrics.IncrementBreakerRejections()
-			continue
-		}
-		fallbackReq := *req
-		fallbackReq.Model = fb.ProviderModelID
-
-		fbStart := time.Now()
-		fbResp, fbAttempts, fbErr := resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
-			return fb.Provider.ChatCompletion(ctx, &fallbackReq)
-		})
-		h.logRetries(fb.ProviderName, len(fbAttempts))
-		fbLatency := time.Since(fbStart).Milliseconds()
-		if fbErr == nil {
-			if fb.Breaker != nil {
-				fb.Breaker.RecordSuccess()
-			}
-			h.metrics.RecordProviderLatency(fbLatency)
-			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
-			h.recordModelResult(&fb, nil, fbLatency)
-			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+len(fbAttempts))
-			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, fbResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
-			h.logRequestComplete(correlationID, requestID, &fb, fbLatency, fiber.StatusOK, false, nil)
-			return c.JSON(fbResp)
-		}
-		if fb.Breaker != nil {
-			class, _ := failure.Classify(fbErr)
-			fb.Breaker.RecordOutcome(class)
-		}
-		h.metrics.IncrementRetries()
-		h.recordModelResult(&fb, fbErr, fbLatency)
-		h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, false, i+1)
-		h.logger.Warn("request:fallback_error",
-			zap.String("correlation_id", correlationID),
-			zap.String("request_id", requestID),
-			zap.String("provider", fb.ProviderName),
-			zap.Int64("latency_ms", fbLatency),
-			classField(fbErr),
-			zap.Error(fbErr),
-		)
-	}
-
-	// P4.3: the primary was breaker-blocked and no eligible candidate could
-	// serve — preserve the legacy open-primary contract exactly.
-	if primaryBlocked && err == nil {
+	// Legacy open-primary contract: the primary was breaker-blocked and no
+	// eligible candidate could serve.
+	if res.FirstBlocked && !res.AttemptedAny {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{
 				Message: fmt.Sprintf("provider '%s' circuit breaker is open", resolved.ProviderName),
@@ -648,9 +585,9 @@ miss:
 	}
 
 	// All providers failed
-	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, err)
-	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, false, err)
-	return h.providerErrorResponse(c, err)
+	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, res.LastError)
+	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, false, res.LastError)
+	return h.providerErrorResponse(c, res.LastError)
 }
 
 // handleStreaming handles a streaming chat completion request
@@ -692,122 +629,52 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	// requestDone channel, so nothing depends on the parent context firing.
 	streamCtx, cancel := context.WithCancel(context.Background())
 
-	// Try primary provider
-	//
-	// P4.3: an open primary no longer aborts streaming requests either;
-	// eligible fallback candidates are attempted, and the legacy 503
-	// circuit_breaker_open contract applies only when nothing can serve.
-	primaryBlocked := resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed
-	var ch <-chan apitypes.StreamChunk
-	var streamAttempts []resilience.Attempt
-	var err error
-	if primaryBlocked {
-		h.metrics.IncrementErrors()
-		h.metrics.IncrementBreakerRejections()
-		h.logger.Warn("request:primary_breaker_open",
-			zap.String("correlation_id", correlationID),
-			zap.String("request_id", requestID),
-			zap.String("provider", resolved.ProviderName),
-		)
-	} else {
-		// Same-provider retries apply only to synchronous acquisition failures
-		// (before the first chunk); once the channel is returned, mid-stream
-		// behavior is untouched.
-		ch, streamAttempts, err = resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
-			return resolved.Provider.ChatCompletionStream(ctx, req)
-		})
-		h.logRetries(resolved.ProviderName, len(streamAttempts))
+	// P4.4.1: candidate traversal (primary + configured fallbacks) runs
+	// through the shared resilience executor. Streaming ops acquire the
+	// channel only; same-provider retries still apply exclusively to
+	// synchronous acquisition failures, and breaker credit stays deferred to
+	// stream finalize (P4.3).
+	routes := make([]*router.ResolvedRoute, 0, 1+len(fallbacks))
+	routes = append(routes, resolved)
+	for i := range fallbacks {
+		routes = append(routes, &fallbacks[i])
 	}
-	latency := time.Since(start).Milliseconds()
-	// NOTE: when primaryBlocked the provider was never attempted (err==nil);
-	// only a genuinely acquired stream may take the success path.
-	if err == nil && !primaryBlocked {
-		h.metrics.RecordProviderLatency(latency)
-		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
-		h.recordModelResult(resolved, nil, latency)
-		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, len(streamAttempts)-1)
-		return h.streamResponse(c, ch, &streamSession{
+	sink := &chatPlanSink{
+		h:             h,
+		isStream:      true,
+		requestID:     requestID,
+		correlationID: correlationID,
+		start:         start,
+		routes:        routes,
+		usageModelID:  resolved.ModelID,
+	}
+	win := &chatWinner{}
+	plan := resilience.Plan{
+		Candidates:         buildChatCandidates(req, routes, win),
+		Retry:              policy,
+		Sink:               sink,
+		Budget:             h.executionBudget(),
+		EstimatedTokens:    int64(router.EstimateRequestTokens(req)),
+		DetachAfterSuccess: true, // acquired streams outlive the budget deadline
+	}
+	res := resilience.ExecutePlan(streamCtx, plan)
+
+	if res.WinnerIndex >= 0 {
+		winner := routes[res.WinnerIndex]
+		return h.streamResponse(c, win.ch, &streamSession{
 			requestID:       requestID,
 			correlationID:   correlationID,
-			providerName:    resolved.ProviderName,
-			modelID:         resolved.ModelID,
-			providerModelID: resolved.ProviderModelID,
+			providerName:    winner.ProviderName,
+			modelID:         winner.ModelID,
+			providerModelID: winner.ProviderModelID,
 			start:           start,
 			cancel:          cancel,
-			breaker:         resolved.Breaker,
+			breaker:         winner.Breaker,
 		})
 	}
-	if !primaryBlocked && resolved.Breaker != nil {
-		class, _ := failure.Classify(err)
-		resolved.Breaker.RecordOutcome(class)
-	}
-	h.metrics.IncrementErrors()
-	h.recordModelResult(resolved, err, latency)
-	h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, false, 0)
-	h.logger.Warn("request:stream_provider_error",
-		zap.String("correlation_id", correlationID),
-		zap.String("request_id", requestID),
-		zap.String("provider", resolved.ProviderName),
-		zap.Int64("latency_ms", latency),
-		classField(err),
-		zap.Error(err),
-	)
 
-	// Try fallbacks
-	for i := range fallbacks {
-		fb := fallbacks[i]
-		// P4.3: candidates with open breakers are ineligible.
-		if fb.Breaker != nil && fb.Breaker.Allow() != breaker.ResultAllowed {
-			h.metrics.IncrementBreakerRejections()
-			continue
-		}
-		fallbackReq := *req
-		fallbackReq.Model = fb.ProviderModelID
-
-		fbStart := time.Now()
-		fbCh, fbStreamAttempts, fbErr := resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
-			return fb.Provider.ChatCompletionStream(ctx, &fallbackReq)
-		})
-		h.logRetries(fb.ProviderName, len(fbStreamAttempts))
-		fbLatency := time.Since(fbStart).Milliseconds()
-		if fbErr == nil {
-			h.metrics.RecordProviderLatency(fbLatency)
-			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
-			h.recordModelResult(&fb, nil, fbLatency)
-			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+len(fbStreamAttempts))
-			// Breaker credit is granted on stream completion (P4.3), not on
-			// channel acquisition.
-			return h.streamResponse(c, fbCh, &streamSession{
-				requestID:       requestID,
-				correlationID:   correlationID,
-				providerName:    fb.ProviderName,
-				modelID:         fb.ModelID,
-				providerModelID: fb.ProviderModelID,
-				start:           start,
-				cancel:          cancel,
-				breaker:         fb.Breaker,
-			})
-		}
-		if fb.Breaker != nil {
-			class, _ := failure.Classify(fbErr)
-			fb.Breaker.RecordOutcome(class)
-		}
-		h.metrics.IncrementRetries()
-		h.recordModelResult(&fb, fbErr, fbLatency)
-		h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, false, i+1)
-		h.logger.Warn("request:stream_fallback_error",
-			zap.String("correlation_id", correlationID),
-			zap.String("request_id", requestID),
-			zap.String("provider", fb.ProviderName),
-			zap.Int64("latency_ms", fbLatency),
-			classField(fbErr),
-			zap.Error(fbErr),
-		)
-	}
-
-	// P4.3: primary was blocked and no eligible candidate could serve —
-	// preserve the legacy open-primary contract exactly.
-	if primaryBlocked && err == nil {
+	// Legacy open-primary contract: blocked primary and nothing could serve.
+	if res.FirstBlocked && !res.AttemptedAny {
 		cancel()
 		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{
@@ -821,9 +688,9 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	// All providers failed
 	cancel()
 	h.metrics.IncrementStreamErrors()
-	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, true, err)
-	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, true, err)
-	return h.providerErrorResponse(c, err)
+	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, true, res.LastError)
+	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, true, res.LastError)
+	return h.providerErrorResponse(c, res.LastError)
 }
 
 // streamSession bundles per-stream context shared by the handler and the

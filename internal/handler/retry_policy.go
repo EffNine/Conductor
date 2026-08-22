@@ -37,6 +37,22 @@ func retryPolicyFromConfig(cfg *config.Config) resilience.RetryPolicy {
 	return p
 }
 
+// executionBudget resolves the request-scoped execution budget from
+// configuration. An unset config yields the zero-value budget: disabled,
+// matching pre-P4.4.2 behaviour exactly.
+func (h *Handler) executionBudget() resilience.Budget {
+	if h.cfg == nil || !h.cfg.Execution.Budget.Enabled {
+		return resilience.Budget{}
+	}
+	b := h.cfg.Execution.Budget
+	return resilience.Budget{
+		Enabled:            true,
+		TotalDeadline:      b.TotalDeadline,
+		MaxTotalAttempts:   b.MaxTotalAttempts,
+		MaxEstimatedTokens: b.MaxEstimatedTokens,
+	}
+}
+
 // logRetries emits one structured line when a candidate needed more than
 // its first attempt. Purely observability; no control flow depends on it.
 func (h *Handler) logRetries(providerName string, attempts int) {

@@ -281,6 +281,19 @@ retry:
   # Deprecated and ignored since P4.2 (class policy supersedes it).
   retryable_status_codes: [429, 500, 502, 503]
 
+# Request-execution budgeting (P4.4.2)
+# Bounds a candidate chain: wall-clock deadline, total attempts across all
+# candidates (retries included), and retry/fallback amplification measured
+# in estimated prompt tokens. The primary request always runs at least once;
+# only additional attempts are limited. Streaming requests detach from the
+# deadline once their stream is acquired, so live streams are never cut off.
+execution:
+  budget:
+    enabled: true
+    total_deadline: 120s
+    max_total_attempts: 8
+    max_estimated_tokens: 200000
+
 # Database configuration
 database:
   driver: "sqlite"
