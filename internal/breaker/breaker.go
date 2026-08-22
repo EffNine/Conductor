@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/EffNine/conductor/internal/failure"
 )
 
 // State represents the circuit breaker state.
@@ -72,6 +74,7 @@ type Breaker struct {
 	successes            atomic.Int64
 	rejections           atomic.Int64
 	opens                atomic.Int64
+	throttles            atomic.Int64
 	stateChangeCallbacks []func(State)
 }
 
@@ -142,6 +145,13 @@ func (b *Breaker) RecordSuccess() {
 // RecordFailure records a failed request.
 func (b *Breaker) RecordFailure() {
 	b.mu.Lock()
+	b.recordFailureLocked()
+	b.mu.Unlock()
+	b.failures.Add(1)
+}
+
+// recordFailureLocked applies failure accounting; caller must hold b.mu.
+func (b *Breaker) recordFailureLocked() {
 	oldState := b.state
 	switch b.state {
 	case StateClosed:
@@ -163,8 +173,35 @@ func (b *Breaker) RecordFailure() {
 		b.notifyStateChange(oldState, b.state)
 	default:
 	}
-	b.mu.Unlock()
-	b.failures.Add(1)
+}
+
+// RecordOutcome records one logical provider result under the canonical
+// failure taxonomy (P4.3). The breaker impact comes from
+// failure.PolicyFor(class).BreakerImpact:
+//
+//   - count:         normal failure accounting (may open the breaker)
+//   - throttle_only: recorded as throttling; never increments the failure
+//     streak and never opens or recovers the breaker — a rate-limited
+//     provider is healthy, just busy. In half-open it grants no recovery
+//     credit either.
+//   - none:          ignored entirely; auth/validation faults say nothing
+//     about provider health.
+func (b *Breaker) RecordOutcome(class failure.Class) {
+	switch failure.PolicyFor(class).BreakerImpact {
+	case failure.BreakerImpactNone:
+		return
+	case failure.BreakerImpactThrottleOnly:
+		b.RecordThrottled()
+	default:
+		b.RecordFailure()
+	}
+}
+
+// RecordThrottled records a rate-limit signal without affecting the failure
+// streak, the open/half-open state machine, or recovery credit.
+func (b *Breaker) RecordThrottled() {
+	// Deliberately no state inspection: throttling is health-neutral.
+	b.throttles.Add(1)
 }
 
 // State returns the current breaker state.
@@ -196,6 +233,7 @@ func (b *Breaker) Stats() BreakerStats {
 		TotalSuccesses:   b.successes.Load(),
 		TotalRejections:  b.rejections.Load(),
 		TotalOpens:       b.opens.Load(),
+		TotalThrottles:   b.throttles.Load(),
 	}
 }
 
@@ -212,6 +250,7 @@ type BreakerStats struct {
 	TotalSuccesses   int64
 	TotalRejections  int64
 	TotalOpens       int64
+	TotalThrottles   int64
 }
 
 // OnStateChange registers a callback that fires whenever the breaker state transitions.

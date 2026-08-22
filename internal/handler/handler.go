@@ -16,6 +16,7 @@ import (
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/failure"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/middleware"
@@ -516,29 +517,33 @@ func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionR
 
 miss:
 	// Try primary provider
-	if resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed {
+	policy := h.retryPolicy()
+
+	// P4.3: an open primary no longer aborts the request. The request falls
+	// through to eligible fallback candidates; only when no candidate can
+	// serve does the legacy 503 circuit_breaker_open contract apply.
+	primaryBlocked := resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed
+	var resp *apitypes.ChatCompletionResponse
+	var attempts []resilience.Attempt
+	var err error
+	if primaryBlocked {
 		h.metrics.IncrementErrors()
 		h.metrics.IncrementBreakerRejections()
-		h.logger.Warn("request:breaker_rejected",
+		h.logger.Warn("request:primary_breaker_open",
 			zap.String("correlation_id", correlationID),
 			zap.String("request_id", requestID),
 			zap.String("provider", resolved.ProviderName),
 		)
-		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
-			Error: apitypes.ErrorDetail{
-				Message: fmt.Sprintf("provider '%s' circuit breaker is open", resolved.ProviderName),
-				Type:    "provider_unavailable",
-				Code:    "circuit_breaker_open",
-			},
+	} else {
+		resp, attempts, err = resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
+			return resolved.Provider.ChatCompletion(ctx, req)
 		})
+		h.logRetries(resolved.ProviderName, len(attempts))
 	}
-	policy := h.retryPolicy()
-	resp, attempts, err := resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
-		return resolved.Provider.ChatCompletion(ctx, req)
-	})
-	h.logRetries(resolved.ProviderName, len(attempts))
 	latency := time.Since(start).Milliseconds()
-	if err == nil {
+	// NOTE: when primaryBlocked the provider was never attempted (err==nil);
+	// only a genuine executed-and-succeeded attempt may take the success path.
+	if err == nil && !primaryBlocked {
 		if resolved.Breaker != nil {
 			resolved.Breaker.RecordSuccess()
 		}
@@ -567,8 +572,9 @@ miss:
 		}
 		return c.JSON(resp)
 	}
-	if resolved.Breaker != nil {
-		resolved.Breaker.RecordFailure()
+	if !primaryBlocked && resolved.Breaker != nil {
+		class, _ := failure.Classify(err)
+		resolved.Breaker.RecordOutcome(class)
 	}
 	h.metrics.IncrementErrors()
 	h.recordModelResult(resolved, err, latency)
@@ -585,6 +591,12 @@ miss:
 	// Try fallbacks
 	for i := range fallbacks {
 		fb := fallbacks[i]
+		// P4.3: candidates with open breakers are ineligible; skip them
+		// instead of hammering a provider we already know is refusing.
+		if fb.Breaker != nil && fb.Breaker.Allow() != breaker.ResultAllowed {
+			h.metrics.IncrementBreakerRejections()
+			continue
+		}
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
@@ -607,7 +619,8 @@ miss:
 			return c.JSON(fbResp)
 		}
 		if fb.Breaker != nil {
-			fb.Breaker.RecordFailure()
+			class, _ := failure.Classify(fbErr)
+			fb.Breaker.RecordOutcome(class)
 		}
 		h.metrics.IncrementRetries()
 		h.recordModelResult(&fb, fbErr, fbLatency)
@@ -620,6 +633,18 @@ miss:
 			classField(fbErr),
 			zap.Error(fbErr),
 		)
+	}
+
+	// P4.3: the primary was breaker-blocked and no eligible candidate could
+	// serve — preserve the legacy open-primary contract exactly.
+	if primaryBlocked && err == nil {
+		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
+			Error: apitypes.ErrorDetail{
+				Message: fmt.Sprintf("provider '%s' circuit breaker is open", resolved.ProviderName),
+				Type:    "provider_unavailable",
+				Code:    "circuit_breaker_open",
+			},
+		})
 	}
 
 	// All providers failed
@@ -668,35 +693,35 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	streamCtx, cancel := context.WithCancel(context.Background())
 
 	// Try primary provider
-	if resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed {
-		cancel()
+	//
+	// P4.3: an open primary no longer aborts streaming requests either;
+	// eligible fallback candidates are attempted, and the legacy 503
+	// circuit_breaker_open contract applies only when nothing can serve.
+	primaryBlocked := resolved.Breaker != nil && resolved.Breaker.Allow() != breaker.ResultAllowed
+	var ch <-chan apitypes.StreamChunk
+	var streamAttempts []resilience.Attempt
+	var err error
+	if primaryBlocked {
 		h.metrics.IncrementErrors()
 		h.metrics.IncrementBreakerRejections()
-		h.logger.Warn("request:breaker_rejected",
+		h.logger.Warn("request:primary_breaker_open",
 			zap.String("correlation_id", correlationID),
 			zap.String("request_id", requestID),
 			zap.String("provider", resolved.ProviderName),
 		)
-		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
-			Error: apitypes.ErrorDetail{
-				Message: fmt.Sprintf("provider '%s' circuit breaker is open", resolved.ProviderName),
-				Type:    "provider_unavailable",
-				Code:    "circuit_breaker_open",
-			},
+	} else {
+		// Same-provider retries apply only to synchronous acquisition failures
+		// (before the first chunk); once the channel is returned, mid-stream
+		// behavior is untouched.
+		ch, streamAttempts, err = resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
+			return resolved.Provider.ChatCompletionStream(ctx, req)
 		})
+		h.logRetries(resolved.ProviderName, len(streamAttempts))
 	}
-	// Same-provider retries apply only to synchronous acquisition failures
-	// (before the first chunk); once the channel is returned, mid-stream
-	// behavior is untouched.
-	ch, streamAttempts, err := resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
-		return resolved.Provider.ChatCompletionStream(ctx, req)
-	})
-	h.logRetries(resolved.ProviderName, len(streamAttempts))
 	latency := time.Since(start).Milliseconds()
-	if err == nil {
-		if resolved.Breaker != nil {
-			resolved.Breaker.RecordSuccess()
-		}
+	// NOTE: when primaryBlocked the provider was never attempted (err==nil);
+	// only a genuinely acquired stream may take the success path.
+	if err == nil && !primaryBlocked {
 		h.metrics.RecordProviderLatency(latency)
 		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
 		h.recordModelResult(resolved, nil, latency)
@@ -709,10 +734,12 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			providerModelID: resolved.ProviderModelID,
 			start:           start,
 			cancel:          cancel,
+			breaker:         resolved.Breaker,
 		})
 	}
-	if resolved.Breaker != nil {
-		resolved.Breaker.RecordFailure()
+	if !primaryBlocked && resolved.Breaker != nil {
+		class, _ := failure.Classify(err)
+		resolved.Breaker.RecordOutcome(class)
 	}
 	h.metrics.IncrementErrors()
 	h.recordModelResult(resolved, err, latency)
@@ -729,6 +756,11 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	// Try fallbacks
 	for i := range fallbacks {
 		fb := fallbacks[i]
+		// P4.3: candidates with open breakers are ineligible.
+		if fb.Breaker != nil && fb.Breaker.Allow() != breaker.ResultAllowed {
+			h.metrics.IncrementBreakerRejections()
+			continue
+		}
 		fallbackReq := *req
 		fallbackReq.Model = fb.ProviderModelID
 
@@ -739,13 +771,12 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		h.logRetries(fb.ProviderName, len(fbStreamAttempts))
 		fbLatency := time.Since(fbStart).Milliseconds()
 		if fbErr == nil {
-			if fb.Breaker != nil {
-				fb.Breaker.RecordSuccess()
-			}
 			h.metrics.RecordProviderLatency(fbLatency)
 			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
 			h.recordModelResult(&fb, nil, fbLatency)
 			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+len(fbStreamAttempts))
+			// Breaker credit is granted on stream completion (P4.3), not on
+			// channel acquisition.
 			return h.streamResponse(c, fbCh, &streamSession{
 				requestID:       requestID,
 				correlationID:   correlationID,
@@ -754,10 +785,12 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 				providerModelID: fb.ProviderModelID,
 				start:           start,
 				cancel:          cancel,
+				breaker:         fb.Breaker,
 			})
 		}
 		if fb.Breaker != nil {
-			fb.Breaker.RecordFailure()
+			class, _ := failure.Classify(fbErr)
+			fb.Breaker.RecordOutcome(class)
 		}
 		h.metrics.IncrementRetries()
 		h.recordModelResult(&fb, fbErr, fbLatency)
@@ -770,6 +803,19 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			classField(fbErr),
 			zap.Error(fbErr),
 		)
+	}
+
+	// P4.3: primary was blocked and no eligible candidate could serve —
+	// preserve the legacy open-primary contract exactly.
+	if primaryBlocked && err == nil {
+		cancel()
+		return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
+			Error: apitypes.ErrorDetail{
+				Message: fmt.Sprintf("provider '%s' circuit breaker is open", resolved.ProviderName),
+				Type:    "provider_unavailable",
+				Code:    "circuit_breaker_open",
+			},
+		})
 	}
 
 	// All providers failed
@@ -790,6 +836,10 @@ type streamSession struct {
 	providerModelID string // upstream model slug
 	start           time.Time
 	cancel          context.CancelFunc
+
+	// breaker receives the classification-aware outcome once the stream
+	// reaches a terminal state (P4.3). Nil disables accounting.
+	breaker *breaker.Breaker
 }
 
 // streamResponse streams chunks to the client with full lifecycle
@@ -849,6 +899,10 @@ func (h *Handler) writeStream(ch <-chan apitypes.StreamChunk, w *bufio.Writer, s
 			h.metrics.RecordStreamOutcome(s.providerName, outcome, int(chunkCount), int(bytesSent), time.Since(s.start).Milliseconds())
 
 			h.logStreamOutcome(s, outcome, clientDisconnected, streamErr, chunkCount, bytesSent)
+
+			// P4.3: breaker credit is granted on stream completion, not on
+			// channel acquisition; provider-side terminations are classified.
+			recordStreamBreakerOutcome(s.breaker, outcome, clientDisconnected, streamErr)
 
 			h.trackUsage(s.requestID, s.modelID, s.providerModelID, s.providerName, usageData, time.Since(s.start), fiber.StatusOK, true, streamErr)
 			h.logRequestComplete(s.correlationID, s.requestID, &router.ResolvedRoute{
@@ -1599,6 +1653,7 @@ func (h *Handler) HandleCircuitBreakerStatus(c *fiber.Ctx) error {
 			"total_successes":     s.TotalSuccesses,
 			"total_rejections":    s.TotalRejections,
 			"total_opens":         s.TotalOpens,
+			"total_throttles":     s.TotalThrottles,
 		}
 		if !s.OpenedAt.IsZero() {
 			ts := s.OpenedAt.UTC().Format(time.RFC3339)
