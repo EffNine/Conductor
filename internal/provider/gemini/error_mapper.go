@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/EffNine/conductor/internal/provider"
 )
@@ -23,10 +24,11 @@ type geminiErrorBody struct {
 // MapError converts an HTTP response into a normalized ProviderError using the
 // Google standard error format.
 func MapError(providerName string, resp *http.Response) *provider.ProviderError {
+	retryAfter := provider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return provider.NewProviderError(providerName, resp.StatusCode,
-			provider.ErrorTypeServerError, "failed to read error response", err)
+			provider.ErrorTypeServerError, "failed to read error response", err).WithRetryAfter(retryAfter)
 	}
 
 	var gErr geminiErrorBody
@@ -46,12 +48,12 @@ func MapError(providerName string, resp *http.Response) *provider.ProviderError 
 		if errType != provider.ErrorTypeContextLength && isContextMessage(msg) {
 			errType = provider.ErrorTypeContextLength
 		}
-		return provider.NewProviderError(providerName, resp.StatusCode, errType, msg, nil)
+		return provider.NewProviderError(providerName, resp.StatusCode, errType, msg, nil).WithRetryAfter(retryAfter)
 	}
 
 	return provider.NewProviderError(providerName, resp.StatusCode,
 		mapHTTPErrorType(resp.StatusCode),
-		fmt.Sprintf("provider returned status %d: %s", resp.StatusCode, string(body)), nil)
+		fmt.Sprintf("provider returned status %d: %s", resp.StatusCode, string(body)), nil).WithRetryAfter(retryAfter)
 }
 
 // mapGeminiStatus maps Google canonical status strings to ProviderError types.

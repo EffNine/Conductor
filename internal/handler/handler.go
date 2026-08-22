@@ -573,6 +573,7 @@ miss:
 		zap.String("request_id", requestID),
 		zap.String("provider", resolved.ProviderName),
 		zap.Int64("latency_ms", latency),
+		classField(err),
 		zap.Error(err),
 	)
 
@@ -608,6 +609,7 @@ miss:
 			zap.String("request_id", requestID),
 			zap.String("provider", fb.ProviderName),
 			zap.Int64("latency_ms", fbLatency),
+			classField(fbErr),
 			zap.Error(fbErr),
 		)
 	}
@@ -705,6 +707,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		zap.String("request_id", requestID),
 		zap.String("provider", resolved.ProviderName),
 		zap.Int64("latency_ms", latency),
+		classField(err),
 		zap.Error(err),
 	)
 
@@ -746,6 +749,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			zap.String("request_id", requestID),
 			zap.String("provider", fb.ProviderName),
 			zap.Int64("latency_ms", fbLatency),
+			classField(fbErr),
 			zap.Error(fbErr),
 		)
 	}

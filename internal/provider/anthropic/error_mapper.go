@@ -6,16 +6,18 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/EffNine/conductor/internal/provider"
 )
 
 // MapError converts an HTTP response to a normalized ProviderError using Anthropic error format.
 func MapError(providerName string, resp *http.Response) *provider.ProviderError {
+	retryAfter := provider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return provider.NewProviderError(providerName, resp.StatusCode,
-			provider.ErrorTypeServerError, "failed to read error response", err)
+			provider.ErrorTypeServerError, "failed to read error response", err).WithRetryAfter(retryAfter)
 	}
 
 	var anthropicErr struct {
@@ -37,12 +39,12 @@ func MapError(providerName string, resp *http.Response) *provider.ProviderError 
 		if errType == "" {
 			errType = mapHTTPErrorType(resp.StatusCode)
 		}
-		return provider.NewProviderError(providerName, resp.StatusCode, errType, anthropicErr.Error.Message, nil)
+		return provider.NewProviderError(providerName, resp.StatusCode, errType, anthropicErr.Error.Message, nil).WithRetryAfter(retryAfter)
 	}
 
 	return provider.NewProviderError(providerName, resp.StatusCode,
 		mapHTTPErrorType(resp.StatusCode),
-		fmt.Sprintf("provider returned status %d: %s", resp.StatusCode, string(body)), nil)
+		fmt.Sprintf("provider returned status %d: %s", resp.StatusCode, string(body)), nil).WithRetryAfter(retryAfter)
 }
 
 func mapAnthropicErrorCode(code string) string {

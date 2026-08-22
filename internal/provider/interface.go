@@ -89,7 +89,23 @@ type ProviderError struct {
 	StatusCode int    `json:"status_code"`
 	Type       string `json:"type"`
 	Message    string `json:"message"`
-	Err        error  `json:"-"`
+
+	// RetryAfter carries a server-advised wait duration parsed from headers
+	// such as Retry-After at the adapter boundary (see ParseRetryAfter).
+	// Zero means no hint was provided. Advisory metadata only: nothing in the
+	// codebase acts on it today; future reliability policies (P4) consume it.
+	RetryAfter time.Duration `json:"retry_after,omitempty"`
+
+	Err error `json:"-"`
+}
+
+// WithRetryAfter attaches a server-provided backoff hint to the error and
+// returns it for chaining. Non-positive durations are ignored.
+func (e *ProviderError) WithRetryAfter(d time.Duration) *ProviderError {
+	if e != nil && d > 0 {
+		e.RetryAfter = d
+	}
+	return e
 }
 
 func (e *ProviderError) Error() string {

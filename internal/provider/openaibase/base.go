@@ -328,10 +328,11 @@ func (b *Base) newRequest(ctx context.Context, method, path string, body []byte)
 }
 
 func (b *Base) handleErrorResponse(resp *http.Response) *provider.ProviderError {
+	retryAfter := provider.ParseRetryAfter(resp.Header.Get("Retry-After"), time.Now())
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return provider.NewProviderError(b.name, resp.StatusCode,
-			provider.ErrorTypeServerError, "failed to read error response", err)
+			provider.ErrorTypeServerError, "failed to read error response", err).WithRetryAfter(retryAfter)
 	}
 
 	var openAIErr struct {
@@ -346,12 +347,12 @@ func (b *Base) handleErrorResponse(resp *http.Response) *provider.ProviderError 
 		if errType == "" {
 			errType = mapErrorType(resp.StatusCode)
 		}
-		return provider.NewProviderError(b.name, resp.StatusCode, errType, openAIErr.Error.Message, nil)
+		return provider.NewProviderError(b.name, resp.StatusCode, errType, openAIErr.Error.Message, nil).WithRetryAfter(retryAfter)
 	}
 
 	return provider.NewProviderError(b.name, resp.StatusCode,
 		mapErrorType(resp.StatusCode),
-		fmt.Sprintf("provider returned status %d", resp.StatusCode), nil)
+		fmt.Sprintf("provider returned status %d", resp.StatusCode), nil).WithRetryAfter(retryAfter)
 }
 
 func mapErrorType(statusCode int) string {
