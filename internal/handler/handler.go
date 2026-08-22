@@ -20,6 +20,7 @@ import (
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/runtime"
 	runtimeadapter "github.com/EffNine/conductor/internal/runtime/adapter"
@@ -531,7 +532,11 @@ miss:
 			},
 		})
 	}
-	resp, err := resolved.Provider.ChatCompletion(c.Context(), req)
+	policy := h.retryPolicy()
+	resp, attempts, err := resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
+		return resolved.Provider.ChatCompletion(ctx, req)
+	})
+	h.logRetries(resolved.ProviderName, len(attempts))
 	latency := time.Since(start).Milliseconds()
 	if err == nil {
 		if resolved.Breaker != nil {
@@ -540,7 +545,7 @@ miss:
 		h.metrics.RecordProviderLatency(latency)
 		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
 		h.recordModelResult(resolved, nil, latency)
-		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, 0)
+		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, len(attempts)-1)
 		h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 		h.logRequestComplete(correlationID, requestID, resolved, latency, fiber.StatusOK, false, nil)
 		if h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
@@ -584,7 +589,10 @@ miss:
 		fallbackReq.Model = fb.ProviderModelID
 
 		fbStart := time.Now()
-		fbResp, fbErr := fb.Provider.ChatCompletion(c.Context(), &fallbackReq)
+		fbResp, fbAttempts, fbErr := resilience.Execute(c.Context(), policy, func(ctx context.Context) (*apitypes.ChatCompletionResponse, error) {
+			return fb.Provider.ChatCompletion(ctx, &fallbackReq)
+		})
+		h.logRetries(fb.ProviderName, len(fbAttempts))
 		fbLatency := time.Since(fbStart).Milliseconds()
 		if fbErr == nil {
 			if fb.Breaker != nil {
@@ -593,7 +601,7 @@ miss:
 			h.metrics.RecordProviderLatency(fbLatency)
 			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
 			h.recordModelResult(&fb, nil, fbLatency)
-			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+1)
+			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+len(fbAttempts))
 			h.trackUsage(requestID, resolved.ModelID, fb.ProviderModelID, fb.ProviderName, fbResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 			h.logRequestComplete(correlationID, requestID, &fb, fbLatency, fiber.StatusOK, false, nil)
 			return c.JSON(fbResp)
@@ -625,6 +633,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	start := time.Now()
 	requestID := uuid.New().String()
 	correlationID := middleware.GetCorrelationIDFromLocals(c)
+	policy := h.retryPolicy()
 
 	h.metrics.IncrementRequests()
 	h.metrics.IncrementStreams()
@@ -676,7 +685,13 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			},
 		})
 	}
-	ch, err := resolved.Provider.ChatCompletionStream(streamCtx, req)
+	// Same-provider retries apply only to synchronous acquisition failures
+	// (before the first chunk); once the channel is returned, mid-stream
+	// behavior is untouched.
+	ch, streamAttempts, err := resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
+		return resolved.Provider.ChatCompletionStream(ctx, req)
+	})
+	h.logRetries(resolved.ProviderName, len(streamAttempts))
 	latency := time.Since(start).Milliseconds()
 	if err == nil {
 		if resolved.Breaker != nil {
@@ -685,7 +700,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		h.metrics.RecordProviderLatency(latency)
 		h.metrics.RecordProviderLatencyForProvider(resolved.ProviderName, latency)
 		h.recordModelResult(resolved, nil, latency)
-		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, 0)
+		h.recordExecutionTelemetry(resolved.ProviderName, resolved.ProviderModelID, true, len(streamAttempts)-1)
 		return h.streamResponse(c, ch, &streamSession{
 			requestID:       requestID,
 			correlationID:   correlationID,
@@ -718,7 +733,10 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		fallbackReq.Model = fb.ProviderModelID
 
 		fbStart := time.Now()
-		fbCh, fbErr := fb.Provider.ChatCompletionStream(streamCtx, &fallbackReq)
+		fbCh, fbStreamAttempts, fbErr := resilience.Execute(streamCtx, policy, func(ctx context.Context) (<-chan apitypes.StreamChunk, error) {
+			return fb.Provider.ChatCompletionStream(ctx, &fallbackReq)
+		})
+		h.logRetries(fb.ProviderName, len(fbStreamAttempts))
 		fbLatency := time.Since(fbStart).Milliseconds()
 		if fbErr == nil {
 			if fb.Breaker != nil {
@@ -727,7 +745,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			h.metrics.RecordProviderLatency(fbLatency)
 			h.metrics.RecordProviderLatencyForProvider(fb.ProviderName, fbLatency)
 			h.recordModelResult(&fb, nil, fbLatency)
-			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+1)
+			h.recordExecutionTelemetry(fb.ProviderName, fb.ProviderModelID, true, i+len(fbStreamAttempts))
 			return h.streamResponse(c, fbCh, &streamSession{
 				requestID:       requestID,
 				correlationID:   correlationID,

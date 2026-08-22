@@ -229,13 +229,24 @@ type FallbackConfig struct {
 	ModelID  string `mapstructure:"model_id"` // Optional: override model name
 }
 
-// RetryConfig holds retry configuration
+// RetryConfig configures cause-aware same-provider retries (P4.2).
+//
+// Retryability is class-driven via internal/failure: only rate_limited,
+// timeout, capacity, upstream_error, and network_error are retryable;
+// auth_failed, invalid_request, and unknown never are. The legacy
+// RetryableStatusCodes list is retained for config compatibility but ignored.
 type RetryConfig struct {
-	MaxRetries           int           `mapstructure:"max_retries"`
-	InitialBackoff       time.Duration `mapstructure:"initial_backoff"`
-	MaxBackoff           time.Duration `mapstructure:"max_backoff"`
-	BackoffMultiplier    float64       `mapstructure:"backoff_multiplier"`
-	RetryableStatusCodes []int         `mapstructure:"retryable_status_codes"`
+	Enabled           bool          `mapstructure:"enabled"`
+	MaxRetries        int           `mapstructure:"max_retries"`
+	InitialBackoff    time.Duration `mapstructure:"initial_backoff"`
+	MaxBackoff        time.Duration `mapstructure:"max_backoff"`
+	BackoffMultiplier float64       `mapstructure:"backoff_multiplier"`
+	HonorRetryAfter   bool          `mapstructure:"honor_retry_after"`
+	MaxRetryAfterWait time.Duration `mapstructure:"max_retry_after_wait"`
+
+	// Deprecated: superseded by failure-class policy; kept so existing YAML
+	// files still parse. No longer read by any component.
+	RetryableStatusCodes []int `mapstructure:"retryable_status_codes"`
 }
 
 // DatabaseConfig holds database configuration
@@ -565,12 +576,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("providers.agnesai.timeout", 60*time.Second)
 	v.SetDefault("providers.agnesai.max_retries", 3)
 
-	// Retry defaults
-	v.SetDefault("retry.max_retries", 3)
-	v.SetDefault("retry.initial_backoff", 100*time.Millisecond)
-	v.SetDefault("retry.max_backoff", 5*time.Second)
+	// Retry defaults (P4.2: cause-aware same-provider retries; conservative
+	// single retry with bounded backoff, honoring Retry-After hints).
+	v.SetDefault("retry.enabled", true)
+	v.SetDefault("retry.max_retries", 1)
+	v.SetDefault("retry.initial_backoff", 250*time.Millisecond)
+	v.SetDefault("retry.max_backoff", 2*time.Second)
 	v.SetDefault("retry.backoff_multiplier", 2.0)
-	v.SetDefault("retry.retryable_status_codes", []int{429, 500, 502, 503})
+	v.SetDefault("retry.honor_retry_after", true)
+	v.SetDefault("retry.max_retry_after_wait", 30*time.Second)
 
 	// Database defaults
 	v.SetDefault("database.driver", "sqlite")

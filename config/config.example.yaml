@@ -264,12 +264,21 @@ fallbacks:
     - provider: groq
       model_id: "deepseek-r1-distill-llama-70b"
 
-# Retry configuration
+# Same-provider retry configuration (P4.2)
+# Retryability is failure-class-driven: rate_limited, timeout, capacity,
+# upstream_error, and network_error are retried; auth_failed,
+# invalid_request, and unknown never are. A server-advised Retry-After wait
+# overrides computed backoff when honor_retry_after is on (capped by
+# max_retry_after_wait).
 retry:
-  max_retries: 3
-  initial_backoff: 100ms
-  max_backoff: 5s
+  enabled: true
+  max_retries: 1            # additional same-provider attempts per candidate
+  initial_backoff: 250ms
+  max_backoff: 2s
   backoff_multiplier: 2.0
+  honor_retry_after: true
+  max_retry_after_wait: 30s
+  # Deprecated and ignored since P4.2 (class policy supersedes it).
   retryable_status_codes: [429, 500, 502, 503]
 
 # Database configuration

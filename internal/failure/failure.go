@@ -146,10 +146,25 @@ func classifyProviderError(pe *provider.ProviderError) Class {
 	case provider.ErrorTypeInvalidRequest, provider.ErrorTypeContextLength:
 		return ClassInvalidRequest
 	case provider.ErrorTypeProviderUnavailable:
-		// Recorded by the adapter boundary for transport-layer failures;
-		// split deadlines from connectivity problems via the cause chain.
-		if pe.Err != nil && (errors.Is(pe.Err, context.DeadlineExceeded) || isTimeout(pe.Err)) {
+		// Transport-layer failures carry a non-nil cause chain from
+		// client.Do; split deadlines from connectivity problems.
+		if pe.Err != nil {
+			if errors.Is(pe.Err, context.DeadlineExceeded) || isTimeout(pe.Err) {
+				return ClassTimeout
+			}
+			return ClassNetworkError
+		}
+		// Response-derived unavailability (adapters pass a nil cause when
+		// the upstream answered with an HTTP error): honor status semantics
+		// so overload and gateway timeouts are not misread as network faults.
+		switch pe.StatusCode {
+		case http.StatusRequestTimeout, http.StatusGatewayTimeout:
 			return ClassTimeout
+		case http.StatusServiceUnavailable, statusOverloaded:
+			return ClassCapacity
+		}
+		if pe.StatusCode >= 500 {
+			return ClassUpstreamError
 		}
 		return ClassNetworkError
 	case provider.ErrorTypeServerError:

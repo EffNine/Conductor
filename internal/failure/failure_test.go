@@ -28,6 +28,12 @@ func TestClassifyProviderErrorTypes(t *testing.T) {
 		{"service unavailable", provider.NewProviderError("p", http.StatusServiceUnavailable, provider.ErrorTypeServerError, "no capacity", nil), ClassCapacity},
 		{"overloaded 529", provider.NewProviderError("p", 529, provider.ErrorTypeServerError, "overloaded", nil), ClassCapacity},
 		{"transport refused", provider.NewProviderError("p", http.StatusBadGateway, provider.ErrorTypeProviderUnavailable, "connect refused", errors.New("connection refused")), ClassNetworkError},
+		// Response-derived unavailability (nil cause) follows status semantics.
+		{"response unavailable 503", provider.NewProviderError("p", http.StatusServiceUnavailable, provider.ErrorTypeProviderUnavailable, "overloaded", nil), ClassCapacity},
+		{"response overloaded 529", provider.NewProviderError("p", 529, provider.ErrorTypeProviderUnavailable, "overloaded_error", nil), ClassCapacity},
+		{"response gateway timeout 504", provider.NewProviderError("p", http.StatusGatewayTimeout, provider.ErrorTypeProviderUnavailable, "gateway timeout", nil), ClassTimeout},
+		{"response request timeout 408", provider.NewProviderError("p", http.StatusRequestTimeout, provider.ErrorTypeProviderUnavailable, "request timeout", nil), ClassTimeout},
+		{"response bad gateway 502", provider.NewProviderError("p", http.StatusBadGateway, provider.ErrorTypeProviderUnavailable, "bad gateway", nil), ClassUpstreamError},
 		{
 			"transport deadline",
 			provider.NewProviderError("p", http.StatusBadGateway, provider.ErrorTypeProviderUnavailable,
