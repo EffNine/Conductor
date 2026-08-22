@@ -188,7 +188,7 @@ func normalizeUnion(v interface{}, norm SchemaNormalization) interface{} {
 	if !ok || len(arr) == 0 {
 		return v
 	}
-	var nonNull []map[string]interface{}
+	nonNull := make([]map[string]interface{}, 0, len(arr))
 	hasNull := false
 	for _, item := range arr {
 		m, ok := toInterfaceMap(item)

@@ -95,3 +95,6 @@ PERFORMANCE.md
 SPRINT_*.md
 docs/HANDOFF.md
 docs/PLAN.md
+
+# CodeBro engineering context (local tooling state)
+.codebro/

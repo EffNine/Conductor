@@ -325,7 +325,7 @@ func normalizeGeminiUnion(v interface{}) interface{} {
 		return v
 	}
 	// Collect non-null options and check for a null option.
-	var nonNull []map[string]interface{}
+	nonNull := make([]map[string]interface{}, 0, len(arr))
 	hasNull := false
 	for _, item := range arr {
 		m, ok := toMap(item)
