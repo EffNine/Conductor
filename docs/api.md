@@ -884,6 +884,52 @@ Returns current configuration (secrets redacted).
 
 ---
 
+## Failure Analytics
+
+Read-only observability over persisted chat execution attempts (P4.5).
+Rows are written asynchronously by attempt persistence (see
+`execution.attempts.enabled`) and bounded by
+`execution.attempts.retention`. Both endpoints require the gateway API key.
+
+### Failure List
+
+**Endpoint**: `GET /api/failures`
+
+Query parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `class` | string | Exact match on failure class (`rate_limited`, `timeout`, `auth_failed`, `capacity`, `upstream_error`, `network_error`, `invalid_request`, `unknown`) |
+| `provider` | string | Exact match on provider name |
+| `model` | string | Exact match on virtual model |
+| `window` | duration | Only rows newer than this (e.g. `1h`, `24h`); default unbounded, capped at 30d |
+| `limit` | int | 1..200, default 50 |
+| `offset` | int | Default 0 |
+
+Response: `{ "total": <matching count>, "limit": …, "offset": …,
+"attempts": [ { "created_at", "request_id", "correlation_id",
+"virtual_model", "mode", "provider", "provider_model_id",
+"candidate_index", "attempt_index", "failure_class", "outcome"
+(success\|failed\|skipped), "skip_reason", "http_status", "latency_ms",
+"retry_wait_ms", "retry_after_honored" }, … ] }` — newest first.
+
+### Failure Summary
+
+**Endpoint**: `GET /api/failures/summary`
+
+Query parameters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `window` | duration | Aggregation window; default `24h`, capped at 30d |
+| `bucket` | duration | Time-bucket width; default window/12, min 1m |
+
+Response: `{ "window_seconds", "bucket_seconds", "total_failures",
+"by_provider": {…}, "by_class": {…}, "buckets": [ { "bucket_start",
+"count" }, … ] }`
+
+---
+
 ## Error Responses
 
 All errors follow the OpenAI error format:

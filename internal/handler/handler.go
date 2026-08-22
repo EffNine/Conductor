@@ -54,6 +54,7 @@ type Handler struct {
 	executionAdapter  *runtimeadapter.ExecutionToRuntimeAdapter
 	runtimeManager    runtime.Manager
 	traceStore        router.TraceStore
+	attemptStore      *database.AttemptStore
 	attemptEmitter    func(database.AttemptRecord)
 	cfg               *config.Config
 }
@@ -191,6 +192,8 @@ func (h *Handler) Register(app *fiber.App) {
 	app.Get("/api/routing", h.HandleRouting)
 	app.Get("/api/routing/traces", h.HandleRoutingTraces)
 	app.Get("/api/routing/traces/:id", h.HandleRoutingTraceByID)
+	app.Get("/api/failures", h.HandleFailures)
+	app.Get("/api/failures/summary", h.HandleFailuresSummary)
 	app.Get("/api/cache", h.HandleCacheStatus)
 	app.Get("/api/streams", h.HandleStreamStatus)
 	app.Get("/api/runtime", h.HandleRuntime)
