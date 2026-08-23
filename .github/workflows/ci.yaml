@@ -104,3 +104,22 @@ jobs:
           file: deployments/Dockerfile
           push: false
           tags: effnine/conductor:latest
+
+  vulnscan:
+    name: Vulnerability Scan
+    runs-on: ubuntu-latest
+    # Advisory gate: runs on the latest stable toolchain so stdlib findings
+    # reflect the patched runtime, not the build target. Non-blocking so an
+    # upstream CVE disclosure never freezes merges; failures surface in the
+    # checks UI for triage. Flip continue-on-error to false once baseline is
+    # clean if a hard gate is desired.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
