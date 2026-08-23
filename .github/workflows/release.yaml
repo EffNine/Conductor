@@ -25,7 +25,10 @@ jobs:
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
-          version: latest
+          # v2 toolchain: matches .goreleaser.yaml `version: 2`.
+          # Bare "latest" resolves to the retired v1 line, which rejects
+          # v2 configs outright.
+          version: v2
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
