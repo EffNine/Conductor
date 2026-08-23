@@ -9,6 +9,10 @@ env:
   GO_VERSION: '1.21'
   DOCKER_IMAGE: effnine/conductor
 
+# GoReleaser creates the GitHub release and uploads artifacts.
+permissions:
+  contents: write
+
 jobs:
   goreleaser:
     name: GoReleaser
