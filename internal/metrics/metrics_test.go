@@ -105,6 +105,24 @@ func TestExportPrometheusWithProviderLabel(t *testing.T) {
 	assert.True(t, strings.Contains(output, "provider=\"anthropic\""))
 }
 
+func TestFallbackCountersAndExport(t *testing.T) {
+	c := NewCollector()
+	c.IncrementFallback("dynamic", "groq")
+	c.IncrementFallback("dynamic", "groq")
+	c.IncrementFallback("static", "deepseek")
+
+	snap := c.Snapshot()
+	require.Len(t, snap.Fallbacks, 2)
+	assert.Equal(t, FallbackKey{Kind: "dynamic", Provider: "groq"}, snap.Fallbacks[0].Key)
+	assert.Equal(t, int64(2), snap.Fallbacks[0].Count)
+	assert.Equal(t, FallbackKey{Kind: "static", Provider: "deepseek"}, snap.Fallbacks[1].Key)
+	assert.Equal(t, int64(1), snap.Fallbacks[1].Count)
+
+	output := ExportPrometheus(snap)
+	assert.Contains(t, output, "conductor_fallback_total{kind=\"dynamic\",provider=\"groq\"} 2")
+	assert.Contains(t, output, "conductor_fallback_total{kind=\"static\",provider=\"deepseek\"} 1")
+}
+
 func TestReadBody(t *testing.T) {
 	r := strings.NewReader("hello world")
 	body := ReadBody(r)

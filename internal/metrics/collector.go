@@ -1,10 +1,24 @@
 package metrics
 
 import (
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// FallbackKey identifies one fallback counter: the chain kind that produced
+// the winner and the provider that served it.
+type FallbackKey struct {
+	Kind     string // "static" (configured chain) or "dynamic" (catalog tail)
+	Provider string
+}
+
+// FallbackStat is a point-in-time fallback counter value.
+type FallbackStat struct {
+	Key   FallbackKey
+	Count int64
+}
 
 // Counter is a thread-safe monotonic counter.
 type Counter struct {
@@ -255,6 +269,10 @@ type Collector struct {
 	breakerRejections *Counter
 	breakerOpens      *Counter
 
+	// Fallback counters keyed by kind (static|dynamic) and serving provider.
+	fallbackMu     sync.Mutex
+	fallbackTotals map[FallbackKey]*Counter
+
 	// Routing counters
 	routingDecisions *Counter
 	routingLatency   *Histogram
@@ -300,6 +318,7 @@ func NewCollector() *Collector {
 		probeFailure:            &Counter{},
 		breakerRejections:       &Counter{},
 		breakerOpens:            &Counter{},
+		fallbackTotals:          make(map[FallbackKey]*Counter),
 		promptTokensTotal:       &Counter{},
 		completionTokensTotal:   &Counter{},
 		totalTokensTotal:        &Counter{},
@@ -542,6 +561,41 @@ func (c *Collector) RecordBreakerOpen() {
 	c.breakerOpens.Inc(1)
 }
 
+// IncrementFallback records one request served by a non-primary candidate.
+// kind is "static" for configured fallback chains and "dynamic" for the
+// catalog-derived tail.
+func (c *Collector) IncrementFallback(kind, provider string) {
+	key := FallbackKey{Kind: kind, Provider: provider}
+	c.fallbackMu.Lock()
+	defer c.fallbackMu.Unlock()
+	if c.fallbackTotals == nil {
+		c.fallbackTotals = make(map[FallbackKey]*Counter)
+	}
+	cntr, ok := c.fallbackTotals[key]
+	if !ok {
+		cntr = &Counter{}
+		c.fallbackTotals[key] = cntr
+	}
+	cntr.Inc(1)
+}
+
+// fallbackSnapshot returns the fallback counters in deterministic key order.
+func (c *Collector) fallbackSnapshot() []FallbackStat {
+	c.fallbackMu.Lock()
+	defer c.fallbackMu.Unlock()
+	out := make([]FallbackStat, 0, len(c.fallbackTotals))
+	for key, cntr := range c.fallbackTotals {
+		out = append(out, FallbackStat{Key: key, Count: cntr.Get()})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Key.Kind != out[j].Key.Kind {
+			return out[i].Key.Kind < out[j].Key.Kind
+		}
+		return out[i].Key.Provider < out[j].Key.Provider
+	})
+	return out
+}
+
 // IncrementRoutingDecisions increments the routing decision counter.
 func (c *Collector) IncrementRoutingDecisions() {
 	c.routingDecisions.Inc(1)
@@ -665,6 +719,7 @@ func (c *Collector) Snapshot() MetricSnapshot {
 		ProbeFailure:          c.probeFailure.Get(),
 		BreakerRejections:     c.breakerRejections.Get(),
 		BreakerOpens:          c.breakerOpens.Get(),
+		Fallbacks:             c.fallbackSnapshot(),
 		UptimeSeconds:         time.Since(c.startTime).Seconds(),
 		RoutingLatency: MetricHistogram{
 			Sum:     c.routingLatency.Sum(),
@@ -787,6 +842,7 @@ type MetricSnapshot struct {
 	ProbeFailure              int64
 	BreakerRejections         int64
 	BreakerOpens              int64
+	Fallbacks                 []FallbackStat
 	UptimeSeconds             float64
 	RoutingLatency            MetricHistogram
 	ProviderLatencyByProvider map[string]MetricHistogram

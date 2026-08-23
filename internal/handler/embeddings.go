@@ -9,6 +9,7 @@ import (
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 // embeddingsWinner carries the winning response out of the executor's
@@ -59,7 +60,8 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 
 	// Dynamic tail mirrors the chat path; embedding requests are always in
 	// the default category (no vision/mode filters apply).
-	routes := make([]*router.ResolvedRoute, 0, 1+len(fallbacks)+1)
+	staticRoutes := 1 + len(fallbacks)
+	routes := make([]*router.ResolvedRoute, 0, staticRoutes+1)
 	routes = append(routes, resolved)
 	for i := range fallbacks {
 		routes = append(routes, &fallbacks[i])
@@ -102,6 +104,22 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 
 	if res.WinnerIndex >= 0 {
 		winner := routes[res.WinnerIndex]
+		if res.WinnerIndex > 0 {
+			kind := "static"
+			if staticRoutes > 0 && res.WinnerIndex >= staticRoutes {
+				kind = "dynamic"
+			}
+			h.metrics.IncrementFallback(kind, winner.ProviderName)
+			h.logger.Info("fallback_engaged",
+				zap.String("request_id", requestID),
+				zap.String("kind", kind),
+				zap.Int("candidate_index", res.WinnerIndex),
+				zap.String("from_provider", resolved.ProviderName),
+				zap.String("from_model", resolved.ProviderModelID),
+				zap.String("to_provider", winner.ProviderName),
+				zap.String("to_model", winner.ProviderModelID),
+			)
+		}
 		usageData := &apitypes.Usage{}
 		if win.resp.Usage != nil {
 			usageData.PromptTokens = win.resp.Usage.PromptTokens

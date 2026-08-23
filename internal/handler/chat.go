@@ -203,6 +203,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 
 	// Append dynamic, category-matched alternates after the primary route
 	// and static fallback chain (no-op when disabled or unavailable).
+	staticRoutes := 1 + len(fallbacks)
 	if dyn := h.dynamicFallbackRoutes(c.Context(), &req, resolved, fallbacks); len(dyn) > 0 {
 		fallbacks = append(fallbacks, dyn...)
 	}
@@ -277,11 +278,11 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 			zap.String("model", req.Model),
 			zap.String("reason", "streaming"),
 		)
-		return h.handleStreaming(c, &req, resolved, fallbacks)
+		return h.handleStreaming(c, &req, resolved, fallbacks, staticRoutes)
 	}
 
 	// Handle non-streaming
-	return h.handleNonStreaming(c, &req, resolved, fallbacks)
+	return h.handleNonStreaming(c, &req, resolved, fallbacks, staticRoutes)
 }
 
 // buildConfigSnapshot exports the legacy engine's routing config for the pipeline.
@@ -290,7 +291,7 @@ func (h *Handler) buildConfigSnapshot() router.ConfigSnapshot {
 }
 
 // handleNonStreaming handles a non-streaming chat completion request
-func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute) error {
+func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int) error {
 	start := time.Now()
 	requestID := uuid.New().String()
 	correlationID := middleware.GetCorrelationIDFromLocals(c)
@@ -360,6 +361,7 @@ miss:
 		mode:          req.Mode,
 		start:         start,
 		routes:        routes,
+		staticRoutes:  staticRoutes,
 		usageModelID:  resolved.ModelID,
 	}
 	plan := resilience.Plan{

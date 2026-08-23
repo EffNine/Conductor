@@ -25,7 +25,7 @@ import (
 )
 
 // handleStreaming handles a streaming chat completion request
-func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute) error {
+func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int) error {
 	start := time.Now()
 	requestID := uuid.New().String()
 	correlationID := middleware.GetCorrelationIDFromLocals(c)
@@ -81,6 +81,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 		mode:          req.Mode,
 		start:         start,
 		routes:        routes,
+		staticRoutes:  staticRoutes,
 		usageModelID:  resolved.ModelID,
 	}
 	win := &chatWinner{}

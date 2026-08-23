@@ -40,7 +40,7 @@ Full guide → [docs/quickstart.md](docs/quickstart.md)
 | **Merged Model Picker** | `GET /v1/models` aggregates every provider; IDs are provider-prefixed (`openai/gpt-4o`, `nvidia_nim/meta/llama-3.1-8b-instruct`) |
 | **Model Reachability** | Background probes hide unreachable models; status exposed at `/api/models/status` |
 | **Explicit Routing + Aliases** | Map bare IDs to providers and upstream slugs. Provider-prefixed IDs route without config |
-| **Fallback Chains** | Automatic failover when a provider fails |
+| **Automatic Failover** | Primary fails → configured static chains → **dynamic alternates from the full catalog**, filtered to the request's category (vision→vision, planning→reasoning+tools, long-context→fits). A request only errors when no eligible model can serve it. Disable with `routing.dynamic_fallback.enabled: false` |
 | **Auto Model Selection** | Send `"model": "auto"` — gateway picks the best model by health, cost, latency, and capability match |
 | **Task Orchestration (V2.5)** | `POST /api/tasks` creates persistent tasks with intent classification, plan generation, agent loops, and verification |
 | **Multi-Step Agents** | Bounded loops with tool calls (fs, shell, git), checkpoint/resume, retry/backoff |

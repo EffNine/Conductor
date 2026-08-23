@@ -47,6 +47,22 @@ jobs:
           name: coverage
           path: coverage.out
 
+  e2e:
+    name: E2E Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run E2E smoke tests
+        run: go test -tags=integration -v ./deployments/local-integration/
+
   build:
     name: Build
     runs-on: ubuntu-latest

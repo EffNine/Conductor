@@ -91,6 +91,9 @@ type chatPlanSink struct {
 	start         time.Time
 
 	routes []*router.ResolvedRoute // index-aligned with candidates; [0] = primary
+	// staticRoutes is the count of primary + configured fallback routes;
+	// candidates at or beyond this index came from the dynamic tail.
+	staticRoutes int
 	// usageModelID is the virtual/route model recorded on usage rows: the
 	// legacy loops always used resolved.ModelID even for fallback successes.
 	usageModelID string
@@ -215,6 +218,27 @@ func (s *chatPlanSink) CandidateFailed(c resilience.Candidate, err error, attemp
 	)
 }
 
+// recordFallback counts and logs a request served by a non-primary
+// candidate, distinguishing the configured chain from the dynamic tail.
+func (s *chatPlanSink) recordFallback(c resilience.Candidate) {
+	kind := "static"
+	if s.staticRoutes > 0 && c.Index >= s.staticRoutes {
+		kind = "dynamic"
+	}
+	primary := s.routes[0]
+	s.h.metrics.IncrementFallback(kind, c.ProviderName)
+	s.h.logger.Info("fallback_engaged",
+		zap.String("correlation_id", s.correlationID),
+		zap.String("request_id", s.requestID),
+		zap.String("kind", kind),
+		zap.Int("candidate_index", c.Index),
+		zap.String("from_provider", primary.ProviderName),
+		zap.String("from_model", primary.ProviderModelID),
+		zap.String("to_provider", c.ProviderName),
+		zap.String("to_model", c.ProviderModelID),
+	)
+}
+
 func (s *chatPlanSink) CandidateSucceeded(c resilience.Candidate, attempts []resilience.Attempt, duration time.Duration) {
 	if !c.DeferSuccess {
 		// Non-streaming: terminal success row emitted now.
@@ -232,6 +256,9 @@ func (s *chatPlanSink) CandidateSucceeded(c resilience.Candidate, attempts []res
 
 	s.h.metrics.RecordProviderLatency(latencyMs)
 	s.h.metrics.RecordProviderLatencyForProvider(c.ProviderName, latencyMs)
+	if c.Index > 0 {
+		s.recordFallback(c)
+	}
 	s.h.recordModelResult(s.route(c), nil, latencyMs)
 	// Legacy indices: primary len(attempts)-1; fallback i+len(attempts).
 	s.h.recordExecutionTelemetry(c.ProviderName, c.ProviderModelID, true, len(attempts)-1+c.Index)

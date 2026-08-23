@@ -1,4 +1,4 @@
-.PHONY: build test lint clean docker-build docker-run run gen-key help
+.PHONY: build test lint clean docker-build docker-run run gen-key help test-e2e
 
 # Binary name
 BINARY_NAME=conductor
@@ -25,6 +25,11 @@ build:
 test:
 	@echo "Running tests..."
 	$(GOTEST) -v -race -cover ./...
+
+## test-e2e: Run end-to-end smoke tests (boots the real gateway against mock upstreams)
+test-e2e:
+	@echo "Running E2E smoke tests..."
+	CGO_ENABLED=1 $(GOTEST) -tags=integration -v ./deployments/local-integration/
 
 ## test-coverage: Run tests with coverage report
 test-coverage:

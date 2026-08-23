@@ -98,6 +98,15 @@ func writeGauges(b *bytes.Buffer, snap MetricSnapshot) {
 	b.WriteString("# TYPE conductor_breaker_opens_total counter\n")
 	b.WriteString(fmt.Sprintf("conductor_breaker_opens_total %d\n", snap.BreakerOpens))
 
+	if len(snap.Fallbacks) > 0 {
+		b.WriteString("\n# HELP conductor_fallback_total Requests served by a non-primary candidate, by fallback kind and serving provider.\n")
+		b.WriteString("# TYPE conductor_fallback_total counter\n")
+		for _, f := range snap.Fallbacks {
+			b.WriteString(fmt.Sprintf("conductor_fallback_total{kind=%q,provider=%q} %d\n",
+				f.Key.Kind, f.Key.Provider, f.Count))
+		}
+	}
+
 	b.WriteString("# HELP conductor_cache_hits_total Total number of cache hits.\n")
 	b.WriteString("# TYPE conductor_cache_hits_total counter\n")
 	b.WriteString(fmt.Sprintf("conductor_cache_hits_total %d\n", snap.CacheHits))

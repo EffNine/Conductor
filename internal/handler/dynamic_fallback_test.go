@@ -76,7 +76,7 @@ func dfPost(t *testing.T, app *fiber.App, body string) (*http.Response, string) 
 }
 
 func TestDynamicFallbackServesWhenPrimaryFailsWithoutStaticChain(t *testing.T) {
-	_, app, primary, alternate := setupDynamicFallback(t, true)
+	h, app, primary, alternate := setupDynamicFallback(t, true)
 
 	for _, stream := range []bool{false, true} {
 		body := `{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`
@@ -94,6 +94,16 @@ func TestDynamicFallbackServesWhenPrimaryFailsWithoutStaticChain(t *testing.T) {
 		assert.GreaterOrEqual(t, primary.callCount, 1, "primary attempted first")
 		assert.GreaterOrEqual(t, alternate.callCount, 1, "dynamic fallback served the request")
 	}
+
+	snap := h.Metrics().Snapshot()
+	require.NotEmpty(t, snap.Fallbacks, "fallback engagement must be counted")
+	found := false
+	for _, f := range snap.Fallbacks {
+		if f.Key.Kind == "dynamic" && f.Key.Provider == "groq" && f.Count >= 2 {
+			found = true
+		}
+	}
+	assert.True(t, found, "expected dynamic fallback counter for groq >= 2, got %+v", snap.Fallbacks)
 }
 
 func TestDynamicFallbackDisabledSurfacesPrimaryFailure(t *testing.T) {
