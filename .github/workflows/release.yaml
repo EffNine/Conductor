@@ -32,6 +32,10 @@ jobs:
 
   docker:
     name: Docker Push
+    # Opt-in: requires DOCKER_USERNAME / DOCKER_PASSWORD repo secrets plus
+    # the DOCKER_PUBLISH_ENABLED repository variable set to "true". Skipped
+    # (not failed) while credentials are absent.
+    if: ${{ vars.DOCKER_PUBLISH_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

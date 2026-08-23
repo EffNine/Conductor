@@ -1,0 +1,39 @@
+version: 2
+
+project_name: conductor
+
+# mattn/go-sqlite3 requires CGO. Release binaries ship linux/amd64 only
+# (native toolchain on the runner); arm64 is covered by the Docker image,
+# which buildx compiles natively per platform. macOS/Windows use Docker or
+# source builds.
+builds:
+  - id: conductor
+    main: ./cmd/conductor
+    binary: conductor
+    env:
+      - CGO_ENABLED=1
+      # musl builders (and the production Dockerfile) need this for
+      # go-sqlite3's pread64/pwrite64; glibc accepts it too.
+      - CGO_CFLAGS=-D_LARGEFILE64_SOURCE
+    goos:
+      - linux
+    goarch:
+      - amd64
+    ldflags:
+      - -s -w -X github.com/EffNine/conductor/internal/buildinfo.Version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
