@@ -100,6 +100,8 @@ ledger, and back each other up through automatic failover.
 | Z.AI | ✅ | ✅ | ✅ | ✅ |
 | Cerebras | ✅ | ✅ | ✅ | ✅ |
 | Requesty | ✅ | ✅ | ✅ | ✅ |
+| xAI | ✅ | ✅ | ✅ | ✅ |
+| Agnes AI | ✅ | ✅ | ✅ | — |
 | Cloudflare | ✅ | ❌ | ❌ | — |
 
 ## Architecture

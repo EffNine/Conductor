@@ -2,7 +2,7 @@
 
 ## Overview
 
-Conductor is a single-operator, self-hosted AI gateway. It exposes an OpenAI-compatible API and routes requests to one or more configured upstream providers using explicit routes.
+Conductor is a single-operator, self-hosted AI gateway. It exposes an OpenAI-compatible API and routes requests to one or more configured upstream providers using explicit routes, virtual categories, and automatic failover, with optional score-based model selection.
 
 ## System Architecture
 
@@ -41,14 +41,18 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 ### Provider Abstraction
 
 - All providers implement a common `Provider` interface
-- Currently only the **OpenAI** adapter is fully implemented
-- Anthropic, Gemini, DeepSeek, OpenRouter, Groq, Ollama, LM Studio, and Generic are registered as stubs
+- Most adapters share an OpenAI-compatible base adapter (`internal/provider/openaibase`); each adds provider-specific pricing, base URLs, and request quirks
+- OpenAI-compatible providers (DeepSeek, Groq, Mistral, Cerebras, NVIDIA NIM, …) reuse this base directly
+- **Anthropic** and **Gemini** have dedicated request/response mappers because their native APIs differ from OpenAI's wire format
+- A `generic` adapter serves any operator-configured OpenAI-compatible endpoint
 
 ### Explicit Routing
 
-- The gateway does not auto-select a provider for an unmatched Model ID
-- Resolution order: alias → configured route → provider-prefixed route
+- Explicit configuration takes precedence: resolution order is alias → configured route → provider-prefixed route
 - Provider prefixes in `/v1/models` are stripped before route lookup
+- Bare model IDs auto-resolve when exactly one provider is configured (`routing.auto_resolve_bare_models`, default on)
+- Virtual categories (`auto`, `fast`, `coding`, `frontier`, …) resolve to concrete models at request time
+- On failure, requests retry and fail over: static fallback chains first, then dynamic category-preserving alternates drawn from the catalog (`routing.dynamic_fallback`, default on), gated by per-provider circuit breakers
 
 ### Catalog
 
@@ -64,7 +68,7 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 - Provider-level `HealthCheck` only proves the upstream API is up, not that each listed model accepts inference
 - Especially important for **NVIDIA NIM**: `/models` lists free and unreachable endpoints with no availability flag
 - Optional background prober sends minimal chat completions for all registered providers by default (limit with `health.models.providers`)
-- Full probe pass on every startup/redeploy, then every `12h` by default
+- Full probe pass on every startup/redeploy, then every `2h` by default; failed models retry sooner on exponential backoff
 - Results are cached and also updated from live chat traffic; rate limits / auth errors are ignored
 - Dashboard: `/api/models`, `/api/models/status`
 
@@ -89,16 +93,27 @@ Client (VS Code, Claude Code, Open WebUI, custom apps)
 
 1. Client sends `POST /v1/chat/completions` with `Authorization: Bearer <key>`
 2. API key middleware validates against `CONDUCTOR_API_KEY`
-3. Rate limiter checks global and per-provider limits
+3. Global inbound rate limiter checks the request (`rate_limit.*`)
 4. Request validator checks payload structure
 5. Router resolves `model`:
    - Strip registered provider prefix if present
    - Resolve alias if exact match
    - Resolve configured route
-6. If a fallback chain exists, prepare ordered providers
+6. The resilience executor applies retry policy and circuit-breaker gating, then tries the primary provider, static fallbacks, and dynamic alternates in order
 7. Provider adapter sends the request
 8. Response is returned in OpenAI-compatible format
-9. Usage tracker records the request asynchronously
+9. Usage tracker records the request asynchronously; each attempt is persisted for failure analytics (`/api/failures`)
+
+## Intelligent Routing (opt-in)
+
+- `routing.enabled: true` activates the scoring router: candidates are scored by health, latency, cost, and capability weights (`routing.weights.*`)
+- Selection decisions produce decision traces (why a model was chosen, which alternatives were rejected) persisted to SQLite and exposed at `/api/routing/traces`
+- Default remains explicit/static routing; the scoring engine is additive, not required
+
+## Task Orchestration
+
+- `POST /api/tasks` creates persistent tasks: intent classification → capability match → plan generation → bounded agent loop with tool calls (fs, shell, git) → verification
+- Tasks, steps, tool calls, and events persist to SQLite; execution runs on an internal worker pool with checkpoint/resume and cancellation
 
 ## Streaming Flow
 
