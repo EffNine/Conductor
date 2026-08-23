@@ -242,6 +242,12 @@ func (p *ModelProber) ProbeAll() {
 		}()
 	}
 	wg.Wait()
+	// Probe results reach the store through the async catalog batcher; drain
+	// it before marking any provider filter-ready, otherwise a reader can see
+	// the ready marker while the pass's statuses are still pending in the
+	// batch window. With strict_healthy that combination hides every not-yet-
+	// applied model and briefly flashes the catalog toward empty on cold start.
+	p.batcher.Flush()
 	for name := range probedProviders {
 		p.store.MarkProviderFilterReady(name)
 	}

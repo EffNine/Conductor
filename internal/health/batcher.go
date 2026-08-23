@@ -25,6 +25,7 @@ type ProbeResult struct {
 // /v1/models readers never observe a mid-update partial catalog.
 type CatalogBatcher struct {
 	resultsCh   chan ProbeResult
+	flushCh     chan chan struct{}
 	batchWindow time.Duration
 	onBatch     func([]ProbeResult)
 	stopCh      chan struct{}
@@ -45,6 +46,7 @@ func NewCatalogBatcher(batchWindow time.Duration, onBatch func([]ProbeResult)) *
 	}
 	return &CatalogBatcher{
 		resultsCh:   make(chan ProbeResult, 256),
+		flushCh:     make(chan chan struct{}),
 		batchWindow: batchWindow,
 		onBatch:     onBatch,
 		stopCh:      make(chan struct{}),
@@ -80,6 +82,29 @@ func (b *CatalogBatcher) Stop() {
 	b.mu.Lock()
 	b.running = false
 	b.mu.Unlock()
+}
+
+// Flush synchronously applies every result submitted so far. Callers that
+// derive state from the applied results (e.g. marking a provider's probe pass
+// filter-ready) must Flush first, or readers can observe a ready marker with
+// the corresponding statuses still pending in the batch window.
+func (b *CatalogBatcher) Flush() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	running := b.running
+	b.mu.Unlock()
+	if !running {
+		return
+	}
+	ack := make(chan struct{})
+	select {
+	case b.flushCh <- ack:
+		<-ack
+	case <-b.stopCh:
+		// Batcher stopped concurrently; Stop drains everything before returning.
+	}
 }
 
 // Submit enqueues a probe result. When the batcher is not running (e.g. unit
@@ -133,6 +158,21 @@ func (b *CatalogBatcher) run(ctx context.Context) {
 					return
 				}
 			}
+		case ack := <-b.flushCh:
+			// Drain everything enqueued so far into the batch before flushing:
+			// a plain flush() would only apply what the loop happened to
+			// consume already, racing with earlier Submits still queued.
+			drained := false
+			for !drained {
+				select {
+				case r := <-b.resultsCh:
+					batch = append(batch, r)
+				default:
+					drained = true
+				}
+			}
+			flush()
+			close(ack)
 		case r := <-b.resultsCh:
 			batch = append(batch, r)
 		case <-ticker.C:
