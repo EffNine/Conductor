@@ -229,15 +229,19 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		} else if result != nil && result.Candidate != nil {
 			// Map the pipeline selection back to a ResolvedRoute in the candidate set.
 			for i := range candidates {
-				if candidates[i].ProviderName == result.Candidate.ProviderName {
+				if candidates[i].ProviderName == result.Candidate.ProviderName &&
+					candidates[i].ProviderModelID == result.Candidate.ProviderModelID {
 					resolved = &candidates[i]
 					break
 				}
 			}
 			// Rebuild fallbacks: keep remaining candidates in their original order.
+			// Identity is (provider, model): same-provider alternates from the
+			// dynamic tail must survive so single-provider setups still fail over.
 			newFallbacks := make([]router.ResolvedRoute, 0, len(fallbacks))
 			for _, fb := range fallbacks {
-				if fb.ProviderName != resolved.ProviderName {
+				if fb.ProviderName != resolved.ProviderName ||
+					fb.ProviderModelID != resolved.ProviderModelID {
 					newFallbacks = append(newFallbacks, fb)
 				}
 			}
@@ -248,14 +252,18 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		selection, selErr := h.routingEngine.SelectFromRoutes(c.Context(), candidates, &req)
 		if selErr == nil && selection != nil && selection.Candidate != nil {
 			for i := range candidates {
-				if candidates[i].ProviderName == selection.Candidate.ProviderName {
+				if candidates[i].ProviderName == selection.Candidate.ProviderName &&
+					candidates[i].ProviderModelID == selection.Candidate.ProviderModelID {
 					resolved = &candidates[i]
 					break
 				}
 			}
+			// Identity is (provider, model): same-provider alternates from the
+			// dynamic tail must survive so single-provider setups still fail over.
 			newFallbacks := make([]router.ResolvedRoute, 0, len(fallbacks))
 			for _, fb := range fallbacks {
-				if fb.ProviderName != resolved.ProviderName {
+				if fb.ProviderName != resolved.ProviderName ||
+					fb.ProviderModelID != resolved.ProviderModelID {
 					newFallbacks = append(newFallbacks, fb)
 				}
 			}
