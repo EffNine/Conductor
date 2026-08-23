@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
@@ -40,15 +41,27 @@ func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
 	}
 }
 
+// accountsBase returns the URL prefix that already includes the account
+// segment. If baseURL carries the account ID in its path (the documented
+// configuration), it is returned as-is; otherwise the account segment is
+// appended.
+func (p *Provider) accountsBase() string {
+	if p.accountID != "" && strings.Contains(p.baseURL, "/accounts/"+p.accountID) {
+		return p.baseURL
+	}
+	return fmt.Sprintf("%s/account/%s", p.baseURL, p.accountID)
+}
+
 func extractCloudflareAccountID(url string) string {
-	for i := 0; i < len(url)-9; i++ {
-		if url[i:i+9] == "/accounts/" {
-			j := i + 9
+	marker := "/accounts/"
+	for i := 0; i+len(marker) <= len(url); i++ {
+		if url[i:i+len(marker)] == marker {
+			j := i + len(marker)
 			for j < len(url) && url[j] != '/' && url[j] != '?' {
 				j++
 			}
-			if j > i+9 {
-				return url[i+9 : j]
+			if j > i+len(marker) {
+				return url[i+len(marker) : j]
 			}
 		}
 	}
@@ -85,7 +98,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *apitypes.ChatComplet
 			provider.ErrorTypeInvalidRequest, "no user message found", nil)
 	}
 
-	url := fmt.Sprintf("%s/account/%s/ai/run/%s", p.baseURL, p.accountID, model)
+	url := fmt.Sprintf("%s/ai/run/%s", p.accountsBase(), model)
 
 	body := map[string]any{
 		"prompt": prompt,
@@ -180,7 +193,7 @@ func (p *Provider) Embeddings(ctx context.Context, req *apitypes.EmbeddingReques
 
 // ListModels returns known Workers AI text generation models.
 func (p *Provider) ListModels(ctx context.Context) ([]provider.ModelInfo, error) {
-	url := fmt.Sprintf("%s/account/%s/ai/models", p.baseURL, p.accountID)
+	url := fmt.Sprintf("%s/ai/models", p.accountsBase())
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -244,7 +257,7 @@ func (p *Provider) GetPricing(ctx context.Context) (map[string]provider.PricingI
 // HealthCheck pings the Models endpoint.
 func (p *Provider) HealthCheck(ctx context.Context) (*provider.HealthStatus, error) {
 	start := time.Now()
-	url := fmt.Sprintf("%s/account/%s/ai/models", p.baseURL, p.accountID)
+	url := fmt.Sprintf("%s/ai/models", p.accountsBase())
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
