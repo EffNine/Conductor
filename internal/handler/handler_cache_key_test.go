@@ -18,10 +18,10 @@ func testCacheHandler(t *testing.T) *Handler {
 	return h
 }
 
-// TestP311CacheKeyModeIsolation verifies the handler cache key includes the
+// TestCacheKeyModeIsolation verifies the handler cache key includes the
 // mode field, so a cached response produced under one mode can never be
 // served under a different mode's routing semantics.
-func TestP311CacheKeyModeIsolation(t *testing.T) {
+func TestCacheKeyModeIsolation(t *testing.T) {
 	h := testCacheHandler(t)
 	req := &apitypes.ChatCompletionRequest{
 		Model:    "m",
@@ -50,10 +50,10 @@ func TestP311CacheKeyModeIsolation(t *testing.T) {
 	}
 }
 
-// TestP311CacheKeyOmittedVsExplicitAuto verifies omitted mode and explicit
+// TestCacheKeyOmittedVsExplicitAuto verifies omitted mode and explicit
 // "auto" produce distinct keys (they are distinct routing inputs at the API
 // boundary even though they resolve to the same default profile).
-func TestP311CacheKeyOmittedVsExplicitAuto(t *testing.T) {
+func TestCacheKeyOmittedVsExplicitAuto(t *testing.T) {
 	h := testCacheHandler(t)
 	req := &apitypes.ChatCompletionRequest{
 		Model:    "m",
@@ -68,10 +68,10 @@ func TestP311CacheKeyOmittedVsExplicitAuto(t *testing.T) {
 	}
 }
 
-// TestP311CacheKeyResolvedModelID verifies the resolved provider model ID
+// TestCacheKeyResolvedModelID verifies the resolved provider model ID
 // participates in the key: an aliased model resolving to the same provider
 // model shares a key, while a different provider model does not.
-func TestP311CacheKeyResolvedModelID(t *testing.T) {
+func TestCacheKeyResolvedModelID(t *testing.T) {
 	h := testCacheHandler(t)
 	req := &apitypes.ChatCompletionRequest{
 		Model:    "alias",
@@ -94,10 +94,10 @@ func TestP311CacheKeyResolvedModelID(t *testing.T) {
 	}
 }
 
-// TestP311CacheKeyCapabilityFields verifies capability-affecting request
+// TestCacheKeyCapabilityFields verifies capability-affecting request
 // fields (tools, reasoning, response_format) participate in the key so
 // routing-relevant requests never share a cache entry.
-func TestP311CacheKeyCapabilityFields(t *testing.T) {
+func TestCacheKeyCapabilityFields(t *testing.T) {
 	h := testCacheHandler(t)
 	base := &apitypes.ChatCompletionRequest{
 		Model:    "m",
