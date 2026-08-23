@@ -780,40 +780,38 @@ func TestSelectBestProviderDeterministicConcurrent(t *testing.T) {
 
 	var wg sync.WaitGroup
 	results := make([]string, 100)
-	done := make(chan struct{})
+	start := make(chan struct{})
 
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
-			for {
-				select {
-				case <-done:
-					return
-				default:
-					result, err := eng.SelectBestProvider(context.Background(), "m", &apitypes.ChatCompletionRequest{Model: "m"})
-					if err != nil {
-						continue
-					}
-					results[idx] = result.Decision.SelectedProvider
-				}
+			<-start
+			result, err := eng.SelectBestProvider(context.Background(), "m", &apitypes.ChatCompletionRequest{Model: "m"})
+			if err != nil {
+				t.Errorf("goroutine %d: SelectBestProvider: %v", idx, err)
+				return
 			}
+			results[idx] = result.Decision.SelectedProvider
 		}(i)
 	}
 
-	time.Sleep(100 * time.Millisecond)
-	close(done)
+	// Release all goroutines at once: each performs exactly one selection,
+	// so participation is total regardless of core count or scheduler fairness.
+	close(start)
 	wg.Wait()
 
 	// All results should be the same (deterministic).
-	first := results[0]
 	for i := 1; i < len(results); i++ {
-		if results[i] != first {
-			t.Fatalf("non-deterministic: results[0]=%s, results[%d]=%s", first, i, results[i])
+		if results[i] != results[0] {
+			t.Fatalf("non-deterministic: results[0]=%s, results[%d]=%s", results[0], i, results[i])
 		}
 	}
-	if first != "a" {
-		t.Fatalf("expected 'a' (alphabetically first) to win on tie, got %s", first)
+	if results[0] == "" {
+		t.Fatal("selection produced an empty provider")
+	}
+	if results[0] != "a" {
+		t.Fatalf("expected 'a' (alphabetically first) to win on tie, got %s", results[0])
 	}
 }
 
