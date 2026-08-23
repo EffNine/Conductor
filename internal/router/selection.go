@@ -539,6 +539,12 @@ func (e *RouterEngine) SelectAutoModel(ctx context.Context, req *apitypes.ChatCo
 	return e.autoResolver.Resolve(ctx, req)
 }
 
+// AutoModelResolver exposes the catalog-backed auto model resolver, if wired.
+// Callers use it for dynamic fallback candidate generation.
+func (e *RouterEngine) AutoModelResolver() *AutoResolver {
+	return e.autoResolver
+}
+
 // scoreCandidateWithMode scores a candidate using per-decision weight overrides
 // and capability bonuses from a mode profile. All operational state is derived
 // from the provided RuntimeSnapshot. The implementation lives in scoringCore,

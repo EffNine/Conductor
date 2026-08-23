@@ -399,6 +399,14 @@ routing:
     latency: 25
     cost: 15
     capability: 20
+  # Dynamic fallback (enabled by default): when the primary route and any
+  # configured static fallbacks fail, capability-matched alternates are tried.
+  # Alternates come from the model catalog, filtered by the request's mode
+  # hard filters (vision, tools, planning/agentic requirements, context) so a
+  # request only fails when no eligible model can serve it.
+  dynamic_fallback:
+    enabled: true
+    max_candidates: 3
 
 # Response cache (optional)
 # Caches successful non-streaming chat completions by request hash.

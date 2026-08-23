@@ -449,6 +449,26 @@ routing:
 
 Weights are normalized internally; only relative values matter. Change them at runtime via config reload — no code changes required.
 
+### Dynamic Fallback
+
+By default (`routing.dynamic_fallback.enabled: true`), every chat request carries a dynamic safety net: when the primary route **and** any configured static fallbacks fail, Conductor appends capability-matched alternates from the model catalog and keeps trying. A request only fails with an error when no eligible model can serve it.
+
+Alternates are ranked by the same scorer auto mode uses (health, latency, cost, capability) and pass through the request's mode hard filters — vision requests only fall back to vision-capable models, planning/agentic to reasoning+tool models, long-context to models with sufficient context. Static fallback chains you configure explicitly always take precedence; the dynamic tail fills the gaps.
+
+```yaml
+routing:
+  dynamic_fallback:
+    enabled: true
+    max_candidates: 3
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Append capability-matched alternates after primary + static fallbacks | `true` |
+| `max_candidates` | Maximum dynamic alternates appended per request | `3` |
+
+Set `enabled: false` to restore strict behaviour: a specific model request fails immediately if its provider and configured fallbacks cannot serve it.
+
 Scoring pipeline:
 1. **Capability filter** — providers that cannot handle the request type are excluded.
 2. **Circuit breaker filter** — providers with an open breaker are penalized to 0.

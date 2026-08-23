@@ -456,9 +456,13 @@ func NewAutoResolver(cfg AutoResolverConfig) *AutoResolver {
 // Resolve selects the best provider/model for model="auto" using the catalog.
 // It applies mode-specific scoring and filtering to choose the optimal
 // provider/model. Returns an error if no eligible model is found.
-func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletionRequest) (*SelectionResult, error) {
+// scoreRanked builds candidates from the catalog and scores every entry with
+// the mode-aware scorer, applying the vision/context/planning/agentic hard
+// filters. It returns the deterministic candidate order with a parallel score
+// slice plus the collected rejection reasons.
+func (r *AutoResolver) scoreRanked(ctx context.Context, req *apitypes.ChatCompletionRequest) ([]candidateInfo, []CandidateScore, []RejectionReason, error) {
 	if r.catalog == nil {
-		return nil, fmt.Errorf("auto model selection requires a catalog")
+		return nil, nil, nil, fmt.Errorf("auto model selection requires a catalog")
 	}
 
 	// Get the runtime snapshot for health/latency scoring.
@@ -479,11 +483,11 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 	// Get healthy models from the catalog (applies reachability filter).
 	entries, err := r.catalog.List(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list catalog: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to list catalog: %w", err)
 	}
 
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("no healthy models available in catalog")
+		return nil, nil, nil, fmt.Errorf("no healthy models available in catalog")
 	}
 
 	// Build candidates from catalog entries.
@@ -508,7 +512,7 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 	}
 
 	if len(cands) == 0 {
-		return nil, fmt.Errorf("no available providers for auto selection")
+		return nil, nil, nil, fmt.Errorf("no available providers for auto selection")
 	}
 
 	// Sort by provider name for deterministic tie-breaking.
@@ -536,12 +540,10 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 		requiredContext = EstimateRequestTokens(req)
 	}
 
-	var bestScore float64 = -1
-	var bestIdx int = -1
 	scores := make([]CandidateScore, 0, len(cands))
 	var rejections []RejectionReason
 
-	for i, c := range cands {
+	for _, c := range cands {
 		cs := r.core.scoreCandidateWithMode(ctx, c, capHint, snapshot, weights, bonuses)
 
 		// Record mode-policy contributions.
@@ -605,13 +607,20 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 				Provider: cs.Provider,
 				Reason:   cs.RejectionReason,
 			})
-			continue
 		}
+	}
 
-		if cs.TotalScore > bestScore+scoreEpsilon {
-			bestScore = cs.TotalScore
-			bestIdx = i
-		}
+	return cands, scores, rejections, nil
+}
+
+// Resolve picks the highest-scoring eligible (provider, model) pair for the
+// request. Winner selection preserves the original first-in-order tie-break:
+// iterating in deterministic candidate order, a candidate wins only when its
+// score beats the incumbent by more than scoreEpsilon.
+func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletionRequest) (*SelectionResult, error) {
+	cands, scores, rejections, err := r.scoreRanked(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 
 	routingDuration := int64(0) // Could track actual duration if needed.
@@ -620,6 +629,18 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 		CandidateScores:   scores,
 		RejectionReasons:  rejections,
 		RoutingDurationMs: routingDuration,
+	}
+
+	bestIdx := -1
+	var bestScore float64 = -1
+	for i := range scores {
+		if scores[i].Rejected {
+			continue
+		}
+		if scores[i].TotalScore > bestScore+scoreEpsilon {
+			bestScore = scores[i].TotalScore
+			bestIdx = i
+		}
 	}
 
 	if bestIdx < 0 {
@@ -646,6 +667,31 @@ func (r *AutoResolver) Resolve(ctx context.Context, req *apitypes.ChatCompletion
 			ProviderModelID: best.modelID,
 		},
 	}, nil
+}
+
+// RankedEligible returns every eligible (non-rejected) catalog candidate
+// ranked by descending composite score, ties broken by the deterministic
+// candidate order. Rejected candidates are omitted; callers use this to
+// synthesize dynamic fallback chains that stay within the request's
+// capability category.
+func (r *AutoResolver) RankedEligible(ctx context.Context, req *apitypes.ChatCompletionRequest) ([]CandidateScore, error) {
+	_, scores, _, err := r.scoreRanked(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.SliceStable(scores, func(i, j int) bool {
+		return scores[i].TotalScore > scores[j].TotalScore
+	})
+
+	eligible := make([]CandidateScore, 0, len(scores))
+	for _, cs := range scores {
+		if cs.Rejected {
+			continue
+		}
+		eligible = append(eligible, cs)
+	}
+	return eligible, nil
 }
 
 // GetCatalog returns the catalog backing auto model selection, if any.
