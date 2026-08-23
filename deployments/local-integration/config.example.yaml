@@ -1,0 +1,28 @@
+# Conductor local integration config.
+# Run the binary from THIS directory so it picks up config.yaml and keeps its
+# SQLite state isolated:  (cd deployments/local-integration && ../../bin/conductor)
+#
+# Upstream: the deterministic mock in this directory. Swap base_url + api_key
+# for a real subscription when ready.
+
+api_key: sk-conductor-local
+
+server:
+  host: 127.0.0.1
+  port: 18080
+
+providers:
+  openai:
+    enabled: true
+    api_key: mock-upstream-key
+    base_url: http://127.0.0.1:9119/v1
+
+routes:
+  gpt-4o:
+    provider: openai
+
+routing:
+  enabled: true
+
+catalog:
+  curated_only: false

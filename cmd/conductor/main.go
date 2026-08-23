@@ -345,6 +345,7 @@ func main() {
 	// the request path. Persistence failures never affect requests.
 	if cfg.Execution.Attempts.Enabled {
 		attemptStore := database.NewAttemptStore(db)
+		h.SetAttemptStore(attemptStore)
 		attemptPersistence := database.NewAttemptPersistence(eventBus, attemptStore, logger)
 		attemptPersistence.Start()
 		defer attemptPersistence.Stop()
