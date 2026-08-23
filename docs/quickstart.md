@@ -40,10 +40,11 @@ curl http://localhost:8080/v1/chat/completions \
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
 
-> **Which model IDs work without config?** Provider-prefixed IDs
-> (`openai/gpt-4o`) and virtual categories (`auto`, `fast`, `coding`, …) work
-> immediately. Bare IDs like `gpt-4o` need a `routes:` entry — see
-> [Configuration](configuration.md).
+> **Which model IDs work without config?** Bare IDs (`gpt-4o`),
+> provider-prefixed IDs (`openai/gpt-4o`), and virtual categories (`auto`,
+> `fast`, `coding`, …) all work immediately when one provider is configured.
+> With multiple providers, ambiguous bare IDs need a `routes:` entry or a
+> prefix — see [Configuration](configuration.md).
 ```
 
 ## Option 2: Docker Compose

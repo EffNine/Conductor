@@ -32,10 +32,13 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"model":"openai/gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-> **Model IDs**: provider-prefixed IDs (`openai/gpt-4o`) work with zero config.
-> Bare IDs (`gpt-4o`) need a `routes:` entry; virtual categories (`auto`,
-> `fast`, `coding`, …) always work. The full merged catalog lives at
-> `GET /api/models`; `/v1/models` lists virtual categories for OpenAI-compatible clients.
+> **Model IDs**: with a single provider configured, bare IDs (`gpt-4o`) and
+> provider-prefixed IDs (`openai/gpt-4o`) both work with zero config; virtual
+> categories (`auto`, `fast`, `coding`, …) always do. With multiple providers,
+> bare IDs need a `routes:` entry (or use prefixed IDs). The full merged
+> catalog lives at `GET /api/models`; `/v1/models` lists virtual categories for
+> OpenAI-compatible clients. Auto-resolution of bare IDs can be disabled with
+> `routing.auto_resolve_bare_models: false`.
 
 Full guide → [docs/quickstart.md](docs/quickstart.md)
 

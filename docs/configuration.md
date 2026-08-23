@@ -469,6 +469,10 @@ routing:
 
 Set `enabled: false` to restore strict behaviour: a specific model request fails immediately if its provider and configured fallbacks cannot serve it.
 
+### Bare Model Auto-Resolution
+
+With `routing.auto_resolve_bare_models: true` (the default), a bare model ID with no route, alias, or provider prefix resolves automatically when **exactly one** enabled provider supports it — single-subscription setups work with zero routing configuration. When multiple providers claim the same bare ID, resolution stays intentionally ambiguous: use a provider-prefixed ID (`groq/llama-3.1-8b-instruct`) or configure a route. Virtual categories (`auto`, `fast`, …) are never affected.
+
 Scoring pipeline:
 1. **Capability filter** — providers that cannot handle the request type are excluded.
 2. **Circuit breaker filter** — providers with an open breaker are penalized to 0.

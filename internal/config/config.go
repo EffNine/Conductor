@@ -406,6 +406,11 @@ type RoutingConfig struct {
 	// primary route and any configured static fallbacks, so a request only
 	// fails when no eligible model can serve it.
 	DynamicFallback DynamicFallbackConfig `mapstructure:"dynamic_fallback"`
+	// AutoResolveBareModels lets a bare model ID (no provider prefix, no
+	// route, no alias) resolve when exactly one enabled provider supports it,
+	// so single-provider setups work with zero routing configuration.
+	// Default true.
+	AutoResolveBareModels bool `mapstructure:"auto_resolve_bare_models"`
 }
 
 // DynamicFallbackConfig controls automatic category-preserving failover.
@@ -699,6 +704,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("routing.weights.capability", 20.0)
 	v.SetDefault("routing.dynamic_fallback.enabled", true)
 	v.SetDefault("routing.dynamic_fallback.max_candidates", 3)
+	v.SetDefault("routing.auto_resolve_bare_models", true)
 
 	// Cache defaults
 	v.SetDefault("cache.enabled", true)

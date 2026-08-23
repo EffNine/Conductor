@@ -27,6 +27,10 @@ type Engine struct {
 	registry     *provider.Registry
 	autoSelector AutoSelector
 	breakers     *BreakerPool
+	// autoResolveBareModels lets a bare, unconfigured model ID resolve when
+	// exactly one registered provider supports it (zero-config single-provider
+	// setups). Disabled via routing.auto_resolve_bare_models.
+	autoResolveBareModels bool
 }
 
 // BreakerPool holds per-provider circuit breakers.
@@ -113,10 +117,11 @@ var reservedModelIDs = map[string]struct{}{
 // NewEngine creates a new routing engine
 func NewEngine(cfg *config.Config, registry *provider.Registry) (*Engine, error) {
 	engine := &Engine{
-		routes:    make(map[string]Route),
-		aliases:   make(map[string]string),
-		fallbacks: make(map[string][]Fallback),
-		registry:  registry,
+		routes:                make(map[string]Route),
+		aliases:               make(map[string]string),
+		fallbacks:             make(map[string][]Fallback),
+		registry:              registry,
+		autoResolveBareModels: cfg == nil || cfg.Routing.AutoResolveBareModels,
 	}
 
 	if cfg.Circuit.Enabled {
@@ -257,6 +262,33 @@ func (e *Engine) ResolveWithContext(ctx context.Context, modelID string, message
 				ProviderModelID: baseID,
 				ModelID:         baseID,
 				Breaker:         e.breakers.Get(providerHint),
+			}, nil
+		}
+	}
+
+	// Bare model ID with no route, alias, or prefix: when exactly one
+	// registered provider supports it, resolve to that provider so
+	// single-provider setups work with zero routing configuration. Ambiguous
+	// IDs (multiple claiming providers) still require a prefix or route.
+	if e.autoResolveBareModels && providerHint == "" && !IsVirtualModel(modelID) {
+		var match provider.Provider
+		ambiguous := false
+		for _, p := range e.registry.All() {
+			if p.SupportsModel(baseID) {
+				if match != nil {
+					ambiguous = true
+					break
+				}
+				match = p
+			}
+		}
+		if match != nil && !ambiguous {
+			return &ResolvedRoute{
+				Provider:        match,
+				ProviderName:    match.Name(),
+				ProviderModelID: baseID,
+				ModelID:         baseID,
+				Breaker:         e.breakers.Get(match.Name()),
 			}, nil
 		}
 	}

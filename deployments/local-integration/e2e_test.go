@@ -307,9 +307,9 @@ func startConductor(ctx context.Context, t *testing.T, bin, workDir string) (*ex
 }
 
 // TestGatewayMinimalConfigNoRoutes encodes the out-of-box deployment journey:
-// a single provider configured, NO routes section. It documents what works
-// (provider-prefixed IDs, virtual models, dynamic failover) and what does not
-// (bare model IDs without a configured route).
+// a single provider configured, NO routes section. Bare model IDs,
+// provider-prefixed IDs, and virtual categories all serve; dynamic failover
+// covers the rest of the catalog.
 func TestGatewayMinimalConfigNoRoutes(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain unavailable")
@@ -366,12 +366,13 @@ providers:
 		t.Fatalf("prefixed-ID request failed: status=%d body=%s", resp.StatusCode, body)
 	}
 
-	// Bare model ID without a route is rejected.
+	// Bare model ID auto-resolves when exactly one provider is configured
+	// (routing.auto_resolve_bare_models defaults to true via config defaults).
 	resp = postE2E(t, ctx, base+"/v1/chat/completions", authz,
 		`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
 	body = readAllE2E(t, resp)
-	if resp.StatusCode != 404 {
-		t.Fatalf("bare unconfigured model: expected 404, got status=%d body=%s", resp.StatusCode, body)
+	if resp.StatusCode != 200 || !strings.Contains(body, "hello from healthy") {
+		t.Fatalf("bare single-provider model should serve: status=%d body=%s", resp.StatusCode, body)
 	}
 
 	// Virtual auto model selects from the catalog and serves.
