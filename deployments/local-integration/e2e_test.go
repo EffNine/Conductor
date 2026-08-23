@@ -163,38 +163,18 @@ catalog:
 		t.Fatalf("write config: %v", err)
 	}
 
-	bin := filepath.Join(workDir, "conductor")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/conductor")
-	build.Dir = repoRoot
-	build.Env = append(os.Environ(), "CGO_ENABLED=1")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build conductor: %v\n%s", err, out)
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin)
-	cmd.Dir = workDir
-	// Hermetic env: no inherited provider keys, proxies, or other host state.
-	cmd.Env = []string{
-		"PATH=" + os.Getenv("PATH"),
-		"HOME=" + os.Getenv("HOME"),
-		"CGO_ENABLED=1",
-		"CONDUCTOR_API_KEY=sk-e2e-test-key",
-	}
-	var logs bytes.Buffer
-	cmd.Stdout = &logs
-	cmd.Stderr = &logs
-	if err := cmd.Start(); err != nil {
-		t.Fatalf("start conductor: %v", err)
-	}
+
+	bin := buildConductor(t, repoRoot, workDir)
+	cmd, logs := startConductor(ctx, t, bin, workDir)
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 	})
 
 	base := fmt.Sprintf("http://127.0.0.1:%d", gatewayPort)
-	waitHealthy(t, ctx, base, &logs)
+	waitHealthy(t, ctx, base, logs)
 
 	authz := "Bearer sk-e2e-test-key"
 
@@ -292,4 +272,113 @@ func readAllE2E(t *testing.T, resp *http.Response) string {
 	}
 	_ = resp.Body.Close()
 	return string(b)
+}
+
+func buildConductor(t *testing.T, repoRoot, workDir string) string {
+	t.Helper()
+	bin := filepath.Join(workDir, "conductor")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/conductor")
+	build.Dir = repoRoot
+	build.Env = append(os.Environ(), "CGO_ENABLED=1")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build conductor: %v\n%s", err, out)
+	}
+	return bin
+}
+
+func startConductor(ctx context.Context, t *testing.T, bin, workDir string) (*exec.Cmd, *bytes.Buffer) {
+	t.Helper()
+	cmd := exec.CommandContext(ctx, bin)
+	cmd.Dir = workDir
+	// Hermetic env: no inherited provider keys, proxies, or other host state.
+	cmd.Env = []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + os.Getenv("HOME"),
+		"CGO_ENABLED=1",
+		"CONDUCTOR_API_KEY=sk-e2e-test-key",
+	}
+	var logs bytes.Buffer
+	cmd.Stdout = &logs
+	cmd.Stderr = &logs
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start conductor: %v", err)
+	}
+	return cmd, &logs
+}
+
+// TestGatewayMinimalConfigNoRoutes encodes the out-of-box deployment journey:
+// a single provider configured, NO routes section. It documents what works
+// (provider-prefixed IDs, virtual models, dynamic failover) and what does not
+// (bare model IDs without a configured route).
+func TestGatewayMinimalConfigNoRoutes(t *testing.T) {
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("go toolchain unavailable")
+	}
+
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
+	healthy := healthyUpstream(t)
+
+	workDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workDir, "data"), 0o755); err != nil {
+		t.Fatalf("data dir: %v", err)
+	}
+
+	gatewayPort := freePort(t)
+	cfg := fmt.Sprintf(`
+api_key: sk-e2e-test-key
+
+server:
+  host: "127.0.0.1"
+  port: %d
+
+providers:
+  openai:
+    enabled: true
+    api_key: k-healthy
+    base_url: %s/v1
+`, gatewayPort, healthy.URL)
+	if err := os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte(cfg), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	bin := buildConductor(t, repoRoot, workDir)
+	cmd, logs := startConductor(ctx, t, bin, workDir)
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	base := fmt.Sprintf("http://127.0.0.1:%d", gatewayPort)
+	waitHealthy(t, ctx, base, logs)
+	authz := "Bearer sk-e2e-test-key"
+
+	// Provider-prefixed IDs route with zero route config.
+	resp := postE2E(t, ctx, base+"/v1/chat/completions", authz,
+		`{"model":"openai/gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	body := readAllE2E(t, resp)
+	if resp.StatusCode != 200 || !strings.Contains(body, "hello from healthy") {
+		t.Fatalf("prefixed-ID request failed: status=%d body=%s", resp.StatusCode, body)
+	}
+
+	// Bare model ID without a route is rejected.
+	resp = postE2E(t, ctx, base+"/v1/chat/completions", authz,
+		`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	body = readAllE2E(t, resp)
+	if resp.StatusCode != 404 {
+		t.Fatalf("bare unconfigured model: expected 404, got status=%d body=%s", resp.StatusCode, body)
+	}
+
+	// Virtual auto model selects from the catalog and serves.
+	resp = postE2E(t, ctx, base+"/v1/chat/completions", authz,
+		`{"model":"auto","messages":[{"role":"user","content":"hi"}]}`)
+	body = readAllE2E(t, resp)
+	if resp.StatusCode != 200 {
+		t.Fatalf("auto request failed: status=%d body=%s", resp.StatusCode, body)
+	}
 }

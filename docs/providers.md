@@ -83,7 +83,7 @@ providers:
 
 Several adapters are stubs or share the OpenAI-compatible base. You can still configure them for:
 
-- **Static model lists** advertised in `/v1/models`
+- **Static model lists** advertised in the merged catalog (`/api/models`)
 - **Routes and aliases** resolved by the router
 - **Manual cost rates** under `cost.rates`
 - **Health checks** (return `not implemented` for stubs)
@@ -110,7 +110,7 @@ providers:
       - "loaded-model-name"
 ```
 
-Static models appear in `/v1/models` when the provider's dynamic listing is unavailable.
+Static models appear in the merged catalog (`/api/models`) when the provider's dynamic listing is unavailable.
 
 ### Curated-only mode
 
@@ -147,7 +147,7 @@ When a request uses a provider-prefixed ID such as `openai/gpt-4o`, the gateway 
 
 ## Aliases
 
-Aliases are operator shortcuts. They do not appear in `/v1/models`.
+Aliases are operator shortcuts. They do not appear in the merged catalog (`/api/models`).
 
 ```yaml
 aliases:
@@ -218,7 +218,7 @@ Pass `reasoning_effort: "none"` (or equivalent disable kwargs) to force non-thin
 
 NVIDIA NIM’s `GET /v1/models` returns the full catalog — including free hosted endpoints that are temporarily down, retired, or not chat-capable. There is no catalog field for “callable right now.”
 
-Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from `/v1/models`. Thinking-model probes send `reasoning_effort: "none"` so thinking mode does not consume the tiny token budget.
+Conductor probes models with a minimal `POST /chat/completions` (`max_tokens: 16`) and can auto-hide failures from the merged catalog. Thinking-model probes send `reasoning_effort: "none"` so thinking mode does not consume the tiny token budget.
 
 ### Defaults
 

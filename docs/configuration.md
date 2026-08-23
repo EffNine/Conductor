@@ -76,7 +76,7 @@ Conductor uses environment variables first, then YAML, then defaults.
 | `CONDUCTOR_HEALTH_TIMEOUT` | Provider health check timeout | `10s` |
 | `CONDUCTOR_HEALTH_UNHEALTHY_THRESHOLD` | Consecutive provider failures before unhealthy | `3` |
 | `CONDUCTOR_HEALTH_MODELS_ENABLED` | Enable per-model reachability probes | `true` |
-| `CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from `/v1/models` | `true` |
+| `CONDUCTOR_HEALTH_MODELS_HIDE_UNREACHABLE` | Omit unreachable models from the merged catalog and routing candidates | `true` |
 | `CONDUCTOR_HEALTH_MODELS_CHECK_INTERVAL` | Interval between model probe passes | `12h` |
 | `CONDUCTOR_HEALTH_MODELS_TIMEOUT` | Per-model probe timeout | `60s` |
 | `CONDUCTOR_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
@@ -179,7 +179,7 @@ routes:
     provider: anthropic
     model_id: "claude-3-5-sonnet-20241022"
 
-# Aliases (not advertised in /v1/models)
+# Aliases (not advertised in /api/models)
 aliases:
   "fast": "gpt-4o-mini"
   "smart": "gpt-4o"
@@ -271,7 +271,7 @@ usage:
 
 ### Curated catalog
 
-By default `/v1/models` merges each provider's dynamic `ListModels` result (falling back to `providers.*.models` when listing fails). To advertise only an allowlist — especially useful for NVIDIA NIM's large mixed catalog — set:
+By default the public merged catalog (`GET /api/models`) merges each provider's dynamic `ListModels` result (falling back to `providers.*.models` when listing fails). To advertise only an allowlist — especially useful for NVIDIA NIM's large mixed catalog — set:
 
 ```yaml
 catalog:
@@ -296,7 +296,7 @@ providers:
 |-------|-------------|---------|
 | `curated_only` | Optional static allowlists: providers with a non-empty `models` list advertise only that allowlist; others still use dynamic ListModels. When on and NIM has no models list, a built-in short NIM allowlist is applied | `false` (Fly leaves this off; default is dynamic + probe hide) |
 
-Providers with an empty `models` list keep their dynamic catalog while curated-only is on (so enabling curated mode for NIM does not wipe OpenAI/OpenCode/etc.). Override NIM models via `providers.nvidia_nim.models` or `CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS` (comma-separated). Prefixed IDs in `/v1/models` still work for chat (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`). Curated-only does not block chat for Model IDs outside the list if the client already knows them and routing succeeds.
+Providers with an empty `models` list keep their dynamic catalog while curated-only is on (so enabling curated mode for NIM does not wipe OpenAI/OpenCode/etc.). Override NIM models via `providers.nvidia_nim.models` or `CONDUCTOR_PROVIDERS_NVIDIA_NIM_MODELS` (comma-separated). Provider-prefixed IDs (e.g. `nvidia_nim/meta/llama-3.1-8b-instruct`) still work for chat regardless of catalog filtering. Curated-only does not block chat for Model IDs outside the list if the client already knows them and routing succeeds.
 
 ### Model reachability
 
@@ -304,7 +304,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 
 - Runs a full probe pass on every startup/redeploy, then again every `check_interval` (default `2h`)
 - Retries failed models on an exponential backoff schedule (30s → minutes → capped at `12h`) so transient outages do not wait for the next full pass
-- Batches probe results (`catalog_batch_window`, default `100ms`) and applies them atomically so `/v1/models` never observes a mid-update catalog
+- Batches probe results (`catalog_batch_window`, default `100ms`) and applies them atomically so clients never observe a mid-update catalog
 - Tracks live request error rates (`error_tracking`) and marks models `degraded` when the rate exceeds the threshold (still advertised; status APIs show the reason)
 - Caches health state (`healthy` / `unknown` / `degraded` / `recovering` / `unhealthy`), also updated from live chat failures
 - Keeps confirmed failures hidden during the pass (list shrinks; never flashes empty)
@@ -320,7 +320,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 | Field | Description | Default |
 |-------|-------------|---------|
 | `enabled` | Run background per-model probes | `true` |
-| `hide_unreachable` | Omit recovering/unhealthy models from `/v1/models` and default `/api/models` | `true` |
+| `hide_unreachable` | Omit recovering/unhealthy models from the default merged catalog (`/api/models`) | `true` |
 | `check_interval` | Time between full probe passes (after the startup pass) | `2h` |
 | `timeout` | Timeout per individual model probe | `60s` |
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
@@ -345,7 +345,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 |---------|--------|
 | HTTP 200 on probe / live chat | Mark `healthy`; reset failure count and backoff |
 | Definitive probe failure (404/410, model-not-found, other non-transient errors) | Count toward `unhealthy_threshold` → `recovering` with backoff retry |
-| Live error rate above `error_tracking.unhealthy_threshold` | Mark `degraded` (still in `/v1/models`) |
+| Live error rate above `error_tracking.unhealthy_threshold` | Mark `degraded` (still in `/api/models`) |
 | 429 rate limit, 401/403 auth | Neutral — do not change reachability |
 | Timeout, 502/503/504 | Inconclusive — do not hide healthy models; still advance backoff if already recovering |
 
@@ -423,7 +423,7 @@ providers:
 
 If `task_profiles` is omitted, the gateway uses built-in profiles derived from the NVIDIA NIM model comparison (`elite`, `coding`, `reasoning`, `vision`, `fast`, `default`). If a profile restricts candidates to a list, only those models are considered; otherwise the full advertised catalog is used.
 
-Auto mode respects `catalog.curated_only`: only models advertised in `/v1/models` are candidates. Status is exposed on `GET /api/auto/status`. You can also configure an `aliases` entry such as `"nim-auto": "auto"` to expose a friendlier model name.
+Auto mode respects `catalog.curated_only`: only models present in the merged catalog (`/api/models`) are candidates. Status is exposed on `GET /api/auto/status`. You can also configure an `aliases` entry such as `"nim-auto": "auto"` to expose a friendlier model name.
 
 ### Intelligent Routing Engine
 

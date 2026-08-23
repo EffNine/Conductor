@@ -26,9 +26,16 @@ docker run -d -p 8080:8080 \
 Test it:
 
 ```bash
-curl http://localhost:8080/v1/models \
-  -H "Authorization: Bearer my-key"
+curl http://localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer my-key" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"openai/gpt-4o","messages":[{"role":"user","content":"Hello!"}]}'
 ```
+
+> **Model IDs**: provider-prefixed IDs (`openai/gpt-4o`) work with zero config.
+> Bare IDs (`gpt-4o`) need a `routes:` entry; virtual categories (`auto`,
+> `fast`, `coding`, …) always work. The full merged catalog lives at
+> `GET /api/models`; `/v1/models` lists virtual categories for OpenAI-compatible clients.
 
 Full guide → [docs/quickstart.md](docs/quickstart.md)
 
@@ -37,7 +44,7 @@ Full guide → [docs/quickstart.md](docs/quickstart.md)
 | Feature | Description |
 |---------|-------------|
 | **Single Gateway Key** | One auth key for all clients (Continue, Aider, Open WebUI, Claude Code, custom apps) |
-| **Merged Model Picker** | `GET /v1/models` aggregates every provider; IDs are provider-prefixed (`openai/gpt-4o`, `nvidia_nim/meta/llama-3.1-8b-instruct`) |
+| **Merged Model Picker** | `GET /api/models` aggregates every provider; IDs are provider-prefixed (`openai/gpt-4o`, `nvidia_nim/meta/llama-3.1-8b-instruct`). `/v1/models` stays OpenAI-compatible with virtual categories (`auto`, `fast`, …) |
 | **Model Reachability** | Background probes hide unreachable models; status exposed at `/api/models/status` |
 | **Explicit Routing + Aliases** | Map bare IDs to providers and upstream slugs. Provider-prefixed IDs route without config |
 | **Automatic Failover** | Primary fails → configured static chains → **dynamic alternates from the full catalog**, filtered to the request's category (vision→vision, planning→reasoning+tools, long-context→fits). A request only errors when no eligible model can serve it. Disable with `routing.dynamic_fallback.enabled: false` |

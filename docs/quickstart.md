@@ -5,7 +5,7 @@ Get Conductor running in 5 minutes.
 ## Prerequisites
 
 - Docker installed
-- At least one AI provider API key (OpenAI is the only fully implemented adapter)
+- At least one AI provider API key (any provider from the table in the [README](../README.md#supported-providers))
 
 ## Option 1: Docker (Recommended)
 
@@ -26,7 +26,7 @@ docker run -d \
   -p 8080:8080 \
   --env-file .env \
   -v conductor-data:/app/data \
-  ghcr.io/effnine/conductor:latest
+  effnine/conductor:latest
 ```
 
 ### 3. Test it
@@ -36,9 +36,14 @@ curl http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer your-secret-gateway-key" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-4o",
+    "model": "openai/gpt-4o",
     "messages": [{"role": "user", "content": "Hello!"}]
   }'
+
+> **Which model IDs work without config?** Provider-prefixed IDs
+> (`openai/gpt-4o`) and virtual categories (`auto`, `fast`, `coding`, …) work
+> immediately. Bare IDs like `gpt-4o` need a `routes:` entry — see
+> [Configuration](configuration.md).
 ```
 
 ## Option 2: Docker Compose
@@ -46,7 +51,7 @@ curl http://localhost:8080/v1/chat/completions \
 ```yaml
 services:
   gateway:
-    image: ghcr.io/effnine/conductor:latest
+    image: effnine/conductor:latest
     ports:
       - "8080:8080"
     environment:
@@ -125,7 +130,7 @@ docker run -d \
   --env-file .env \
   -v $(pwd)/config.yaml:/app/config.yaml \
   -v conductor-data:/app/data \
-  ghcr.io/effnine/conductor:latest
+  effnine/conductor:latest
 ```
 
 ## Using with Clients
@@ -142,7 +147,7 @@ docker run -d \
 
 ### Claude Code
 
-Claude Code uses the Anthropic API. Until the Anthropic adapter is implemented, point Claude Code at a different provider endpoint that supports OpenAI format, or use the gateway through an OpenAI-compatible client.
+Claude Code speaks the Anthropic wire format, while Conductor exposes the OpenAI-compatible format. Use Claude Code with a provider that accepts Anthropic format directly, or use any OpenAI-compatible client with Conductor.
 
 ### Open WebUI
 
@@ -186,7 +191,7 @@ curl http://localhost:8080/api/models \
 
 ### Model Online Status
 
-When providers are enabled, the gateway probes models and can hide unreachable ones from `/v1/models`. Conductor runs a full probe pass on every startup/redeploy, then every 12 hours by default (all registered providers):
+When providers are enabled, the gateway probes models and can hide unreachable ones from the merged catalog (`/api/models`). Conductor runs a full probe pass on every startup/redeploy, then every 2 hours by default (all registered providers):
 
 ```bash
 # Probe cache
@@ -243,15 +248,15 @@ curl http://localhost:8080/api/health \
   -H "Authorization: Bearer your-secret-gateway-key"
 ```
 
-Only the OpenAI adapter is fully implemented. Other providers are stubs and will return errors for chat/embeddings requests.
+Most providers have full adapters (see the support matrix in the README). Cloudflare is partial; check `/api/health` to see whether your provider is responding.
 
-### Model not in `/v1/models`
+### Model not in the catalog
 
-- Configure a `routes` entry for the Model ID
-- For stub providers, configure a static `models` list
-- Aliases do not appear in `/v1/models`
+- The merged catalog is at `GET /api/models`; `/v1/models` lists virtual categories (`auto`, `fast`, …) for OpenAI-compatible clients
+- Configure a `routes` entry for bare Model IDs, or use provider-prefixed IDs (`openai/gpt-4o`) which need no config
+- For providers without a catalog endpoint, configure a static `models` list
 - For NVIDIA NIM: the model may have failed online-status probes — check `/api/models/status` or `/api/models?include_unreachable=true`
-- Recurring probes run every 12 hours by default (plus a full pass on each startup/redeploy); live request failures can still update model status immediately
+- Recurring probes run every 2 hours by default (plus a full pass on each startup/redeploy); live request failures can still update model status immediately
 
 ### Streaming not working
 

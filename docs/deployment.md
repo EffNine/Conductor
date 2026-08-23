@@ -41,9 +41,9 @@ volumes:
 
 ```bash
 git clone https://github.com/EffNine/conductor.git
-cd gateway
+cd conductor
 make build
-./bin/gateway
+./bin/conductor
 ```
 
 ---
@@ -62,7 +62,7 @@ builder = "DOCKERFILE"
 dockerfilePath = "deployments/Dockerfile"
 
 [deploy]
-startCommand = "./gateway"
+startCommand = "./conductor"
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
@@ -166,7 +166,7 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: DATABASE_DSN
+      - key: CONDUCTOR_DATABASE_DSN
         value: ./data/conductor.db
     disk:
       name: conductor-data
@@ -274,7 +274,7 @@ After=network.target
 Type=simple
 User=conductor
 WorkingDirectory=/opt/conductor
-ExecStart=/opt/conductor/bin/gateway
+ExecStart=/opt/conductor/bin/conductor
 Restart=always
 RestartSec=10
 Environment=CONDUCTOR_API_KEY=your-secret-key
@@ -298,9 +298,12 @@ OPENAI_API_KEY=sk-your-openai-key
 ### Optional
 
 ```bash
+# All settings accept a CONDUCTOR_-prefixed env var matching their config
+# key with dots replaced by underscores (e.g. server.port -> CONDUCTOR_SERVER_PORT).
+
 # Server
-SERVER_PORT=8080
-SERVER_HOST=0.0.0.0
+CONDUCTOR_SERVER_PORT=8080
+CONDUCTOR_SERVER_HOST=0.0.0.0
 
 # Additional providers
 ANTHROPIC_API_KEY=sk-ant-your-key
@@ -308,12 +311,12 @@ GEMINI_API_KEY=your-gemini-key
 DEEPSEEK_API_KEY=your-deepseek-key
 
 # Database
-DATABASE_DRIVER=sqlite
-DATABASE_DSN=./data/conductor.db
+CONDUCTOR_DATABASE_DRIVER=sqlite
+CONDUCTOR_DATABASE_DSN=./data/conductor.db
 
 # Logging
-LOGGING_LEVEL=info
-LOGGING_FORMAT=json
+CONDUCTOR_LOGGING_LEVEL=info
+CONDUCTOR_LOGGING_FORMAT=json
 ```
 
 ---
