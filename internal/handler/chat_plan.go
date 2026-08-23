@@ -155,6 +155,29 @@ func (s *chatPlanSink) CandidateSkipped(c resilience.Candidate, reason resilienc
 	}
 }
 
+// AttemptExecuted persists one non-terminal physical attempt so every
+// upstream execution maps to exactly one request_attempts row.
+func (s *chatPlanSink) AttemptExecuted(c resilience.Candidate, a resilience.Attempt) {
+	rec := database.AttemptRecord{
+		RequestID:         s.requestID,
+		CorrelationID:     s.correlationID,
+		VirtualModel:      s.usageModelID,
+		Mode:              s.mode,
+		Provider:          c.ProviderName,
+		ProviderModelID:   c.ProviderModelID,
+		CandidateIndex:    c.Index,
+		AttemptIndex:      a.Index,
+		Outcome:           database.AttemptOutcomeFailed,
+		FailureClass:      a.FailureClass,
+		LatencyMS:         a.Duration.Milliseconds(),
+		RetryWaitMS:       a.RetryWait.Milliseconds(),
+		RetryAfterHonored: a.HintHonored,
+	}
+	if s.h.attemptEmitter != nil {
+		s.h.attemptEmitter(rec)
+	}
+}
+
 func (s *chatPlanSink) CandidateFailed(c resilience.Candidate, err error, attempts []resilience.Attempt, duration time.Duration) {
 	s.emitAttempt(c, database.AttemptOutcomeFailed, "", err, attempts, duration)
 	s.h.logRetries(c.ProviderName, len(attempts))
@@ -193,7 +216,12 @@ func (s *chatPlanSink) CandidateFailed(c resilience.Candidate, err error, attemp
 }
 
 func (s *chatPlanSink) CandidateSucceeded(c resilience.Candidate, attempts []resilience.Attempt, duration time.Duration) {
-	s.emitAttempt(c, database.AttemptOutcomeSuccess, "", nil, attempts, duration)
+	if !c.DeferSuccess {
+		// Non-streaming: terminal success row emitted now.
+		s.emitAttempt(c, database.AttemptOutcomeSuccess, "", nil, attempts, duration)
+	}
+	// Streaming: the row is emitted at stream finalize with the true
+	// terminal outcome (P4.3 deferred credit semantics).
 	s.h.logRetries(c.ProviderName, len(attempts))
 
 	latencyMs := duration.Milliseconds()

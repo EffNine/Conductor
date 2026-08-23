@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/config"
 	"github.com/EffNine/conductor/internal/database"
+	"github.com/EffNine/conductor/internal/failure"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/middleware"
@@ -667,6 +670,46 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 
 	if res.WinnerIndex >= 0 {
 		winner := routes[res.WinnerIndex]
+		winnerCand := plan.Candidates[res.WinnerIndex]
+		attemptFinalize := func(outcome metrics.StreamOutcome, clientDisconnected bool, streamErr error) {
+			if h.attemptEmitter == nil {
+				return
+			}
+			rec := database.AttemptRecord{
+				RequestID:       requestID,
+				CorrelationID:   correlationID,
+				VirtualModel:    resolved.ModelID,
+				Mode:            req.Mode,
+				Provider:        winner.ProviderName,
+				ProviderModelID: winner.ProviderModelID,
+				CandidateIndex:  winnerCand.Index,
+			}
+			switch outcome {
+			case metrics.StreamCompleted:
+				rec.Outcome = database.AttemptOutcomeSuccess
+				rec.HTTPStatus = http.StatusOK
+			case metrics.StreamTimeout:
+				rec.Outcome = database.AttemptOutcomeFailed
+				rec.FailureClass = "timeout"
+			case metrics.StreamError:
+				rec.Outcome = database.AttemptOutcomeFailed
+				if streamErr != nil {
+					class, _ := failure.Classify(streamErr)
+					rec.FailureClass = string(class)
+					var pe *provider.ProviderError
+					if errors.As(streamErr, &pe) {
+						rec.HTTPStatus = pe.StatusCode
+					}
+				} else {
+					rec.FailureClass = string(failure.ClassNetworkError)
+				}
+			default:
+				// Client disconnect / server shutdown: not a provider failure.
+				rec.Outcome = database.AttemptOutcomeSkipped
+				rec.SkipReason = "client_disconnected"
+			}
+			h.attemptEmitter(rec)
+		}
 		return h.streamResponse(c, win.ch, &streamSession{
 			requestID:       requestID,
 			correlationID:   correlationID,
@@ -676,6 +719,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			start:           start,
 			cancel:          cancel,
 			breaker:         winner.Breaker,
+			attemptFinalize: attemptFinalize,
 		})
 	}
 
@@ -713,6 +757,10 @@ type streamSession struct {
 	// breaker receives the classification-aware outcome once the stream
 	// reaches a terminal state (P4.3). Nil disables accounting.
 	breaker *breaker.Breaker
+
+	// attemptFinalize closes the persisted-attempt row that maps to this
+	// stream with the true terminal outcome (P4.4.3). Nil = no row.
+	attemptFinalize func(outcome metrics.StreamOutcome, clientDisconnected bool, streamErr error)
 }
 
 // streamResponse streams chunks to the client with full lifecycle
@@ -776,6 +824,10 @@ func (h *Handler) writeStream(ch <-chan apitypes.StreamChunk, w *bufio.Writer, s
 			// P4.3: breaker credit is granted on stream completion, not on
 			// channel acquisition; provider-side terminations are classified.
 			recordStreamBreakerOutcome(s.breaker, outcome, clientDisconnected, streamErr)
+			// P4.4.3: close the attempt row with the true terminal outcome.
+			if s.attemptFinalize != nil {
+				s.attemptFinalize(outcome, clientDisconnected, streamErr)
+			}
 
 			h.trackUsage(s.requestID, s.modelID, s.providerModelID, s.providerName, usageData, time.Since(s.start), fiber.StatusOK, true, streamErr)
 			h.logRequestComplete(s.correlationID, s.requestID, &router.ResolvedRoute{

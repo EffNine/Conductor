@@ -32,6 +32,7 @@ func (r *recordingSink) CandidateFailed(c Candidate, err error, attempts []Attem
 func (r *recordingSink) CandidateSucceeded(c Candidate, attempts []Attempt, d time.Duration) {
 	r.succeeded = append(r.succeeded, c)
 }
+func (r *recordingSink) AttemptExecuted(c Candidate, a Attempt) {}
 
 func okOp(counter *int) func(ctx context.Context) error {
 	return func(ctx context.Context) error { *counter++; return nil }

@@ -66,6 +66,12 @@ type Plan struct {
 type Sink interface {
 	// CandidateSkipped reports a candidate that was never attempted.
 	CandidateSkipped(c Candidate, reason SkipReason)
+	// AttemptExecuted reports one NON-TERMINAL physical attempt of a
+	// candidate (i.e., an attempt followed by at least one more attempt of
+	// the same candidate). The terminal attempt of a candidate is reported
+	// via CandidateFailed/CandidateSucceeded instead, so every physical
+	// execution maps to exactly one persistence event.
+	AttemptExecuted(c Candidate, a Attempt)
 	// CandidateFailed reports a candidate whose attempts were exhausted.
 	CandidateFailed(c Candidate, err error, attempts []Attempt, duration time.Duration)
 	// CandidateSucceeded reports a winning candidate. For DeferSuccess
@@ -165,6 +171,9 @@ func ExecutePlan(ctx context.Context, p Plan) Result {
 			}
 			res.WinnerIndex = c.Index
 			if p.Sink != nil {
+				for _, a := range attempts[:max(0, len(attempts)-1)] {
+					p.Sink.AttemptExecuted(c, a)
+				}
 				p.Sink.CandidateSucceeded(c, attempts, duration)
 			}
 			return res
@@ -179,6 +188,9 @@ func ExecutePlan(ctx context.Context, p Plan) Result {
 		}
 		res.LastError = err
 		if p.Sink != nil {
+			for _, a := range attempts[:max(0, len(attempts)-1)] {
+				p.Sink.AttemptExecuted(c, a)
+			}
 			p.Sink.CandidateFailed(c, err, attempts, duration)
 		}
 	}
