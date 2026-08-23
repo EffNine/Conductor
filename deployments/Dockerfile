@@ -11,8 +11,9 @@ RUN go mod download
 
 COPY . .
 
+ARG VERSION=dev
 RUN CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOOS=linux \
-    go build -ldflags="-s -w" -o /app/conductor ./cmd/conductor
+    go build -ldflags="-s -w -X github.com/EffNine/conductor/internal/buildinfo.Version=${VERSION}" -o /app/conductor ./cmd/conductor
 
 # Runtime stage
 FROM alpine:3.19

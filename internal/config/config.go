@@ -289,18 +289,12 @@ type LoggingConfig struct {
 
 // RateLimitConfig holds rate limiting configuration
 type RateLimitConfig struct {
-	Enabled     bool             `mapstructure:"enabled"`
-	Global      GlobalRateLimit  `mapstructure:"global"`
-	PerProvider PerProviderLimit `mapstructure:"per_provider"`
+	Enabled bool            `mapstructure:"enabled"`
+	Global  GlobalRateLimit `mapstructure:"global"`
 }
 
 // GlobalRateLimit holds global rate limit configuration
 type GlobalRateLimit struct {
-	RequestsPerMinute int `mapstructure:"requests_per_minute"`
-}
-
-// PerProviderLimit holds per-provider rate limit configuration
-type PerProviderLimit struct {
 	RequestsPerMinute int `mapstructure:"requests_per_minute"`
 }
 

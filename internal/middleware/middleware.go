@@ -54,6 +54,11 @@ func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, log
 	// Logging
 	app.Use(Logging(logger))
 
+	// Global inbound rate limit (before auth so 429s do not leak key validity)
+	if rl := RateLimit(cfg.RateLimit.Enabled, cfg.RateLimit.Global.RequestsPerMinute); rl != nil {
+		app.Use(rl)
+	}
+
 	// Auth
 	app.Use(Auth(authService))
 }

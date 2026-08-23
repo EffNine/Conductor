@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/EffNine/conductor/internal/buildinfo"
 )
 
 // ExportPrometheus exports all metrics in Prometheus exposition format.
@@ -22,7 +24,7 @@ func ExportPrometheus(snap MetricSnapshot) string {
 func writeMetadata(b *bytes.Buffer, snap MetricSnapshot) {
 	b.WriteString("# HELP conductor_build_info Conductor gateway build information.\n")
 	b.WriteString("# TYPE conductor_build_info gauge\n")
-	b.WriteString("conductor_build_info{version=\"dev\"} 1\n\n")
+	b.WriteString(fmt.Sprintf("conductor_build_info{version=%q} 1\n\n", buildinfo.Version))
 
 	b.WriteString("# HELP conductor_uptime_seconds Seconds since the gateway started.\n")
 	b.WriteString("# TYPE conductor_uptime_seconds gauge\n")

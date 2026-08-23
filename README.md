@@ -42,6 +42,29 @@ curl http://localhost:8080/v1/chat/completions \
 
 Full guide → [docs/quickstart.md](docs/quickstart.md)
 
+## Bring Your Own Keys
+
+Conductor is built for individuals with several provider subscriptions who
+don't want a middleman service. Every key stays on your machine and goes only
+to its own provider — no per-token markup, no upstream seeing your traffic mix.
+
+Every provider below auto-enables from its env var; list as many as you have:
+
+```bash
+docker run -d -p 8080:8080 \
+  -e CONDUCTOR_API_KEY=my-key \
+  -e OPENAI_API_KEY=sk-... \
+  -e ANTHROPIC_API_KEY=sk-ant-... \
+  -e GEMINI_API_KEY=... \
+  -e DEEPSEEK_API_KEY=... \
+  -e GROQ_API_KEY=gsk_... \
+  -v conductor-data:/app/data \
+  effnine/conductor:latest
+```
+
+All of them appear in `GET /api/models`, share one gateway key, feed one usage/cost
+ledger, and back each other up through automatic failover.
+
 ## Features
 
 | Feature | Description |

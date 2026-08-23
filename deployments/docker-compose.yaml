@@ -20,7 +20,9 @@ services:
       - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234/v1}
     volumes:
       - conductor-data:/app/data
-      - ../config/config.yaml:/app/config.yaml:ro
+      # Optional: mount a config file for routes/aliases/tuning. Without one,
+      # every provider key in `environment:` auto-enables with defaults.
+      # - ../config/config.yaml:/app/config.yaml:ro
     restart: unless-stopped
 
 volumes:

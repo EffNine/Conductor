@@ -318,14 +318,6 @@ observability:
   # Default true.
   request_logging: true
 
-# Rate limiting
-rate_limit:
-  enabled: true
-  global:
-    requests_per_minute: 1000
-  per_provider:
-    requests_per_minute: 100
-
 # Health monitoring
 health:
   check_interval: 60s
@@ -407,6 +399,13 @@ routing:
   dynamic_fallback:
     enabled: true
     max_candidates: 3
+
+# Global inbound rate limit (optional).
+# Protects your provider subscriptions from runaway client loops.
+rate_limit:
+  enabled: false
+  global:
+    requests_per_minute: 120
 
 # Response cache (optional)
 # Caches successful non-streaming chat completions by request hash.

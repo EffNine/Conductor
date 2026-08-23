@@ -4,12 +4,17 @@
 BINARY_NAME=conductor
 BINARY_PATH=bin/$(BINARY_NAME)
 
+# Version from git (falls back to dev)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
 GOTEST=$(GOCMD) test
 GOMOD=$(GOCMD) mod
 GOGET=$(GOCMD) get
+
+LDFLAGS=-s -w -X github.com/EffNine/conductor/internal/buildinfo.Version=$(VERSION)
 
 # Docker parameters
 DOCKER_IMAGE=effnine/conductor
@@ -19,7 +24,7 @@ DOCKER_TAG=latest
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p bin
-	$(GOBUILD) -o $(BINARY_PATH) -v ./cmd/conductor
+	$(GOBUILD) -ldflags="$(LDFLAGS)" -o $(BINARY_PATH) -v ./cmd/conductor
 
 ## test: Run tests
 test:

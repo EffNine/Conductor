@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/buildinfo"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/provider"
@@ -14,7 +15,7 @@ import (
 
 // HandleHealth handles GET /health
 func (h *Handler) HandleHealth(c *fiber.Ctx) error {
-	return c.JSON(apitypes.HealthResponse{Status: "ok"})
+	return c.JSON(apitypes.HealthResponse{Status: "ok", Version: buildinfo.Version})
 }
 
 // HandleProviderHealth handles GET /api/health

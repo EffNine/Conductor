@@ -408,11 +408,18 @@ curl https://your-gateway.com/api/usage \
 
 ### Rate Limiting
 
-Conductor does not include built-in rate limiting. Mitigate abuse at the infrastructure level:
+A global inbound rate limiter guards against runaway clients:
 
-- Place the gateway behind a reverse proxy (Caddy, Nginx) with `limit_req`
-- Use a CDN or WAF to throttle and filter requests before they reach the gateway
-- Restrict API key usage per client at the application layer
+```yaml
+rate_limit:
+  enabled: true
+  global:
+    requests_per_minute: 120
+```
+
+Excess requests receive `429` with a `Retry-After` header; `/health` is exempt.
+For stricter or per-client controls, also place the gateway behind a reverse
+proxy (`limit_req`) or a CDN/WAF.
 
 ### File Permissions
 

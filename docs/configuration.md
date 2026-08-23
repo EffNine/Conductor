@@ -226,13 +226,11 @@ logging:
   log_prompts: false
   log_responses: false
 
-# Rate limiting
+# Rate limiting (see "Global Rate Limit" below)
 rate_limit:
   enabled: true
   global:
     requests_per_minute: 1000
-  per_provider:
-    requests_per_minute: 100
 
 # Health monitoring
 health:
@@ -485,6 +483,23 @@ Dashboard: `GET /api/routing` returns current scores per provider and active wei
 Metrics: `conductor_routing_decisions_total` and `conductor_routing_latency_ms` histogram are exported at `/api/metrics`.
 
 Logging: routing decisions are emitted as structured `routing_decision` logs with `selected_provider`, `candidate_scores`, `rejection_reasons`, and `routing_duration_ms`.
+
+### Global Rate Limit
+
+Optional fixed-window limiter protecting your provider subscriptions from
+runaway clients. Off by default.
+
+```yaml
+rate_limit:
+  enabled: true
+  global:
+    requests_per_minute: 120   # 0 disables even when enabled
+```
+
+| Field | Description | Default |
+|-------|-------------|---------|
+| `enabled` | Turn on the global limiter | `false` |
+| `global.requests_per_minute` | Ceiling for all endpoints except `/health` | `0` |
 
 ### Streaming
 

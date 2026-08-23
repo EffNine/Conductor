@@ -433,7 +433,8 @@ type ErrorDetail struct {
 
 // HealthResponse represents a health check response
 type HealthResponse struct {
-	Status string `json:"status"`
+	Status  string `json:"status"`
+	Version string `json:"version,omitempty"`
 }
 
 // ProviderHealthResponse represents provider health status
