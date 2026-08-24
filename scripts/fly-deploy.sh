@@ -109,7 +109,12 @@ else
 fi
 
 echo "Deploying (remote builder)..."
-"$FLY_BIN" deploy -a "$APP_NAME" --config fly.toml --remote-only
+# Stamp the build with the real version (git tag/describe) so /health and
+# conductor_build_info self-identify the running release.
+VERSION="${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo dev)}"
+
+"$FLY_BIN" deploy -a "$APP_NAME" --config fly.toml --remote-only \
+  --build-arg "VERSION=${VERSION}"
 
 echo ""
 echo "Done. Status:"
