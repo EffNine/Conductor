@@ -12,6 +12,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/security"
 )
 
 // Provider implements the provider.Provider interface for Cloudflare Workers AI.
@@ -24,20 +25,21 @@ type Provider struct {
 	client    *http.Client
 }
 
-// NewProvider creates a new Cloudflare Workers AI provider.
-// apiKey is the Cloudflare API token. baseURL should contain the account ID
-// in the path (e.g. "https://api.cloudflare.com/client/v4/accounts/ABC123").
+// NewProvider creates a new Cloudflare Workers AI provider with SSRF-protected transport.
 func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
 	if baseURL == "" {
 		baseURL = "https://api.cloudflare.com/client/v4"
 	}
 	accountID := extractCloudflareAccountID(baseURL)
+	allowPrivate := strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "[::1]")
+	client := security.NewSSRFProtectedClient(int(timeout.Seconds()), allowPrivate)
+	client.Timeout = timeout
 	return &Provider{
 		name:      "cloudflare",
 		apiToken:  apiKey,
 		accountID: accountID,
 		baseURL:   baseURL,
-		client:    &http.Client{Timeout: timeout},
+		client:    client,
 	}
 }
 

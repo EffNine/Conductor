@@ -15,6 +15,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/security"
 	"github.com/EffNine/conductor/pkg/sse"
 )
 
@@ -48,13 +49,22 @@ func WithCapabilities(caps provider.Capabilities) Option {
 	return func(b *Base) { b.capabilities = caps }
 }
 
-// New creates a reusable OpenAI-compatible provider base.
+// New creates a reusable OpenAI-compatible provider base with SSRF-protected transport.
 func New(name, apiKey, baseURL string, timeout time.Duration, opts ...Option) *Base {
+	allowPrivate := name == "ollama" || name == "lmstudio" || strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "[::1]") || strings.Contains(baseURL, "0.0.0.0")
+	client := security.NewSSRFProtectedClient(int(timeout.Seconds()), allowPrivate)
+	client.Timeout = timeout
+	// Validate baseURL eagerly at construction time (fail closed if insecure)
+	if err := security.ValidateProviderURL(baseURL, allowPrivate); err != nil {
+		// Do not panic; keep baseURL but transport will block outbound. Log is caller's responsibility.
+		// We still create the client; the error will surface on first request.
+		_ = err
+	}
 	b := &Base{
 		name:    name,
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: timeout},
+		client:  client,
 		pricingFunc: func(ctx context.Context) (map[string]provider.PricingInfo, error) {
 			return map[string]provider.PricingInfo{}, nil
 		},

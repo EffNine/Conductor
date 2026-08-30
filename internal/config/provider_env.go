@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/EffNine/conductor/internal/security"
 )
 
 // IsLoopbackBaseURL reports whether u points at localhost / 127.0.0.1.
@@ -164,6 +166,85 @@ func validate(cfg *Config) error {
 	validDrivers := map[string]bool{"sqlite": true, "postgres": true}
 	if !validDrivers[cfg.Database.Driver] {
 		return fmt.Errorf("invalid database driver: %s", cfg.Database.Driver)
+	}
+
+	// SSRF: validate provider base URLs do not point to private/internal destinations
+	// unless the provider is explicitly local (ollama/lmstudio). This catches
+	// misconfigured base_url that could be abused to probe internal networks.
+	providerURLs := map[string]string{
+		"openai":      cfg.Providers.OpenAI.BaseURL,
+		"anthropic":   cfg.Providers.Anthropic.BaseURL,
+		"gemini":      cfg.Providers.Gemini.BaseURL,
+		"deepseek":    cfg.Providers.DeepSeek.BaseURL,
+		"openrouter":  cfg.Providers.OpenRouter.BaseURL,
+		"groq":        cfg.Providers.Groq.BaseURL,
+		"ollama":      cfg.Providers.Ollama.BaseURL,
+		"lmstudio":    cfg.Providers.LMStudio.BaseURL,
+		"opencode":    cfg.Providers.Opencode.BaseURL,
+		"nvidia_nim":  cfg.Providers.NvidiaNim.BaseURL,
+		"nous_portal": cfg.Providers.NousPortal.BaseURL,
+		"xai":         cfg.Providers.XAI.BaseURL,
+		"agnesai":     cfg.Providers.AgnesAI.BaseURL,
+		"kilocode":    cfg.Providers.KiloCode.BaseURL,
+		"mistral":     cfg.Providers.Mistral.BaseURL,
+		"zai":         cfg.Providers.ZAI.BaseURL,
+		"cerebras":    cfg.Providers.Cerebras.BaseURL,
+		"requesty":    cfg.Providers.Requesty.BaseURL,
+		"cloudflare":  cfg.Providers.Cloudflare.BaseURL,
+	}
+	for name, raw := range providerURLs {
+		if raw == "" {
+			continue
+		}
+		// Only validate enabled providers; disabled ones are irrelevant
+		enabled := false
+		switch name {
+		case "openai":
+			enabled = cfg.Providers.OpenAI.Enabled
+		case "anthropic":
+			enabled = cfg.Providers.Anthropic.Enabled
+		case "gemini":
+			enabled = cfg.Providers.Gemini.Enabled
+		case "deepseek":
+			enabled = cfg.Providers.DeepSeek.Enabled
+		case "openrouter":
+			enabled = cfg.Providers.OpenRouter.Enabled
+		case "groq":
+			enabled = cfg.Providers.Groq.Enabled
+		case "ollama":
+			enabled = cfg.Providers.Ollama.Enabled
+		case "lmstudio":
+			enabled = cfg.Providers.LMStudio.Enabled
+		case "opencode":
+			enabled = cfg.Providers.Opencode.Enabled
+		case "nvidia_nim":
+			enabled = cfg.Providers.NvidiaNim.Enabled
+		case "nous_portal":
+			enabled = cfg.Providers.NousPortal.Enabled
+		case "xai":
+			enabled = cfg.Providers.XAI.Enabled
+		case "agnesai":
+			enabled = cfg.Providers.AgnesAI.Enabled
+		case "kilocode":
+			enabled = cfg.Providers.KiloCode.Enabled
+		case "mistral":
+			enabled = cfg.Providers.Mistral.Enabled
+		case "zai":
+			enabled = cfg.Providers.ZAI.Enabled
+		case "cerebras":
+			enabled = cfg.Providers.Cerebras.Enabled
+		case "requesty":
+			enabled = cfg.Providers.Requesty.Enabled
+		case "cloudflare":
+			enabled = cfg.Providers.Cloudflare.Enabled
+		}
+		if !enabled {
+			continue
+		}
+		allowPrivate := name == "ollama" || name == "lmstudio"
+		if err := security.ValidateProviderURL(raw, allowPrivate); err != nil {
+			return fmt.Errorf("invalid base_url for provider %q: %w", name, err)
+		}
 	}
 
 	return nil

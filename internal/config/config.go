@@ -537,9 +537,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.write_timeout", 120*time.Second)
 	v.SetDefault("server.max_request_size", 10*1024*1024) // 10MB
 	v.SetDefault("server.cors.enabled", true)
-	v.SetDefault("server.cors.origins", []string{"*"})
-	v.SetDefault("server.cors.methods", []string{"GET", "POST", "OPTIONS"})
-	v.SetDefault("server.cors.headers", []string{"Authorization", "Content-Type"})
+	v.SetDefault("server.cors.origins", []string{"https://effnine.dev", "https://www.effnine.dev"})
+	v.SetDefault("server.cors.methods", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
+	v.SetDefault("server.cors.headers", []string{"Authorization", "Content-Type", "X-CSRF-Token", "X-Request-ID"})
 
 	// Provider defaults
 	v.SetDefault("providers.openai.enabled", true)

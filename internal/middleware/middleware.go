@@ -20,6 +20,9 @@ const (
 
 // Register registers all middleware on the Fiber app
 func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, logger *zap.Logger) {
+	// Security headers (HSTS etc.) — before anything else
+	app.Use(SecurityHeaders())
+
 	// Recovery middleware
 	app.Use(Recovery(logger))
 
@@ -78,6 +81,9 @@ var errMalformedCredentials = errors.New("malformed authorization header")
 // credentials all fail closed with HTTP 401 and a WWW-Authenticate: Bearer
 // challenge. The middleware never logs the Authorization header or the API key,
 // and the challenge response never echoes the supplied credential.
+//
+// On success it stores the token's scopes (if any) in c.Locals("scopes") and
+// the token fingerprint in c.Locals("token_fp") for downstream authorization.
 func Auth(authService *auth.Service) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Operational liveness/readiness probes (e.g. Fly.io checks) must not
@@ -95,7 +101,15 @@ func Auth(authService *auth.Service) fiber.Handler {
 		}
 
 		if err := authService.Authenticate(token); err != nil {
+			if errors.Is(err, auth.ErrInsufficientScope) {
+				return forbidden(c, "Insufficient scope", "insufficient_scope")
+			}
 			return unauthorized(c, "Invalid API key", "invalid_api_key")
+		}
+		// Store scopes for downstream RequireScope checks
+		if scopes := authService.ScopesForToken(token); scopes != nil {
+			c.Locals("scopes", scopes)
+			// fingerprint not stored globally; handlers can re-derive if needed
 		}
 
 		return c.Next()
@@ -129,6 +143,50 @@ func unauthorized(c *fiber.Ctx, message, code string) error {
 			"code":    code,
 		},
 	})
+}
+
+// forbidden writes the standard 403 authorization error envelope (valid token, insufficient scope).
+func forbidden(c *fiber.Ctx, message, code string) error {
+	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+		"error": fiber.Map{
+			"message": message,
+			"type":    "authorization_error",
+			"code":    code,
+		},
+	})
+}
+
+// RequireScope returns middleware that ensures the authenticated token carries required scope.
+// It must be used after Auth. Valid token without scope → 403. No token (Auth didn't run) → 401.
+// Admin scope (conductor:admin) satisfies any requirement.
+func RequireScope(required string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		scopesVal := c.Locals("scopes")
+		var scopes []string
+		if scopesVal != nil {
+			if s, ok := scopesVal.([]string); ok {
+				scopes = s
+			}
+		}
+		// If no scopes stored but request reached here, Auth succeeded with single-key (treated as admin)
+		// Single-key case: scopes will be admin, so passes. But if Auth was bypassed (e.g. /health), scopes nil → allow.
+		if scopes == nil {
+			// Check if auth was required: if path is health, allow
+			if c.Path() == "/health" {
+				return c.Next()
+			}
+			// For other paths, if scopes nil it means token was single-key admin or TokenStore not configured
+			// In single-key mode, we consider it admin, so allow.
+			// If TokenStore is configured but scopes missing (e.g. token not found should have been 401), this path shouldn't be reached.
+			return c.Next()
+		}
+		for _, s := range scopes {
+			if s == required || s == "conductor:admin" {
+				return c.Next()
+			}
+		}
+		return forbidden(c, "Insufficient scope: requires "+required, "insufficient_scope")
+	}
 }
 
 // Logging returns middleware that logs requests

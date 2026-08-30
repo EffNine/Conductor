@@ -119,8 +119,16 @@ func main() {
 	}
 	logger.Info("Database connected and migrated")
 
-	// Initialize auth service
-	authService := auth.NewService(cfg.APIKey)
+	// Initialize auth service — attach control-plane token store if available (per-token lifecycle)
+	var tokenStore *auth.TokenStore
+	if ts, err := auth.NewTokenStore(""); err == nil {
+		tokenStore = ts
+		defer func() { _ = ts.Close() }()
+		logger.Info("control-plane token store attached for conductor tokens", zap.String("via", "effnine.db"))
+	} else {
+		logger.Info("control-plane token store not attached; using single-key auth only", zap.Error(err))
+	}
+	authService := auth.NewServiceWithStore(cfg.APIKey, tokenStore)
 
 	// Initialize provider registry
 	registry := provider.NewRegistry()

@@ -10,6 +10,7 @@ import (
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/metrics"
+	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/runtime"
@@ -155,37 +156,40 @@ func (h *Handler) SetRuntimeManager(m runtime.Manager) {
 	h.runtimeManager = m
 }
 
-// Register registers all HTTP routes
+// Register registers all HTTP routes with scope-aware authorization.
+// Authentication is handled globally by middleware.Auth (except /health).
+// This method adds authorization (scope) checks per route: 401 for invalid token,
+// 403 for valid token lacking required scope. Admin scope implies all.
 func (h *Handler) Register(app *fiber.App) {
-	// OpenAI-compatible endpoints
-	app.Post("/v1/chat/completions", h.HandleChatCompletion)
-	app.Get("/v1/models", h.HandleListModels)
-	app.Post("/v1/embeddings", h.HandleEmbeddings)
-
-	// Health endpoints
+	// Public (no auth)
 	app.Get("/health", h.HandleHealth)
 
-	// Dashboard endpoints
-	app.Get("/api/models", h.HandleDashboardModels)
-	app.Get("/api/models/status", h.HandleModelStatus)
-	app.Post("/api/models/reset-status", h.HandleResetModelStatus)
-	app.Post("/api/models/force-probe", h.HandleForceProbe)
-	app.Get("/api/auto/status", h.HandleAutoStatus)
-	app.Get("/api/health", h.HandleProviderHealth)
-	app.Get("/api/providers", h.HandleListProviders)
-	app.Get("/api/usage", h.HandleUsage)
-	app.Get("/api/usage/costs", h.HandleCosts)
-	app.Get("/api/logs", h.HandleLogs)
-	app.Get("/api/config", h.HandleConfig)
-	app.Put("/api/config/reload", h.HandleReloadConfig)
-	app.Get("/api/metrics", h.HandleMetrics)
-	app.Get("/api/circuit-breaker", h.HandleCircuitBreakerStatus)
-	app.Get("/api/routing", h.HandleRouting)
-	app.Get("/api/routing/traces", h.HandleRoutingTraces)
-	app.Get("/api/routing/traces/:id", h.HandleRoutingTraceByID)
-	app.Get("/api/failures", h.HandleFailures)
-	app.Get("/api/failures/summary", h.HandleFailuresSummary)
-	app.Get("/api/cache", h.HandleCacheStatus)
-	app.Get("/api/streams", h.HandleStreamStatus)
-	app.Get("/api/runtime", h.HandleRuntime)
+	// OpenAI-compatible endpoints — scoped
+	app.Post("/v1/chat/completions", middleware.RequireScope("conductor:execute"), h.HandleChatCompletion)
+	app.Post("/v1/embeddings", middleware.RequireScope("conductor:execute"), h.HandleEmbeddings)
+	app.Get("/v1/models", middleware.RequireScope("conductor:read"), h.HandleListModels)
+
+	// Dashboard — read vs admin
+	app.Get("/api/models", middleware.RequireScope("conductor:read"), h.HandleDashboardModels)
+	app.Get("/api/models/status", middleware.RequireScope("conductor:read"), h.HandleModelStatus)
+	app.Post("/api/models/reset-status", middleware.RequireScope("conductor:admin"), h.HandleResetModelStatus)
+	app.Post("/api/models/force-probe", middleware.RequireScope("conductor:admin"), h.HandleForceProbe)
+	app.Get("/api/auto/status", middleware.RequireScope("conductor:read"), h.HandleAutoStatus)
+	app.Get("/api/health", middleware.RequireScope("conductor:read"), h.HandleProviderHealth)
+	app.Get("/api/providers", middleware.RequireScope("conductor:read"), h.HandleListProviders)
+	app.Get("/api/usage", middleware.RequireScope("conductor:read"), h.HandleUsage)
+	app.Get("/api/usage/costs", middleware.RequireScope("conductor:read"), h.HandleCosts)
+	app.Get("/api/logs", middleware.RequireScope("conductor:read"), h.HandleLogs)
+	app.Get("/api/config", middleware.RequireScope("conductor:read"), h.HandleConfig)
+	app.Put("/api/config/reload", middleware.RequireScope("conductor:admin"), h.HandleReloadConfig)
+	app.Get("/api/metrics", middleware.RequireScope("conductor:read"), h.HandleMetrics)
+	app.Get("/api/circuit-breaker", middleware.RequireScope("conductor:read"), h.HandleCircuitBreakerStatus)
+	app.Get("/api/routing", middleware.RequireScope("conductor:read"), h.HandleRouting)
+	app.Get("/api/routing/traces", middleware.RequireScope("conductor:read"), h.HandleRoutingTraces)
+	app.Get("/api/routing/traces/:id", middleware.RequireScope("conductor:read"), h.HandleRoutingTraceByID)
+	app.Get("/api/failures", middleware.RequireScope("conductor:read"), h.HandleFailures)
+	app.Get("/api/failures/summary", middleware.RequireScope("conductor:read"), h.HandleFailuresSummary)
+	app.Get("/api/cache", middleware.RequireScope("conductor:read"), h.HandleCacheStatus)
+	app.Get("/api/streams", middleware.RequireScope("conductor:read"), h.HandleStreamStatus)
+	app.Get("/api/runtime", middleware.RequireScope("conductor:read"), h.HandleRuntime)
 }

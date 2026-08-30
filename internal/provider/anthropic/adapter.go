@@ -13,6 +13,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/provider"
+	"github.com/EffNine/conductor/internal/security"
 )
 
 // Provider implements the provider.Provider interface for Anthropic\'s Messages API.
@@ -24,13 +25,16 @@ type Provider struct {
 	auth    *AuthConfig
 }
 
-// NewProvider creates a new Anthropic provider.
+// NewProvider creates a new Anthropic provider with SSRF-protected transport.
 func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
+	allowPrivate := strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "[::1]")
+	client := security.NewSSRFProtectedClient(int(timeout.Seconds()), allowPrivate)
+	client.Timeout = timeout
 	p := &Provider{
 		name:    "anthropic",
 		apiKey:  apiKey,
 		baseURL: baseURL,
-		client:  &http.Client{Timeout: timeout},
+		client:  client,
 		auth:    NewAuthConfig(apiKey),
 	}
 	return p
