@@ -21,6 +21,8 @@ import (
 	"github.com/EffNine/conductor/internal/eventbus"
 	"github.com/EffNine/conductor/internal/handler"
 	"github.com/EffNine/conductor/internal/health"
+	"github.com/EffNine/conductor/internal/jev"
+	jevshadow "github.com/EffNine/conductor/internal/jev/shadow"
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/provider/agnesai"
@@ -69,6 +71,8 @@ func main() {
 		case "help", "-h", "--help":
 			printUsage()
 			return
+		case "eval":
+			os.Exit(runEval(os.Args[2:]))
 		}
 	}
 
@@ -313,6 +317,63 @@ func main() {
 		tracePersistence.Start()
 		defer tracePersistence.Stop()
 		logger.Info("routing trace persistence enabled")
+	}
+
+	// JEV shadow advisor (Phase C1): observes routing decisions as a pure
+	// shadow component. It subscribes to DecisionFinished and
+	// ExecutionAttemptCompleted on the event bus, asks JEV which candidate
+	// provider it would choose for the same routing state, and persists the
+	// advisory result alongside the deterministic decision and the eventual
+	// execution outcome. It NEVER feeds back into Conductor's routing
+	// selection, fallback, or retry logic — the deterministic pipeline
+	// remains authoritative. Disabled by default; fully detachable.
+	//
+	// The advisor observes every routing decision, so it is independent of
+	// routing.enabled: a nil eventBus (no pipeline) simply means no events
+	// are published and the bridge stays idle.
+	if cfg.Shadow.Enabled {
+		var shadowStore jevshadow.Store
+		if db != nil {
+			sstore := jevshadow.NewSQLiteStore(db.DB)
+			if err := sstore.Migrate(); err != nil {
+				logger.Warn("jev shadow: migration failed; advisor will not persist", zap.Error(err))
+			} else {
+				shadowStore = sstore
+			}
+		}
+		// Construct the query handler now (before app registration) so it
+		// can be mounted on the app along with the other routes below.
+		shadowQuery := jevshadow.NewQueryHandler(shadowStore, logger)
+		apiKey := cfg.Shadow.EffectiveAPIKey()
+		var shadowClient *jev.Client
+		if apiKey != "" {
+			shadowClient = jev.NewClient(jev.Config{
+				APIKey:   apiKey,
+				Endpoint: cfg.Shadow.Endpoint,
+				Model:    cfg.Shadow.Model,
+				Timeout:  cfg.Shadow.Timeout,
+			})
+		}
+		advisor := jevshadow.NewAdvisor(jevshadow.AdvisorConfig{
+			Store:     shadowStore,
+			Logger:    logger,
+			JEVClient: shadowClient,
+		})
+		bridge := jevshadow.NewBridge(eventBus, advisor, cfg.Shadow.Retention, logger)
+		bridge.Start()
+		defer bridge.Stop()
+		if shadowClient == nil {
+			logger.Info("jev shadow advisor enabled without API key; advisory results will be not_configured")
+		} else {
+			logger.Info("jev shadow advisor enabled",
+				zap.String("model", shadowClient.Model()),
+				zap.Duration("timeout", cfg.Shadow.Timeout),
+				zap.Duration("retention", cfg.Shadow.Retention),
+			)
+		}
+		// Register the read-only shadow query endpoint on the app with the
+		// same scope as the other dashboard endpoints (conductor:read).
+		app.Get("/api/jev-shadow", middleware.RequireScope("conductor:read"), shadowQuery.Handle())
 	}
 
 	// Register middleware

@@ -58,6 +58,7 @@ type Config struct {
 	Cache     CacheConfig                 `mapstructure:"cache"`
 	Stream    StreamConfig                `mapstructure:"stream"`
 	Execution ExecutionConfig             `mapstructure:"execution"`
+	Shadow    ShadowConfig                `mapstructure:"shadow"`
 
 	// APIKeyJustGenerated is true when Load created and persisted a new gateway key
 	// because none was configured via env, YAML, or an existing key file.
@@ -429,6 +430,43 @@ type RoutingWeights struct {
 	Capability float64 `mapstructure:"capability"`
 }
 
+// ShadowConfig controls the JEV shadow advisor (Phase C1).
+//
+// The shadow advisor observes deterministic routing decisions and records a
+// JEV advisory judgment alongside them. It is a PURE OBSERVER: its result
+// never feeds back into Conductor's routing selection, fallback, or retry
+// logic. JEV failures, timeouts, or missing configuration MUST NOT alter
+// production routing behavior.
+//
+// Default disabled. Enabling it requires an API key.
+type ShadowConfig struct {
+	// Enabled turns on the JEV shadow advisor. Default false.
+	Enabled bool `mapstructure:"enabled"`
+	// APIKey authenticates against the TypeSafe System One API. Also read
+	// from TYPESAFE_API_KEY when unset. Empty = advisor disabled at runtime.
+	APIKey string `mapstructure:"api_key"`
+	// Endpoint overrides the System One evaluation URL. Empty = built-in
+	// default.
+	Endpoint string `mapstructure:"endpoint"`
+	// Model is the System One model alias. Empty = built-in default.
+	Model string `mapstructure:"model"`
+	// Timeout bounds each JEV call. Default 5s.
+	Timeout time.Duration `mapstructure:"timeout"`
+	// Retention bounds storage: observation rows older than this are pruned.
+	// 0 disables pruning. Default 168h (7 days) — shadow observations are
+	// transient evaluation evidence, not long-term data.
+	Retention time.Duration `mapstructure:"retention"`
+}
+
+// EffectiveAPIKey resolves the configured API key, falling back to the
+// TYPESAFE_API_KEY environment variable when the config field is empty.
+func (c ShadowConfig) EffectiveAPIKey() string {
+	if c.APIKey != "" {
+		return c.APIKey
+	}
+	return os.Getenv("TYPESAFE_API_KEY")
+}
+
 // DefaultRoutingWeights returns the default routing weights.
 func DefaultRoutingWeights() RoutingWeights {
 	return RoutingWeights{
@@ -724,6 +762,15 @@ func setDefaults(v *viper.Viper) {
 	// Cost defaults
 	v.SetDefault("cost.enabled", true)
 	v.SetDefault("cost.currency", "USD")
+
+	// JEV shadow advisor defaults (Phase C1): off by default. Enabling it
+	// requires an API key (shadow.api_key or TYPESAFE_API_KEY).
+	v.SetDefault("shadow.enabled", false)
+	v.SetDefault("shadow.api_key", "")
+	v.SetDefault("shadow.endpoint", "")
+	v.SetDefault("shadow.model", "")
+	v.SetDefault("shadow.timeout", 5*time.Second)
+	v.SetDefault("shadow.retention", 168*time.Hour)
 }
 
 // bridgeLegacyNovexaEnv copies NOVEXA_* env vars to CONDUCTOR_* when the
