@@ -24,6 +24,11 @@ func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
 
 // HandleChatCompletion handles POST /v1/chat/completions
 func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
+	// The correlation id (middleware-generated) runs through the whole
+	// request: pipeline decisions, execution-attempt records, and logs. It
+	// is observability metadata — routing behavior is unaffected.
+	correlationID := middleware.GetCorrelationIDFromLocals(c)
+
 	var req apitypes.ChatCompletionRequest
 	if err := c.BodyParser(&req); err != nil {
 		h.metrics.IncrementErrors()
@@ -157,7 +162,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 					env := router.Environment{
 						CircuitBreakerEnabled: h.router.BreakerPool() != nil,
 					}
-					result, pplineErr := h.decisionPipeline.Execute(c.Context(), &req, env, cfgSnap, nil)
+					result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.Context(), &req, env, cfgSnap, nil, correlationID)
 					if pplineErr == nil && result != nil && result.Candidate != nil {
 						selection = result
 					}
@@ -219,7 +224,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		env := router.Environment{
 			CircuitBreakerEnabled: h.router.BreakerPool() != nil,
 		}
-		result, pplineErr := h.decisionPipeline.Execute(c.Context(), &req, env, cfgSnap, candidates)
+		result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.Context(), &req, env, cfgSnap, candidates, correlationID)
 		if pplineErr != nil {
 			h.logger.Warn("decision pipeline failed, using legacy resolution",
 				zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
@@ -286,11 +291,11 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 			zap.String("model", req.Model),
 			zap.String("reason", "streaming"),
 		)
-		return h.handleStreaming(c, &req, resolved, fallbacks, staticRoutes)
+		return h.handleStreaming(c, &req, resolved, fallbacks, staticRoutes, correlationID)
 	}
 
 	// Handle non-streaming
-	return h.handleNonStreaming(c, &req, resolved, fallbacks, staticRoutes)
+	return h.handleNonStreaming(c, &req, resolved, fallbacks, staticRoutes, correlationID)
 }
 
 // buildConfigSnapshot exports the legacy engine's routing config for the pipeline.
@@ -299,10 +304,9 @@ func (h *Handler) buildConfigSnapshot() router.ConfigSnapshot {
 }
 
 // handleNonStreaming handles a non-streaming chat completion request
-func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int) error {
+func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
 	start := time.Now()
 	requestID := uuid.New().String()
-	correlationID := middleware.GetCorrelationIDFromLocals(c)
 
 	h.metrics.IncrementRequests()
 

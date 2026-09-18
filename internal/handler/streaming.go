@@ -15,7 +15,6 @@ import (
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/failure"
 	"github.com/EffNine/conductor/internal/metrics"
-	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
@@ -25,10 +24,9 @@ import (
 )
 
 // handleStreaming handles a streaming chat completion request
-func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int) error {
+func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
 	start := time.Now()
 	requestID := uuid.New().String()
-	correlationID := middleware.GetCorrelationIDFromLocals(c)
 	policy := h.retryPolicy()
 
 	h.metrics.IncrementRequests()

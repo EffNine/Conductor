@@ -33,18 +33,48 @@ func (s *testStore) Save(ctx context.Context, obs *ShadowObservation) error {
 	return nil
 }
 
-func (s *testStore) BackfillOutcome(ctx context.Context, decisionID, outcome string, latencyMs int64) (bool, error) {
+// UpdateAdvisory records advisory fields on the matching row (decision-id
+// keyed) so the async JEV result is observable on the stored row.
+func (s *testStore) UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.observed {
+		if s.observed[i].DecisionID == obs.DecisionID {
+			row := &s.observed[i]
+			row.AdvisoryProvider = obs.AdvisoryProvider
+			row.AdvisoryConfidence = obs.AdvisoryConfidence
+			row.AdvisoryProbabilities = obs.AdvisoryProbabilities
+			row.JEVModel = obs.JEVModel
+			row.JEVDurationMs = obs.JEVDurationMs
+			row.JEVInputTokens = obs.JEVInputTokens
+			row.JEVOutputTokens = obs.JEVOutputTokens
+			row.AdvisoryStatus = obs.AdvisoryStatus
+		}
+	}
+	return nil
+}
+
+func (s *testStore) BackfillOutcome(ctx context.Context, correlationID, decisionID, outcome string, latencyMs int64) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.backfillCnt++
+	matched := 0
 	for i := range s.observed {
-		if s.observed[i].DecisionID == decisionID {
-			s.observed[i].Outcome = outcome
-			s.observed[i].ProviderLatencyMs = latencyMs
-			return true, nil
+		row := &s.observed[i]
+		hit := false
+		if correlationID != "" && row.CorrelationID == correlationID {
+			hit = true
+		}
+		if decisionID != "" && row.DecisionID == decisionID {
+			hit = true
+		}
+		if hit {
+			row.Outcome = outcome
+			row.ProviderLatencyMs = latencyMs
+			matched++
 		}
 	}
-	return false, nil
+	return matched, nil
 }
 
 func (s *testStore) PruneBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error) {
@@ -67,6 +97,19 @@ func (s *testStore) List(ctx context.Context, limit int) ([]ShadowObservation, e
 	return s.observed[len(s.observed)-limit:], nil
 }
 
+// advisoryStatusOf returns the advisory status of the stored row with the
+// given decision id, or "" when not found.
+func (s *testStore) advisoryStatusOf(id string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.observed {
+		if s.observed[i].DecisionID == id {
+			return s.observed[i].AdvisoryStatus
+		}
+	}
+	return ""
+}
+
 // snapshot returns a copy of the observed rows so readers do not race the
 // async writer.
 func (s *testStore) snapshot() []ShadowObservation {
@@ -75,6 +118,16 @@ func (s *testStore) snapshot() []ShadowObservation {
 	out := make([]ShadowObservation, len(s.observed))
 	copy(out, s.observed)
 	return out
+}
+
+// snapshotByDecisionID returns the stored row with the given decision id.
+func (s *testStore) snapshotByDecisionID(id string) *ShadowObservation {
+	for _, r := range s.snapshot() {
+		if r.DecisionID == id {
+			return &r
+		}
+	}
+	return nil
 }
 
 // first returns the first observation if present.
@@ -89,8 +142,17 @@ func (s *testStore) first() (*ShadowObservation, bool) {
 // makeTrace builds a minimal deterministic trace with a winner and two
 // candidate scores.
 func makeTrace(decisionID string, winnerProvider string) *router.DecisionTrace {
+	return makeTraceWithCorrelation(decisionID, winnerProvider, "")
+}
+
+// makeTraceWithCorrelation builds a trace carrying an explicit request
+// correlation id.
+func makeTraceWithCorrelation(decisionID, winnerProvider, correlationID string) *router.DecisionTrace {
 	snap := runtime.RuntimeSnapshot{}
 	b := router.NewDecisionTraceBuilder(router.DecisionID(decisionID), snap)
+	if correlationID != "" {
+		b.SetCorrelationID(correlationID)
+	}
 	b.SetRequestedModel("gpt-4o")
 	b.SetWinner(&router.ResolvedRoute{
 		ProviderName:    winnerProvider,
@@ -152,6 +214,11 @@ func TestObservePersistsAdvisoryWhenClientConfigured(t *testing.T) {
 	defer a.Stop()
 
 	a.Observe(makeTrace("d1", "openai"))
+	expectOne(t, store)
+	// The row is inserted first; the advisory UPDATE lands asynchronously.
+	waitFor(t, store, 5*time.Second, func() bool {
+		return store.advisoryStatusOf("d1") == AdvisoryOK
+	})
 	obs := expectOne(t, store)
 	if obs.AdvisoryProvider != "groq" {
 		t.Fatalf("advisory provider = %q, want groq", obs.AdvisoryProvider)
@@ -188,6 +255,10 @@ func TestObserveDoesNotAlterDeterministicSelection(t *testing.T) {
 	defer a.Stop()
 
 	a.Observe(makeTrace("d2", "openai"))
+	expectOne(t, store)
+	waitFor(t, store, 5*time.Second, func() bool {
+		return store.advisoryStatusOf("d2") == AdvisoryOK
+	})
 	obs := expectOne(t, store)
 	if obs.SelectedProvider != "openai" {
 		t.Fatalf("selected = %q, want openai (JEV must not override the deterministic route)", obs.SelectedProvider)
@@ -213,6 +284,10 @@ func TestObserveJEVFailureDoesNotBreakRouting(t *testing.T) {
 	defer a.Stop()
 
 	a.Observe(makeTrace("d3", "openai"))
+	expectOne(t, store)
+	waitFor(t, store, 5*time.Second, func() bool {
+		return store.advisoryStatusOf("d3") == AdvisoryError
+	})
 	obs := expectOne(t, store)
 	if obs.AdvisoryStatus != AdvisoryError {
 		t.Fatalf("advisory status = %q, want error", obs.AdvisoryStatus)
@@ -248,9 +323,16 @@ func TestObserveJEVTimeoutRecordsTimeout(t *testing.T) {
 	defer a.Stop()
 
 	a.Observe(makeTrace("d4", "openai"))
-	obs := expectOne(t, store)
-	if obs.AdvisoryStatus != AdvisoryTimeout {
-		t.Fatalf("advisory status = %q, want timeout", obs.AdvisoryStatus)
+	expectOne(t, store)
+	// The row is inserted before the advisory runs; wait for the advisory
+	// UPDATE to land on the row by decision id.
+	waitFor(t, store, 5*time.Second, func() bool {
+		row := store.snapshotByDecisionID("d4")
+		return row != nil && row.AdvisoryStatus == AdvisoryTimeout
+	})
+	row := store.snapshotByDecisionID("d4")
+	if row == nil || row.AdvisoryStatus != AdvisoryTimeout {
+		t.Fatalf("advisory status = %q, want timeout", row.AdvisoryStatus)
 	}
 }
 
@@ -273,7 +355,7 @@ func TestObserveNotConfiguredRecordsNoConfigured(t *testing.T) {
 }
 
 // TestBackfillOutcomeAssociatesOutcome proves the eventual execution outcome
-// is associated with the observation by decision id.
+// is associated with the observation by decision id (provenance fallback).
 func TestBackfillOutcomeAssociatesOutcome(t *testing.T) {
 	store := &testStore{}
 	a := NewAdvisor(AdvisorConfig{Store: store})
@@ -285,7 +367,7 @@ func TestBackfillOutcomeAssociatesOutcome(t *testing.T) {
 		t.Fatalf("initial outcome = %q, want selected", obs.Outcome)
 	}
 
-	a.BackfillOutcome("d6", "success", 120)
+	a.BackfillOutcome("", "d6", "success", 120)
 	waitFor(t, store, 5*time.Second, func() bool { return store.backfillCount() >= 1 })
 	obs2 := expectOne(t, store)
 	if obs2.Outcome != "success" {
@@ -293,6 +375,56 @@ func TestBackfillOutcomeAssociatesOutcome(t *testing.T) {
 	}
 	if obs2.ProviderLatencyMs != 120 {
 		t.Fatalf("latency after backfill = %d, want 120", obs2.ProviderLatencyMs)
+	}
+}
+
+// TestObserveRecordsCorrelationID proves the trace's request correlation id
+// is captured on the observation so outcome backfill can match it (C3A).
+func TestObserveRecordsCorrelationID(t *testing.T) {
+	store := &testStore{}
+	a := NewAdvisor(AdvisorConfig{Store: store})
+	defer a.Stop()
+
+	a.Observe(makeTraceWithCorrelation("d9", "openai", "corr-9"))
+	obs := expectOne(t, store)
+	if obs.CorrelationID != "corr-9" {
+		t.Fatalf("correlation id = %q, want corr-9", obs.CorrelationID)
+	}
+	if obs.DecisionID != "d9" {
+		t.Fatalf("decision id = %q, want d9 (must be kept for provenance)", obs.DecisionID)
+	}
+
+	// Backfill by correlation id matches the row; the outcome UPDATE is
+	// synchronous on the in-memory store, but the observation insert is
+	// async, so wait for it to land first.
+	waitFor(t, store, 5*time.Second, func() bool {
+		row := store.snapshotByDecisionID("d9")
+		return row != nil && row.CorrelationID == "corr-9"
+	})
+	a.BackfillOutcome("corr-9", "", "success", 42)
+	waitFor(t, store, 5*time.Second, func() bool {
+		row := store.snapshotByDecisionID("d9")
+		return row != nil && row.Outcome == "success" && row.ProviderLatencyMs == 42
+	})
+	obs2 := store.snapshotByDecisionID("d9")
+	if obs2.Outcome != "success" {
+		t.Fatalf("outcome after correlation backfill = %q, want success", obs2.Outcome)
+	}
+}
+
+// TestBackfillNoKeysIsNoop proves an empty correlation + empty decision id
+// performs no store work.
+func TestBackfillNoKeysIsNoop(t *testing.T) {
+	store := &testStore{}
+	a := NewAdvisor(AdvisorConfig{Store: store})
+	defer a.Stop()
+
+	a.Observe(makeTrace("d10", "openai"))
+	expectOne(t, store)
+	a.BackfillOutcome("", "", "success", 1)
+	time.Sleep(50 * time.Millisecond)
+	if n := store.backfillCount(); n != 0 {
+		t.Fatalf("backfill without keys must not hit the store, got %d", n)
 	}
 }
 

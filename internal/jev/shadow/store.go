@@ -19,10 +19,15 @@ import (
 type ShadowObservation struct {
 	ID uint `gorm:"primaryKey" json:"id"`
 	// CreatedAt is the observation timestamp (UTC).
-	CreatedAt      time.Time `gorm:"index" json:"created_at"`
-	DecisionID     string    `gorm:"size:64;uniqueIndex" json:"decision_id"`
-	RequestedModel string    `gorm:"size:191;index" json:"requested_model"`
-	ResolvedMode   string    `gorm:"size:64;index" json:"resolved_mode"`
+	CreatedAt  time.Time `gorm:"index" json:"created_at"`
+	DecisionID string    `gorm:"size:64;uniqueIndex" json:"decision_id"`
+	// CorrelationID is the request correlation id recorded on the trace.
+	// It is the outcome-backfill key: execution-attempt rows carry it,
+	// while the decision id is pipeline-internal. Empty when the request
+	// path did not supply one.
+	CorrelationID  string `gorm:"size:64;index" json:"correlation_id"`
+	RequestedModel string `gorm:"size:191;index" json:"requested_model"`
+	ResolvedMode   string `gorm:"size:64;index" json:"resolved_mode"`
 	// Deterministic routing decision.
 	SelectedProvider   string  `gorm:"size:64;index" json:"selected_provider"`
 	SelectedModel      string  `gorm:"size:191" json:"selected_model"`

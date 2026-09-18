@@ -94,7 +94,8 @@ func (b *Bridge) onDecision(evt eventbus.Event) {
 }
 
 // onAttempt handles an execution-attempt event and backfills the outcome onto
-// the matching observation (keyed by correlation, which is the decision id).
+// the matching observation(s) (keyed by correlation, with the decision id as
+// a provenance fallback when no correlation is recorded on the attempt).
 func (b *Bridge) onAttempt(evt eventbus.Event) {
 	rec, ok := evt.Payload.(database.AttemptRecord)
 	if !ok {
@@ -106,7 +107,13 @@ func (b *Bridge) onAttempt(evt eventbus.Event) {
 	if outcome == "" {
 		return
 	}
-	b.advisor.BackfillOutcome(rec.CorrelationID, outcome, latency)
+	// The execution-attempt record carries the request correlation id.
+	// Observations record the same correlation id (via the trace), so the
+	// correlation id is the primary match key. The decision id is
+	// pipeline-internal and does not match attempt rows; when an attempt
+	// record has no correlation id, fall back to matching by the decision
+	// id recorded on the observation.
+	b.advisor.BackfillOutcome(rec.CorrelationID, "", outcome, latency)
 }
 
 // runRetention prunes shadow observations older than the retention window.

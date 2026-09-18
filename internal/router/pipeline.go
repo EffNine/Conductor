@@ -90,6 +90,24 @@ func (p *DecisionPipeline) Execute(
 	cfgSnap ConfigSnapshot,
 	candidates []ResolvedRoute,
 ) (*SelectionResult, error) {
+	return p.ExecuteWithCorrelation(ctx, req, env, cfgSnap, candidates, "")
+}
+
+// ExecuteWithCorrelation runs the decision pipeline with a correlation id
+// recorded on the trace so post-decision consumers (traces, shadow advisor,
+// outcome backfill) can match execution attempts to decisions. An empty id
+// is recorded as-is (no decision-carrying correlation is available).
+//
+// The correlation id is pure observability metadata: it does not alter any
+// scoring, selection, or fallback behavior.
+func (p *DecisionPipeline) ExecuteWithCorrelation(
+	ctx context.Context,
+	req *apitypes.ChatCompletionRequest,
+	env Environment,
+	cfgSnap ConfigSnapshot,
+	candidates []ResolvedRoute,
+	correlationID string,
+) (*SelectionResult, error) {
 	if p.logger == nil {
 		p.logger = zap.NewNop()
 	}
@@ -128,6 +146,9 @@ func (p *DecisionPipeline) Execute(
 
 	// Create trace builder.
 	builder := NewDecisionTraceBuilder(dc.ID(), rSnap)
+	if correlationID != "" {
+		builder.SetCorrelationID(correlationID)
+	}
 
 	// Publish DecisionStarted.
 	p.publishEvent(ctx, eventbus.DecisionStarted, dc)

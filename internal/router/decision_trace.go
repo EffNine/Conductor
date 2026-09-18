@@ -187,7 +187,12 @@ type EventRecord struct {
 // headers, provider secrets, or raw request bodies. The original request is
 // intentionally not embedded.
 type DecisionTrace struct {
-	DecisionID             DecisionID                    `json:"decision_id"`
+	DecisionID DecisionID `json:"decision_id"`
+	// CorrelationID is the request correlation id (middleware-generated),
+	// recorded when the caller supplied it so post-decision consumers can
+	// match execution-attempt rows to decisions. Observability metadata
+	// only — it never participates in routing.
+	CorrelationID          string                        `json:"correlation_id,omitempty"`
 	TraceSchemaVer         int64                         `json:"trace_schema_ver"`
 	Timestamp              time.Time                     `json:"timestamp"`
 	RequestedMode          string                        `json:"requested_mode,omitempty"`
@@ -251,6 +256,11 @@ func (b *DecisionTraceBuilder) SetCandidateScores(scores []CandidateScore) {
 // SetWinner records the selected provider route.
 func (b *DecisionTraceBuilder) SetWinner(w *ResolvedRoute) {
 	b.trace.Winner = w
+}
+
+// SetCorrelationID records the request correlation id on the trace.
+func (b *DecisionTraceBuilder) SetCorrelationID(id string) {
+	b.trace.CorrelationID = id
 }
 
 // SetRejectionReasons records all rejection reasons.

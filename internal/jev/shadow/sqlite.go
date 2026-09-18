@@ -2,6 +2,7 @@ package shadow
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -25,7 +26,31 @@ func NewSQLiteStore(db *gorm.DB) *SQLiteStore {
 
 // Migrate creates the shadow_observations table. Idempotent.
 func (s *SQLiteStore) Migrate() error {
-	return s.db.AutoMigrate(&ShadowObservation{})
+	if err := s.db.AutoMigrate(&ShadowObservation{}); err != nil {
+		return err
+	}
+	return s.migrateLegacy()
+}
+
+// migrateLegacy upgrades a pre-C3A shadow_observations table (which lacks
+// the correlation_id column) by adding it. GORM AutoMigrate does not add
+// columns to pre-existing tables; the index is created best-effort since
+// the backfill lookup tolerates a table without the index.
+func (s *SQLiteStore) migrateLegacy() error {
+	var count int
+	if err := s.db.Raw("SELECT COUNT(*) FROM pragma_table_info('shadow_observations') WHERE name = 'correlation_id'").Scan(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	if err := s.db.Exec("ALTER TABLE shadow_observations ADD COLUMN correlation_id TEXT").Error; err != nil {
+		return err
+	}
+	// Best-effort index; CREATE INDEX IF NOT EXISTS is SQLite-only but the
+	// store is SQLite-backed by design.
+	_ = s.db.Exec("CREATE INDEX IF NOT EXISTS idx_shadow_observations_correlation ON shadow_observations (correlation_id)").Error
+	return nil
 }
 
 // Save persists one observation. Idempotent on decision_id: re-saving an
@@ -48,23 +73,79 @@ func (s *SQLiteStore) Save(ctx context.Context, obs *ShadowObservation) error {
 	).Create(obs).Error
 }
 
-// BackfillOutcome updates the outcome and provider latency for a previously
-// saved observation. Returns false when no row matched (e.g. pruned or never
-// saved).
-func (s *SQLiteStore) BackfillOutcome(ctx context.Context, decisionID, outcome string, latencyMs int64) (bool, error) {
-	if decisionID == "" {
-		return false, nil
+// UpdateAdvisory persists the JEV advisory fields of an existing row,
+// leaving outcome/latency untouched (commutative with backfill).
+func (s *SQLiteStore) UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error {
+	if obs == nil || obs.DecisionID == "" {
+		return nil
 	}
+	// Build the advisory column set from the model tags, filtering out
+	// columns that do not exist on the live table (legacy tables created
+	// before the advisory fields were introduced may lack some or all).
+	exists := make(map[string]bool)
+	var cols []struct {
+		Name string
+	}
+	if err := s.db.WithContext(ctx).Raw("PRAGMA table_info(shadow_observations)").Scan(&cols).Error; err != nil {
+		return err
+	}
+	for _, c := range cols {
+		exists[c.Name] = true
+	}
+
+	updates := map[string]any{
+		"advisory_provider":      obs.AdvisoryProvider,
+		"advisory_confidence":    obs.AdvisoryConfidence,
+		"advisory_probabilities": obs.AdvisoryProbabilities,
+		"jev_model":              obs.JEVModel,
+		"jev_duration_ms":        obs.JEVDurationMs,
+		"jev_input_tokens":       obs.JEVInputTokens,
+		"jev_output_tokens":      obs.JEVOutputTokens,
+		"advisory_status":        obs.AdvisoryStatus,
+	}
+	filtered := make(map[string]any, len(updates))
+	for col, val := range updates {
+		if exists[col] {
+			filtered[col] = val
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return s.db.WithContext(ctx).Model(&ShadowObservation{}).
+		Where("decision_id = ?", obs.DecisionID).
+		Updates(filtered).Error
+}
+
+// BackfillOutcome updates the outcome and provider latency for previously
+// saved observations. The correlation id is the primary match key; a row
+// without a recorded correlation falls back to the decision id (provenance
+// match). Returns the number of rows matched.
+func (s *SQLiteStore) BackfillOutcome(ctx context.Context, correlationID, decisionID, outcome string, latencyMs int64) (int, error) {
+	if correlationID == "" && decisionID == "" {
+		return 0, nil
+	}
+	conds := make([]string, 0, 2)
+	args := make([]any, 0, 4)
+	if correlationID != "" {
+		conds = append(conds, "correlation_id = ?")
+		args = append(args, correlationID)
+	}
+	if decisionID != "" {
+		conds = append(conds, "decision_id = ?")
+		args = append(args, decisionID)
+	}
+	args = append(args, outcome, latencyMs)
 	res := s.db.WithContext(ctx).Model(&ShadowObservation{}).
-		Where("decision_id = ?", decisionID).
+		Where("("+strings.Join(conds, " OR ")+")", args...).
 		Updates(map[string]any{
 			"outcome":             outcome,
 			"provider_latency_ms": latencyMs,
 		})
 	if res.Error != nil {
-		return false, res.Error
+		return 0, res.Error
 	}
-	return res.RowsAffected > 0, nil
+	return int(res.RowsAffected), nil
 }
 
 // PruneBefore deletes observation rows older than the cutoff in bounded

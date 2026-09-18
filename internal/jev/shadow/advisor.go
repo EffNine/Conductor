@@ -72,7 +72,11 @@ const (
 type Store interface {
 	Migrate() error
 	Save(ctx context.Context, obs *ShadowObservation) error
-	BackfillOutcome(ctx context.Context, decisionID, outcome string, latencyMs int64) (bool, error)
+	// UpdateAdvisory persists the JEV advisory fields of an existing row
+	// without touching the outcome/latency columns (so a backfill that
+	// landed concurrently is not clobbered).
+	UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error
+	BackfillOutcome(ctx context.Context, correlationID, decisionID, outcome string, latencyMs int64) (int, error)
 	PruneBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
 	List(ctx context.Context, limit int) ([]ShadowObservation, error)
 }
@@ -141,24 +145,52 @@ func (a *Advisor) Observe(trace *router.DecisionTrace) {
 	go a.process(trace)
 }
 
-// process runs the advisory call and persists the observation.
+// process persists the observation and then runs the JEV advisory call.
+//
+// Ordering contract: the INSERT happens BEFORE the (potentially slow) JEV
+// call. The backfill UPDATE is keyed by correlation id and only touches the
+// outcome/latency columns, so it is commutative with the insert: an
+// early-arriving backfill updates the (already inserted) row, and a later
+// insert (OnConflict DoNothing) never clobbers a backfilled outcome.
+// Running JEV before the insert would open a lost-update window: a
+// backfill racing in between would match no row yet and its result would
+// be lost when the insert finally lands.
 func (a *Advisor) process(trace *router.DecisionTrace) {
 	defer func() { <-a.sem }()
 	defer a.wg.Done()
 
 	obs := a.buildObservation(trace)
 
-	// Call JEV asynchronously with its own bounded context. The advisory
-	// call never affects the deterministic decision already captured.
-	a.callJEV(trace, obs)
-
+	// Persist the observation first (idempotent on decision_id) so that a
+	// backfill arriving before the JEV advisory call lands still updates
+	// an existing row rather than matching nothing.
 	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
 	defer cancel()
 	if a.cfg.Store != nil {
 		if err := a.cfg.Store.Save(ctx, obs); err != nil {
 			a.cfg.Logger.Warn("shadow advisor: persist observation failed",
 				zap.String("decision_id", string(trace.DecisionID)),
-				zap.Error(err))
+				zap.Error(err),
+			)
+		}
+	}
+
+	// Call JEV after the row is durable. The advisory call never affects
+	// the deterministic decision already captured; its result is recorded
+	// on the observation fields and persisted with a follow-up advisory
+	// UPDATE so a backfill that landed in the meantime is not clobbered.
+	a.callJEV(trace, obs)
+
+	// Persist the advisory fields (status, provider, confidence,
+	// probabilities) without touching the outcome/latency columns.
+	if a.cfg.Store != nil && obs.AdvisoryStatus != AdvisoryNotConfigured {
+		advCtx, advCancel := context.WithTimeout(context.Background(), saveTimeout)
+		defer advCancel()
+		if err := a.cfg.Store.UpdateAdvisory(advCtx, obs); err != nil {
+			a.cfg.Logger.Warn("shadow advisor: advisory persist failed",
+				zap.String("decision_id", string(trace.DecisionID)),
+				zap.Error(err),
+			)
 		}
 	}
 }
@@ -172,6 +204,13 @@ func (a *Advisor) buildObservation(trace *router.DecisionTrace) *ShadowObservati
 		ResolvedMode:   string(trace.ResolvedMode),
 		AdvisoryStatus: AdvisoryNotConfigured,
 		Outcome:        OutcomeUnknown,
+	}
+	if trace.CorrelationID != "" {
+		// The correlation id is the primary backfill key: execution-attempt
+		// rows carry the request correlation id (middleware-generated),
+		// while the decision id is pipeline-internal. The decision id stays
+		// on the row for provenance and uniqueness.
+		obs.CorrelationID = trace.CorrelationID
 	}
 	if trace.Winner != nil {
 		obs.SelectedProvider = trace.Winner.ProviderName
@@ -288,17 +327,24 @@ func (a *Advisor) callJEV(trace *router.DecisionTrace, obs *ShadowObservation) {
 	obs.AdvisoryStatus = AdvisoryOK
 }
 
-// BackfillOutcome associates an execution outcome with a prior observation.
-func (a *Advisor) BackfillOutcome(decisionID, outcome string, latencyMs int64) {
-	if a == nil || decisionID == "" || a.cfg.Store == nil {
+// BackfillOutcome associates an execution outcome with prior observations.
+// The correlation id is the primary key; the decision id (when supplied) is
+// the fallback match for rows recorded before correlation ids existed.
+func (a *Advisor) BackfillOutcome(correlationID, decisionID, outcome string, latencyMs int64) {
+	if a == nil || (correlationID == "" && decisionID == "") || a.cfg.Store == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), saveTimeout)
 	defer cancel()
-	if _, err := a.cfg.Store.BackfillOutcome(ctx, decisionID, outcome, latencyMs); err != nil {
+	if n, err := a.cfg.Store.BackfillOutcome(ctx, correlationID, decisionID, outcome, latencyMs); err != nil {
 		a.cfg.Logger.Warn("shadow advisor: outcome backfill failed",
+			zap.String("correlation_id", correlationID),
 			zap.String("decision_id", decisionID),
 			zap.Error(err))
+	} else if n == 0 {
+		a.cfg.Logger.Debug("shadow advisor: outcome backfill matched no observation",
+			zap.String("correlation_id", correlationID),
+		)
 	}
 }
 

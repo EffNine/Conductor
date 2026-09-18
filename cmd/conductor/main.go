@@ -353,6 +353,16 @@ func main() {
 				Model:    cfg.Shadow.Model,
 				Timeout:  cfg.Shadow.Timeout,
 			})
+			logger.Info("jev shadow advisor: JEV client constructed",
+				zap.String("model", shadowClient.Model()),
+				zap.String("endpoint", cfg.Shadow.Endpoint),
+				zap.Duration("timeout", cfg.Shadow.Timeout),
+			)
+		} else {
+			logger.Warn("jev shadow advisor: no API key found via EffectiveAPIKey; JEV client will be nil",
+				zap.Bool("config_api_key_empty", cfg.Shadow.APIKey == ""),
+				zap.Bool("typesafe_env_empty", os.Getenv("TYPESAFE_API_KEY") == ""),
+			)
 		}
 		advisor := jevshadow.NewAdvisor(jevshadow.AdvisorConfig{
 			Store:     shadowStore,
