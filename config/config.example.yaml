@@ -336,6 +336,12 @@ health:
     concurrency: 3
     unhealthy_threshold: 1
     providers: []   # empty = all providers
+    # Providers excluded from model probing (not from registration or routing).
+    # Use for endpoints unreachable from the deploy target (e.g. a private NIM
+    # endpoint) so probe passes do not stall. Skipped providers are still
+    # marked filter-ready after each pass, so their catalog entries follow
+    # unknown_as_reachable. Also settable via CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS.
+    skip_providers: []
     unknown_as_reachable: true
     startup_probe_in_parallel: true
     catalog_batch_window: 100ms

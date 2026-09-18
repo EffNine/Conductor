@@ -82,6 +82,7 @@ Conductor uses environment variables first, then YAML, then defaults.
 | `CONDUCTOR_HEALTH_MODELS_CONCURRENCY` | Max parallel model probes | `3` |
 | `CONDUCTOR_HEALTH_MODELS_UNHEALTHY_THRESHOLD` | Consecutive model failures before hide | `1` |
 | `CONDUCTOR_HEALTH_MODELS_UNKNOWN_AS_REACHABLE` | Keep unprobed models visible after first pass | `false` |
+| `CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS` | Comma-separated provider names excluded from model probing (not from registration or routing) | `[]` (none) |
 
 ## YAML Configuration File
 
@@ -247,6 +248,7 @@ health:
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
+    skip_providers: []
     unknown_as_reachable: true
     catalog_batch_window: 100ms
     retry_interval: 30s
@@ -308,7 +310,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 - Keeps confirmed failures hidden during the pass (list shrinks; never flashes empty)
 - After the first pass, never-probed models follow `unknown_as_reachable` (default `true` = err toward availability)
 - Persists probe results to SQLite so Fly.io cold starts keep the filtered list instead of flashing the full catalog
-- Skips loopback `ollama` / `lmstudio` base URLs during probes so remote deploys finish the pass
+- Skips loopback `ollama` / `lmstudio` base URLs during probes so remote deploys finish the pass; additional providers can be excluded via `skip_providers` (`CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS`)
 - Exposes status on `GET /api/models` and `GET /api/models/status`
 - Supports admin re-probe via `POST /api/models/force-probe`
 - Use `GET /api/models?include_unreachable=true` to list hidden models with their status
@@ -324,6 +326,7 @@ NVIDIA NIM's `GET /v1/models` lists the full catalog, including retired and non-
 | `concurrency` | Max parallel probes (keep low for NIM free-tier RPM) | `3` |
 | `unhealthy_threshold` | Consecutive definitive failures before a model is hidden | `1` |
 | `providers` | Provider names to probe; empty = all registered | `[]` (all) |
+| `skip_providers` | Provider names excluded from probing (still registered and routable); also `CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS` | `[]` (none) |
 | `unknown_as_reachable` | After first pass, keep never-probed models visible | `true` |
 | `catalog_batch_window` | Collect probe results before an atomic catalog apply | `100ms` |
 | `retry_interval` | How often to re-check models whose backoff elapsed | `30s` |

@@ -654,3 +654,107 @@ func TestModelProberSkipProvidersMarksReadyWithoutProbing(t *testing.T) {
 		}
 	}
 }
+
+func TestModelProberDefaultProbesAllRegisteredProviders(t *testing.T) {
+	var chatHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "default/model", Object: "model"}},
+			})
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			chatHits.Add(1)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"1","choices":[{"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("openai", srv.URL+"/v1"))
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+
+	// Default config: no Providers filter and no SkipProviders (what Load()
+	// yields when health.models.skip_providers is unset). Every registered
+	// provider must be probed.
+	store := health.NewModelStatusStore(1, true)
+	cat := catalog.New(reg, nil)
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:     true,
+		Timeout:     time.Second,
+		Concurrency: 2,
+	})
+	prober.ProbeAll()
+	if got := chatHits.Load(); got != 2 {
+		t.Fatalf("default config must probe every registered provider, chat hits=%d want 2", got)
+	}
+}
+
+func TestModelProberConfiguredSkipProvidersMarksReadyWithoutProbing(t *testing.T) {
+	var chatHits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			_ = json.NewEncoder(w).Encode(apitypes.ModelList{
+				Object: "list",
+				Data:   []apitypes.ModelInfo{{ID: "remote", Object: "model"}},
+			})
+			return
+		}
+		if r.URL.Path == "/v1/chat/completions" {
+			chatHits.Add(1)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"1","choices":[{"message":{"role":"assistant","content":"x"}}]}`))
+	}))
+	defer srv.Close()
+
+	reg := provider.NewRegistry()
+	reg.Register(newProbeTestProvider("nvidia_nim", srv.URL+"/v1"))
+	reg.Register(&staticOnlyProvider{name: "ollama"})
+
+	store := health.NewModelStatusStore(1, false)
+	cat := catalog.New(reg, catalog.StaticModels{
+		"ollama": {"llama3"},
+	})
+	cat.SetReachabilityFilter(store, true)
+
+	// Skip configured via health.models.skip_providers (not the runtime
+	// SkipProviders method): probe passes must not stall on it.
+	prober := health.NewModelProber(cat, reg, store, zap.NewNop(), config.ModelHealthConfig{
+		Enabled:            true,
+		HideUnreachable:    true,
+		Timeout:            time.Second,
+		Concurrency:        2,
+		UnhealthyThreshold: 1,
+		UnknownAsReachable: false,
+		SkipProviders:      []string{"ollama"},
+	})
+	prober.ProbeAll()
+
+	// Only nvidia_nim got real probes; ollama was skipped.
+	if got := chatHits.Load(); got != 1 {
+		t.Fatalf("expected exactly one probe (nvidia_nim), chat hits=%d", got)
+	}
+	if !store.FilterReady() {
+		t.Fatal("expected global filter ready after all-provider pass")
+	}
+	if !store.ProviderFilterReady("ollama") {
+		t.Fatal("config-skipped ollama should still be marked provider-ready")
+	}
+	entries, err := cat.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, e := range entries {
+		if e.ModelID == "ollama/llama3" {
+			t.Fatalf("config-skipped ollama model must follow unknown_as_reachable=false and be hidden: %+v", entries)
+		}
+	}
+	// ForceProbe on a config-skipped provider stays out of probe scope.
+	if _, _, err := prober.ForceProbe("ollama/llama3"); err == nil {
+		t.Fatal("ForceProbe on a config-skipped provider should be rejected")
+	}
+}

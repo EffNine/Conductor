@@ -240,6 +240,7 @@ health:
     concurrency: 3
     unhealthy_threshold: 1
     providers: []
+    skip_providers: []
     unknown_as_reachable: true
     backoff:
       enabled: true
@@ -262,6 +263,8 @@ health:
     providers:
       - nvidia_nim
 ```
+
+To skip providers unreachable from the deploy target (e.g. a private NIM endpoint) so probe passes do not stall, set `skip_providers` (or the comma-separated `CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS` env var). Loopback `ollama` / `lmstudio` base URLs are skipped automatically. Skipped providers are still marked filter-ready after each pass, so their catalog entries follow `unknown_as_reachable`.
 
 ### Inspect status
 

@@ -352,6 +352,19 @@ type ModelHealthConfig struct {
 	// models confirmed healthy via probing are advertised. Set to false to also
 	// show degraded and unprobed models.
 	StrictHealthy bool `mapstructure:"strict_healthy"`
+	// SkipProviders lists provider names to exclude from model-health probing.
+	// Skipped providers are NOT probed (no chat-completion ping), but they are
+	// still registered, routable, and their catalog entries follow
+	// unknown_as_reachable. Intended for providers unreachable from the deploy
+	// target (e.g. a private NIM endpoint) so probe passes do not stall.
+	// Empty (default) = probe every registered provider.
+	//
+	// Normalization: entries are trimmed, deduplicated, and empty strings are
+	// dropped. Names are case-sensitive and match provider registry keys
+	// verbatim (e.g. "nvidia_nim", "ollama", "lmstudio").
+	//
+	// Env: CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS (comma-separated).
+	SkipProviders []string `mapstructure:"skip_providers"`
 }
 
 // ProbeBackoffConfig schedules retries after consecutive probe failures.
@@ -554,6 +567,9 @@ func Load() (*Config, error) {
 	// Provider model allowlists from CONDUCTOR_PROVIDERS_*_MODELS (comma-separated)
 	hydrateProviderModelsFromEnv(&cfg)
 
+	// skip_providers from CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS (comma-separated)
+	hydrateSkipProvidersFromEnv(&cfg)
+
 	// When curated-only is on and NIM has no models list, apply a short default
 	// allowlist so Fly deploys without config.yaml do not advertise ~180 models.
 	applyDefaultCuratedModels(&cfg)
@@ -703,6 +719,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("health.models.unhealthy_threshold", 1)
 	// Empty = probe all registered providers.
 	v.SetDefault("health.models.providers", []string{})
+	// Empty = probe all registered providers (skip_providers lists names to
+	// exclude from probing; it does not affect registration or routing).
+	v.SetDefault("health.models.skip_providers", []string{})
 	// After the first pass, keep never-probed models visible (err toward availability).
 	v.SetDefault("health.models.unknown_as_reachable", true)
 	v.SetDefault("health.models.startup_probe_in_parallel", true)

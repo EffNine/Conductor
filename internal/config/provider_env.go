@@ -111,6 +111,23 @@ func splitCSV(raw string) []string {
 	return out
 }
 
+// hydrateSkipProvidersFromEnv fills health.models.skip_providers from the
+// comma-separated CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS env var when the
+// YAML list is empty. Viper's AutomaticEnv sees the env value as a raw string,
+// so an unmarshaled []string would contain a single "a,b,c" element unless we
+// normalize here. The function is a no-op when YAML already set a non-empty
+// list (YAML wins).
+func hydrateSkipProvidersFromEnv(cfg *Config) {
+	if len(cfg.Health.Models.SkipProviders) > 0 {
+		return
+	}
+	raw := strings.TrimSpace(os.Getenv("CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS"))
+	if raw == "" {
+		return
+	}
+	cfg.Health.Models.SkipProviders = splitCSV(raw)
+}
+
 // applyDefaultCuratedModels fills an empty NIM models list when curated_only is on.
 func applyDefaultCuratedModels(cfg *Config) {
 	if !cfg.Catalog.CuratedOnly {

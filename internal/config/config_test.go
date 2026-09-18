@@ -264,6 +264,43 @@ func TestIsLoopbackBaseURL(t *testing.T) {
 	}
 }
 
+func TestHydrateSkipProvidersFromEnv(t *testing.T) {
+	// Empty YAML + set env → hydrates the comma-separated list.
+	t.Setenv("CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS", " nvidia_nim , ollama ,")
+	cfg := &Config{}
+	hydrateSkipProvidersFromEnv(cfg)
+	if got := cfg.Health.Models.SkipProviders; len(got) != 2 || got[0] != "nvidia_nim" || got[1] != "ollama" {
+		t.Fatalf("SkipProviders = %v, want [nvidia_nim ollama] (trimmed, deduped, empty dropped)", got)
+	}
+
+	// YAML already populated → YAML wins, env is ignored.
+	t.Setenv("CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS", "lmstudio")
+	cfg2 := &Config{}
+	cfg2.Health.Models.SkipProviders = []string{"ollama"}
+	hydrateSkipProvidersFromEnv(cfg2)
+	if got := cfg2.Health.Models.SkipProviders; len(got) != 1 || got[0] != "ollama" {
+		t.Fatalf("YAML skip_providers must win over env, got %v", got)
+	}
+
+	// No env, no YAML → stays empty (backward compatible).
+	t.Setenv("CONDUCTOR_HEALTH_MODELS_SKIP_PROVIDERS", "")
+	cfg3 := &Config{}
+	hydrateSkipProvidersFromEnv(cfg3)
+	if len(cfg3.Health.Models.SkipProviders) != 0 {
+		t.Fatalf("expected empty SkipProviders when nothing is set, got %v", cfg3.Health.Models.SkipProviders)
+	}
+}
+
+func TestModelHealthConfigDefaultsEmptySkipProviders(t *testing.T) {
+	// A zero-value config (what a fresh Load() produces with no
+	// health.models.skip_providers key and no env var) must keep
+	// SkipProviders empty so current behavior is unchanged.
+	cfg := &Config{}
+	if got := cfg.Health.Models.SkipProviders; len(got) != 0 {
+		t.Fatalf("default SkipProviders = %v, want empty", got)
+	}
+}
+
 func TestConfigRedacted(t *testing.T) {
 	cfg := &Config{
 		APIKey: "secret-gateway-key",

@@ -77,6 +77,13 @@ func NewModelProber(
 		}
 	}
 
+	skip := make(map[string]struct{}, len(cfg.SkipProviders))
+	for _, name := range cfg.SkipProviders {
+		if name != "" {
+			skip[name] = struct{}{}
+		}
+	}
+
 	p := &ModelProber{
 		catalog:        cat,
 		registry:       registry,
@@ -84,7 +91,7 @@ func NewModelProber(
 		logger:         logger,
 		cfg:            cfg,
 		providerFilter: filter,
-		skipProviders:  make(map[string]struct{}),
+		skipProviders:  skip,
 		stopCh:         make(chan struct{}),
 	}
 	if store != nil {
@@ -119,10 +126,13 @@ func (p *ModelProber) SetOnBatch(fn func([]ProbeResult)) {
 	p.onBatch = fn
 }
 
-// SkipProviders marks providers that should not be probed (e.g. loopback ollama
-// on Fly). Skipped providers are still marked filter-ready after a pass so their
-// catalog entries follow unknown_as_reachable (available-only hides them when
-// they were never successfully probed).
+// SkipProviders adds providers that should not be probed (e.g. loopback
+// ollama on Fly, or a private endpoint unreachable from the deploy target).
+// Providers configured via health.models.skip_providers are already skipped;
+// this method unions in additional names (used at startup for auto-detected
+// loopback base URLs). Skipped providers are still marked filter-ready after
+// a pass so their catalog entries follow unknown_as_reachable (available-only
+// hides them when they were never successfully probed).
 func (p *ModelProber) SkipProviders(names ...string) {
 	if p.skipProviders == nil {
 		p.skipProviders = make(map[string]struct{})
@@ -251,14 +261,15 @@ func (p *ModelProber) ProbeAll() {
 	for name := range probedProviders {
 		p.store.MarkProviderFilterReady(name)
 	}
-	// Loopback-skipped providers never get real probes; mark them ready so
-	// unknown_as_reachable=false hides their unreachable local catalog entries.
+	// Skipped providers (loopback or configured via health.models.skip_providers)
+	// never get real probes; mark them ready so unknown_as_reachable=false hides
+	// their unprobed catalog entries.
 	for name := range skippedProviders {
 		p.store.MarkProviderFilterReady(name)
 	}
 	if len(p.providerFilter) == 0 {
 		// A pass with no provider filter covered every registered provider
-		// (probed or explicitly skipped as unreachable-local).
+		// (probed or explicitly skipped as unreachable/local).
 		p.store.MarkFilterReady()
 	}
 	p.logger.Info("model probe: pass complete", zap.Int("probed", probed), zap.Int("catalog", len(entries)))
