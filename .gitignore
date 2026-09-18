@@ -38,6 +38,7 @@ Thumbs.db
 # Configuration files with secrets
 config.yaml
 config.local.yaml
+config/c3b-local.yaml
 
 # Database files
 *.db
