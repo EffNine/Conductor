@@ -100,3 +100,6 @@ docs/PLAN.md
 
 # CodeBro engineering context (local tooling state)
 .codebro/
+
+# Local agent config
+opencode.jsonc
