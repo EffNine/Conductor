@@ -350,8 +350,15 @@ func (r *VirtualResolver) Resolve(ctx context.Context, virtualModel VirtualModel
 	// Get the mode profile for weight/bonus overrides.
 	mp := modeProfileForMode(mode)
 
-	// Get healthy models from the catalog (applies reachability filter).
-	entries, err := r.catalog.List(ctx)
+	// Get the catalog reachable by the routing layer: ListReachable applies
+	// the reachability filter WITHOUT the strict_healthy pre-gate that hides
+	// unprobed models. Confirmed-unhealthy and recovering models stay hidden
+	// (matching /api/models); unprobed (unknown) models are kept so that a
+	// provider that has never been probed does not silently disappear from
+	// candidate construction. This keeps cross-provider diversity under a
+	// strict_healthy default without weakening capability or circuit-breaker
+	// filtering (the skip-checks below still apply).
+	entries, err := r.catalog.ListReachable(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list catalog: %w", err)
 	}
@@ -360,7 +367,15 @@ func (r *VirtualResolver) Resolve(ctx context.Context, virtualModel VirtualModel
 		return nil, fmt.Errorf("no healthy models available in catalog")
 	}
 
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("no healthy models available in catalog")
+	}
+
 	// Build candidates from catalog entries.
+	// Deduplicate on (provider, modelID) so a provider that lists the same
+	// model twice (catalog quirk) does not inflate the candidate pool or
+	// skew deterministic tie-breaking.
+	seen := make(map[candidateKey]struct{}, len(entries))
 	cands := make([]candidateInfo, 0, len(entries))
 	for _, entry := range entries {
 		p, found := r.registry.Get(entry.Provider)
@@ -374,6 +389,11 @@ func (r *VirtualResolver) Resolve(ctx context.Context, virtualModel VirtualModel
 				continue
 			}
 		}
+		key := candidateKey{entry.Provider, entry.ProviderModelID}
+		if _, dup := seen[key]; dup {
+			continue
+		}
+		seen[key] = struct{}{}
 		cands = append(cands, candidateInfo{
 			provider:     p,
 			providerName: entry.Provider,

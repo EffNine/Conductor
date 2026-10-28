@@ -439,6 +439,50 @@ func (s *ModelStatusStore) ShouldAdvertise(modelID, provider string) bool {
 	}
 }
 
+// ShouldAdvertiseForRouting is the routing candidate-pool view of
+// ShouldAdvertise: it keeps unprobed (unknown) models visible even under
+// strict_healthy so a provider that has never been probed does not silently
+// disappear from the auto/virtual resolver candidate pool, while still
+// hiding confirmed-unhealthy and recovering models. This is the view used by
+// catalog.ListReachable for candidate construction; /api/models continues to
+// use ShouldAdvertise (the strict_healthy view).
+//
+// The difference from ShouldAdvertise is confined to the unprobed-unknown
+// case: under strict_healthy a never-probed model is hidden from /api/models
+// (strict healthy = only confirmed-healthy advertised) but MUST remain a
+// routing candidate (so provider diversity survives a strict-healthy default
+// and a freshly-registered provider is not excluded from selection until it
+// has been probed or failed).
+func (s *ModelStatusStore) ShouldAdvertiseForRouting(modelID, provider string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st, ok := s.statuses[modelID]
+	if !ok {
+		// Unprobed model: always a candidate (err toward availability).
+		return true
+	}
+	state := st.State
+	if state == "" {
+		state = DeriveState(st.Reachable, st.ConsecutiveFails, true)
+	}
+	// Confirmed failures stay hidden from the candidate pool.
+	if st.ConsecutiveFails > 0 && st.ConsecutiveFails < s.unhealthyThreshold {
+		// Sub-threshold: still a candidate (transient blip).
+		return true
+	}
+	switch state {
+	case StateHealthy, StateDegraded:
+		return true
+	case StateRecovering, StateUnhealthy:
+		return false
+	case StateUnknown:
+		// Unknown (never confirmed) = candidate (err toward availability).
+		return true
+	default:
+		return st.Reachable
+	}
+}
+
 func (s *ModelStatusStore) providerFilterReadyLocked(provider string) bool {
 	if s.allProvidersReady {
 		return true

@@ -21,6 +21,9 @@ type candidateInfo struct {
 	modelID      string
 }
 
+// candidateKey deduplicates candidate pool entries on (provider, modelID).
+type candidateKey struct{ provider, modelID string }
+
 // scoreEpsilon is the tolerance used when comparing candidate scores. Scores
 // that differ by less than epsilon are treated as ties so that deterministic
 // tie-breaking (provider-name / explicit route order) decides the winner

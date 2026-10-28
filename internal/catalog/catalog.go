@@ -66,6 +66,18 @@ type ReachabilityFilter interface {
 	ShouldAdvertise(modelID, provider string) bool
 }
 
+// RoutingReachabilityFilter is an optional extension of ReachabilityFilter
+// that applies to the routing candidate pool (auto/virtual resolvers). It
+// keeps unprobed-unknown models visible even under strict_healthy so a
+// provider that has never been probed does not silently disappear from the
+// candidate set. Confirmed-unhealthy and recovering models are still
+// hidden. Filters that do not implement this interface fall back to the
+// plain ShouldAdvertise view.
+type RoutingReachabilityFilter interface {
+	ReachabilityFilter
+	ShouldAdvertiseForRouting(modelID, provider string) bool
+}
+
 // FilterReadiness is implemented by ModelStatusStore. After FilterReady() becomes
 // true, unprobed models follow unknown_as_reachable (default true = err toward availability).
 type FilterReadiness interface {
@@ -229,6 +241,41 @@ func (c *Catalog) List(ctx context.Context) ([]Entry, error) {
 	filtered := make([]Entry, 0, len(entries))
 	for _, e := range entries {
 		if c.filter.ShouldAdvertise(e.ModelID, e.Provider) {
+			filtered = append(filtered, e)
+		}
+	}
+	return filtered, nil
+}
+
+// ListReachable returns the merged catalog applying only the reachability
+// filter (ShouldAdvertise) WITHOUT the strict_healthy pre-gate. This is the
+// candidate-pool view: confirmed-unhealthy and recovering models are hidden
+// (matching /api/models), but unprobed (unknown) models are kept so that a
+// provider that has never been probed does not silently disappear from
+// routing candidate construction. Used by the catalog-backed auto/virtual
+// resolvers so cross-provider diversity survives a strict-healthy default.
+func (c *Catalog) ListReachable(ctx context.Context) ([]Entry, error) {
+	entries, err := c.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if c.filter == nil || !c.hide {
+		return entries, nil
+	}
+	// Prefer the routing-aware filter view when available: it keeps
+	// unprobed-unknown models visible under strict_healthy. Otherwise fall
+	// back to the plain ShouldAdvertise view (legacy / dashboard filters).
+	rf, ok := c.filter.(RoutingReachabilityFilter)
+	if !ok {
+		rf = nil
+	}
+	filtered := make([]Entry, 0, len(entries))
+	for _, e := range entries {
+		if rf != nil {
+			if rf.ShouldAdvertiseForRouting(e.ModelID, e.Provider) {
+				filtered = append(filtered, e)
+			}
+		} else if c.filter.ShouldAdvertise(e.ModelID, e.Provider) {
 			filtered = append(filtered, e)
 		}
 	}
