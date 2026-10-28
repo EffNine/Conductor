@@ -16,14 +16,14 @@ import (
 // testStore is an in-memory Store implementation for advisor tests.
 type testStore struct {
 	mu          sync.Mutex
-	observed    []ShadowObservation
+	observed    []Observation
 	backfillCnt int
 	saveErr     error
 }
 
 func (s *testStore) Migrate() error { return nil }
 
-func (s *testStore) Save(ctx context.Context, obs *ShadowObservation) error {
+func (s *testStore) Save(ctx context.Context, obs *Observation) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.saveErr != nil {
@@ -35,7 +35,7 @@ func (s *testStore) Save(ctx context.Context, obs *ShadowObservation) error {
 
 // UpdateAdvisory records advisory fields on the matching row (decision-id
 // keyed) so the async JEV result is observable on the stored row.
-func (s *testStore) UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error {
+func (s *testStore) UpdateAdvisory(ctx context.Context, obs *Observation) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.observed {
@@ -88,7 +88,7 @@ func (s *testStore) backfillCount() int {
 	return s.backfillCnt
 }
 
-func (s *testStore) List(ctx context.Context, limit int) ([]ShadowObservation, error) {
+func (s *testStore) List(ctx context.Context, limit int) ([]Observation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if limit <= 0 || limit > len(s.observed) {
@@ -112,16 +112,16 @@ func (s *testStore) advisoryStatusOf(id string) string {
 
 // snapshot returns a copy of the observed rows so readers do not race the
 // async writer.
-func (s *testStore) snapshot() []ShadowObservation {
+func (s *testStore) snapshot() []Observation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]ShadowObservation, len(s.observed))
+	out := make([]Observation, len(s.observed))
 	copy(out, s.observed)
 	return out
 }
 
 // snapshotByDecisionID returns the stored row with the given decision id.
-func (s *testStore) snapshotByDecisionID(id string) *ShadowObservation {
+func (s *testStore) snapshotByDecisionID(id string) *Observation {
 	for _, r := range s.snapshot() {
 		if r.DecisionID == id {
 			return &r
@@ -131,7 +131,7 @@ func (s *testStore) snapshotByDecisionID(id string) *ShadowObservation {
 }
 
 // first returns the first observation if present.
-func (s *testStore) first() (*ShadowObservation, bool) {
+func (s *testStore) first() (*Observation, bool) {
 	rows := s.snapshot()
 	if len(rows) == 0 {
 		return nil, false
@@ -181,7 +181,7 @@ func waitFor(t *testing.T, store *testStore, deadline time.Duration, want func()
 
 // expectOne waits until the store holds exactly one observation and returns
 // a stable copy of it.
-func expectOne(t *testing.T, store *testStore) *ShadowObservation {
+func expectOne(t *testing.T, store *testStore) *Observation {
 	t.Helper()
 	waitFor(t, store, 5*time.Second, func() bool { return len(store.snapshot()) == 1 })
 	obs, ok := store.first()

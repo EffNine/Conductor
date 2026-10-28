@@ -89,7 +89,7 @@ type Observation struct {
 }
 
 // RecordFromShadow copies a persisted observation into the eval view.
-func RecordFromShadow(o shadow.ShadowObservation) Observation {
+func RecordFromShadow(o shadow.Observation) Observation {
 	return Observation{
 		DecisionID:            o.DecisionID,
 		ResolvedMode:          o.ResolvedMode,

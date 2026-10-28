@@ -11,7 +11,7 @@ import (
 // mutates the store or the deterministic routing state.
 func TestEvaluatorDoesNotTouchShadowStore(t *testing.T) {
 	conf := 0.7
-	rows := []shadow.ShadowObservation{
+	rows := []shadow.Observation{
 		{
 			DecisionID:            "d1",
 			ResolvedMode:          "coding",
@@ -25,7 +25,7 @@ func TestEvaluatorDoesNotTouchShadowStore(t *testing.T) {
 			Outcome:               "success",
 		},
 	}
-	original := make([]shadow.ShadowObservation, len(rows))
+	original := make([]shadow.Observation, len(rows))
 	copy(original, rows)
 
 	// Feed the evaluator via the shadow -> eval adapter.
@@ -48,7 +48,7 @@ func TestEvaluatorDoesNotTouchShadowStore(t *testing.T) {
 // faithfully.
 func TestRecordFromShadowCopiesAllFields(t *testing.T) {
 	prob := 0.85
-	src := shadow.ShadowObservation{
+	src := shadow.Observation{
 		DecisionID:            "d9",
 		ResolvedMode:          "fast",
 		SelectedProvider:      "zeta",

@@ -71,14 +71,14 @@ const (
 // Store is the persistence interface for shadow observations.
 type Store interface {
 	Migrate() error
-	Save(ctx context.Context, obs *ShadowObservation) error
+	Save(ctx context.Context, obs *Observation) error
 	// UpdateAdvisory persists the JEV advisory fields of an existing row
 	// without touching the outcome/latency columns (so a backfill that
 	// landed concurrently is not clobbered).
-	UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error
+	UpdateAdvisory(ctx context.Context, obs *Observation) error
 	BackfillOutcome(ctx context.Context, correlationID, decisionID, outcome string, latencyMs int64) (int, error)
 	PruneBefore(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
-	List(ctx context.Context, limit int) ([]ShadowObservation, error)
+	List(ctx context.Context, limit int) ([]Observation, error)
 }
 
 // AdvisorConfig configures the shadow advisor.
@@ -197,8 +197,8 @@ func (a *Advisor) process(trace *router.DecisionTrace) {
 
 // buildObservation extracts the deterministic routing state from the trace.
 // It never touches the request body, secrets, or credentials.
-func (a *Advisor) buildObservation(trace *router.DecisionTrace) *ShadowObservation {
-	obs := &ShadowObservation{
+func (a *Advisor) buildObservation(trace *router.DecisionTrace) *Observation {
+	obs := &Observation{
 		DecisionID:     string(trace.DecisionID),
 		RequestedModel: trace.RequestedModel,
 		ResolvedMode:   string(trace.ResolvedMode),
@@ -244,7 +244,7 @@ func (a *Advisor) buildObservation(trace *router.DecisionTrace) *ShadowObservati
 
 // callJEV runs the advisory question. All failures are captured into the
 // observation's advisory fields; they never propagate.
-func (a *Advisor) callJEV(trace *router.DecisionTrace, obs *ShadowObservation) {
+func (a *Advisor) callJEV(trace *router.DecisionTrace, obs *Observation) {
 	if a.cfg.JEVClient == nil {
 		obs.AdvisoryStatus = AdvisoryNotConfigured
 		return

@@ -32,7 +32,7 @@ func TestSQLiteStoreToEvalEndToEnd(t *testing.T) {
 
 	now := time.Now().UTC()
 	// 4 complete (ok advisory + known outcome), 1 no-outcome, 1 JEV error.
-	rows := []jevshadow.ShadowObservation{
+	rows := []jevshadow.Observation{
 		{DecisionID: "e1", ResolvedMode: "coding", SelectedProvider: "alpha",
 			SelectedModel: "m", CandidateCount: 2, CandidateProviders: "alpha,beta",
 			AdvisoryProvider: "alpha", AdvisoryConfidence: f64e2e(0.9),

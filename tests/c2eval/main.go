@@ -31,7 +31,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	c9, c5, c3 := 0.9, 0.5, 0.3
-	obs := []jevshadow.ShadowObservation{
+	obs := []jevshadow.Observation{
 		{DecisionID: "s1", ResolvedMode: "coding", SelectedProvider: "alpha",
 			SelectedModel: "m", CandidateCount: 2, CandidateProviders: "alpha,beta",
 			AdvisoryProvider: "alpha", AdvisoryConfidence: &c9,

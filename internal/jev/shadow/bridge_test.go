@@ -19,11 +19,11 @@ import (
 // busStore captures observations and backfills for bridge tests.
 type busStore struct {
 	mu        sync.Mutex
-	rows      []shadow.ShadowObservation
+	rows      []shadow.Observation
 	backfills []string
 }
 
-func (b *busStore) Save(ctx context.Context, obs *shadow.ShadowObservation) error {
+func (b *busStore) Save(ctx context.Context, obs *shadow.Observation) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.rows = append(b.rows, *obs)
@@ -54,7 +54,7 @@ func (b *busStore) rowCount() int {
 }
 
 // firstRow returns a copy of the first observation (thread-safe).
-func (b *busStore) firstRow() *shadow.ShadowObservation {
+func (b *busStore) firstRow() *shadow.Observation {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if len(b.rows) == 0 {
@@ -72,7 +72,7 @@ func (b *busStore) backfillCount() int {
 
 func (b *busStore) Migrate() error { return nil }
 
-func (b *busStore) UpdateAdvisory(ctx context.Context, obs *shadow.ShadowObservation) error {
+func (b *busStore) UpdateAdvisory(ctx context.Context, obs *shadow.Observation) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i := range b.rows {
@@ -95,10 +95,10 @@ func (b *busStore) PruneBefore(ctx context.Context, cutoff time.Time, batchSize 
 	return 0, nil
 }
 
-func (b *busStore) List(ctx context.Context, limit int) ([]shadow.ShadowObservation, error) {
+func (b *busStore) List(ctx context.Context, limit int) ([]shadow.Observation, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	out := make([]shadow.ShadowObservation, 0, len(b.rows))
+	out := make([]shadow.Observation, 0, len(b.rows))
 	out = append(out, b.rows...)
 	return out, nil
 }
@@ -157,7 +157,7 @@ func TestBridgeBackfillsOutcome(t *testing.T) {
 	defer bridge.Stop()
 
 	// Pre-seed an observation row (as the advisor would after decision).
-	_ = store.Save(context.Background(), &shadow.ShadowObservation{
+	_ = store.Save(context.Background(), &shadow.Observation{
 		DecisionID:       "bridge-d2",
 		SelectedProvider: "openai",
 		Outcome:          "selected",

@@ -26,7 +26,7 @@ func NewSQLiteStore(db *gorm.DB) *SQLiteStore {
 
 // Migrate creates the shadow_observations table. Idempotent.
 func (s *SQLiteStore) Migrate() error {
-	if err := s.db.AutoMigrate(&ShadowObservation{}); err != nil {
+	if err := s.db.AutoMigrate(&Observation{}); err != nil {
 		return err
 	}
 	return s.migrateLegacy()
@@ -55,7 +55,7 @@ func (s *SQLiteStore) migrateLegacy() error {
 
 // Save persists one observation. Idempotent on decision_id: re-saving an
 // existing decision is a no-op so outcome backfill does not duplicate rows.
-func (s *SQLiteStore) Save(ctx context.Context, obs *ShadowObservation) error {
+func (s *SQLiteStore) Save(ctx context.Context, obs *Observation) error {
 	if obs == nil || obs.DecisionID == "" {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (s *SQLiteStore) Save(ctx context.Context, obs *ShadowObservation) error {
 
 // UpdateAdvisory persists the JEV advisory fields of an existing row,
 // leaving outcome/latency untouched (commutative with backfill).
-func (s *SQLiteStore) UpdateAdvisory(ctx context.Context, obs *ShadowObservation) error {
+func (s *SQLiteStore) UpdateAdvisory(ctx context.Context, obs *Observation) error {
 	if obs == nil || obs.DecisionID == "" {
 		return nil
 	}
@@ -112,7 +112,7 @@ func (s *SQLiteStore) UpdateAdvisory(ctx context.Context, obs *ShadowObservation
 	if len(filtered) == 0 {
 		return nil
 	}
-	return s.db.WithContext(ctx).Model(&ShadowObservation{}).
+	return s.db.WithContext(ctx).Model(&Observation{}).
 		Where("decision_id = ?", obs.DecisionID).
 		Updates(filtered).Error
 }
@@ -136,7 +136,7 @@ func (s *SQLiteStore) BackfillOutcome(ctx context.Context, correlationID, decisi
 		args = append(args, decisionID)
 	}
 	args = append(args, outcome, latencyMs)
-	res := s.db.WithContext(ctx).Model(&ShadowObservation{}).
+	res := s.db.WithContext(ctx).Model(&Observation{}).
 		Where("("+strings.Join(conds, " OR ")+")", args...).
 		Updates(map[string]any{
 			"outcome":             outcome,
@@ -174,11 +174,11 @@ func (s *SQLiteStore) PruneBefore(ctx context.Context, cutoff time.Time, batchSi
 }
 
 // List returns the most recent observations (diagnostics/tests), newest first.
-func (s *SQLiteStore) List(ctx context.Context, limit int) ([]ShadowObservation, error) {
+func (s *SQLiteStore) List(ctx context.Context, limit int) ([]Observation, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	rows := make([]ShadowObservation, 0, limit)
+	rows := make([]Observation, 0, limit)
 	err := s.db.WithContext(ctx).
 		Order("created_at DESC").
 		Limit(limit).

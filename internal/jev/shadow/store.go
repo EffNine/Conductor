@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ShadowObservation is one persisted routing observation with its JEV
+// Observation is one persisted routing observation with its JEV
 // advisory result and the eventual execution outcome. It answers: "Given the
 // same routing state, what did Conductor choose, what did JEV advise, and
 // what actually happened?"
@@ -16,7 +16,7 @@ import (
 // Safety contract: the observation never contains prompts, API keys,
 // authorization headers, provider secrets, or raw request bodies — only
 // routing-state identifiers, scores, and the JEV advisory judgment.
-type ShadowObservation struct {
+type Observation struct {
 	ID uint `gorm:"primaryKey" json:"id"`
 	// CreatedAt is the observation timestamp (UTC).
 	CreatedAt  time.Time `gorm:"index" json:"created_at"`
@@ -62,3 +62,8 @@ func marshalProbabilities(p map[string]float64) string {
 	}
 	return string(b)
 }
+
+// TableName preserves the deployed table name across the type rename
+// (ShadowObservation -> Observation). GORM would otherwise derive
+// "observations" and orphan every existing row.
+func (Observation) TableName() string { return "shadow_observations" }
