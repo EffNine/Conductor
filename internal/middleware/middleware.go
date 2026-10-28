@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/EffNine/conductor/internal/auth"
@@ -18,8 +19,15 @@ const (
 	authSchemeBearer = "Bearer"
 )
 
+// authRequired is set by Register. RequireScope uses it to fail closed on an
+// auth-wired app when a route never passed through Auth (Fiber's stack is
+// positional); test apps that intentionally omit the auth stack are unaffected.
+var authRequired atomic.Bool
+
 // Register registers all middleware on the Fiber app
 func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, logger *zap.Logger) {
+	authRequired.Store(true)
+
 	// Security headers (HSTS etc.) — before anything else
 	app.Use(SecurityHeaders())
 
@@ -106,11 +114,16 @@ func Auth(authService *auth.Service) fiber.Handler {
 			}
 			return unauthorized(c, "Invalid API key", "invalid_api_key")
 		}
-		// Store scopes for downstream RequireScope checks
-		if scopes := authService.ScopesForToken(token); scopes != nil {
-			c.Locals("scopes", scopes)
-			// fingerprint not stored globally; handlers can re-derive if needed
+		// Store scopes for downstream RequireScope checks. Single-key auth is
+		// admin-equivalent (see auth.AuthenticateWithScopes); make that explicit
+		// so RequireScope can tell "authenticated as admin" apart from "Auth
+		// never ran for this route" and fail closed on the latter.
+		scopes := authService.ScopesForToken(token)
+		if scopes == nil {
+			scopes = []string{"conductor:admin"}
 		}
+		c.Locals("scopes", scopes)
+		c.Locals("authenticated", true)
 
 		return c.Next()
 	}
@@ -157,29 +170,27 @@ func forbidden(c *fiber.Ctx, message, code string) error {
 }
 
 // RequireScope returns middleware that ensures the authenticated token carries required scope.
-// It must be used after Auth. Valid token without scope → 403. No token (Auth didn't run) → 401.
-// Admin scope (conductor:admin) satisfies any requirement.
+//
+// It must be used after Auth. On an app wired by Register, a request that never
+// passed through Auth fails closed with 401: treating "no scopes in context" as
+// single-key admin was an authentication bypass for any route registered before
+// the auth middleware (`/api/jev-shadow`, fixed 2026-10-28). Valid token without
+// scope → 403. Admin scope (conductor:admin) satisfies any requirement.
 func RequireScope(required string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		scopesVal := c.Locals("scopes")
-		var scopes []string
-		if scopesVal != nil {
-			if s, ok := scopesVal.([]string); ok {
-				scopes = s
+		// On an auth-wired app, a missing authenticated marker means this route
+		// was registered before Auth and never passed through it. Fail closed:
+		// treating it as single-key admin was the /api/jev-shadow bypass.
+		if authRequired.Load() {
+			if authenticated, _ := c.Locals("authenticated").(bool); !authenticated {
+				return unauthorized(c, "Missing API key", "missing_api_key")
 			}
-		}
-		// If no scopes stored but request reached here, Auth succeeded with single-key (treated as admin)
-		// Single-key case: scopes will be admin, so passes. But if Auth was bypassed (e.g. /health), scopes nil → allow.
-		if scopes == nil {
-			// Check if auth was required: if path is health, allow
-			if c.Path() == "/health" {
-				return c.Next()
-			}
-			// For other paths, if scopes nil it means token was single-key admin or TokenStore not configured
-			// In single-key mode, we consider it admin, so allow.
-			// If TokenStore is configured but scopes missing (e.g. token not found should have been 401), this path shouldn't be reached.
+		} else if c.Locals("scopes") == nil {
+			// App intentionally wired without the auth stack (tests): keep the
+			// historical single-key-admin treatment.
 			return c.Next()
 		}
+		scopes, _ := c.Locals("scopes").([]string)
 		for _, s := range scopes {
 			if s == required || s == "conductor:admin" {
 				return c.Next()

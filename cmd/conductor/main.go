@@ -275,6 +275,13 @@ func main() {
 		BodyLimit:    int(cfg.Server.MaxRequestSize),
 	})
 
+	// Register middleware before ANY route. Fiber's middleware stack is
+	// positional: a route registered before app.Use(auth) never passes through
+	// it. /api/jev-shadow was registered before this call, and RequireScope
+	// treated the missing scope as single-key admin, so the endpoint answered
+	// unauthenticated (S1, 2026-10-28).
+	middleware.Register(app, cfg, authService, logger)
+
 	// Initialize intelligent routing engine (optional, enabled by config)
 	var routingEngine *router.RouterEngine
 	var decisionPipeline *router.DecisionPipeline
@@ -385,9 +392,6 @@ func main() {
 		// same scope as the other dashboard endpoints (conductor:read).
 		app.Get("/api/jev-shadow", middleware.RequireScope("conductor:read"), shadowQuery.Handle())
 	}
-
-	// Register middleware
-	middleware.Register(app, cfg, authService, logger)
 
 	// Register handlers
 	h := handler.New(routerEngine, registry, usageTracker, logger, modelCatalog, db)

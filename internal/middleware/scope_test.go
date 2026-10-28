@@ -14,8 +14,8 @@ import (
 
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/gofiber/fiber/v2"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/google/uuid"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupScopeApp(t *testing.T) (*fiber.App, *auth.Service, func(service, name string, scopes []string, expiresAt *string, revoked bool) string) {
@@ -64,22 +64,7 @@ func setupScopeApp(t *testing.T) (*fiber.App, *auth.Service, func(service, name 
 
 	app := fiber.New()
 	app.Use(SecurityHeaders())
-	app.Use(func(c *fiber.Ctx) error {
-		if c.Path() == "/health" {
-			return c.Next()
-		}
-		token, err := bearerToken(c.Get("Authorization"))
-		if err != nil {
-			return c.Status(401).JSON(fiber.Map{"error": "auth"})
-		}
-		if err := svc.Authenticate(token); err != nil {
-			return c.Status(401).JSON(fiber.Map{"error": err.Error()})
-		}
-		if scopes := svc.ScopesForToken(token); scopes != nil {
-			c.Locals("scopes", scopes)
-		}
-		return c.Next()
-	})
+	app.Use(Auth(svc))
 	app.Get("/health", func(c *fiber.Ctx) error { return c.SendString("ok") })
 	app.Get("/api/models", RequireScope("conductor:read"), func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
 	app.Post("/v1/chat/completions", RequireScope("conductor:execute"), func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
@@ -181,5 +166,63 @@ func TestScope_RevokedAndExpiredRejected(t *testing.T) {
 	resp2, _ := app.Test(req2)
 	if resp2.StatusCode != 401 {
 		t.Fatalf("revoked token: want 401 got %d", resp2.StatusCode)
+	}
+}
+
+// TestScope_RouteRegisteredBeforeAuthFailsClosed pins the S1 class of bug: a
+// route registered before the auth middleware never runs it, and RequireScope
+// used to treat the absent scope as single-key admin and allow the request.
+// /api/jev-shadow was registered before middleware.Register (fixed 2026-10-28).
+func TestScope_RouteRegisteredBeforeAuthFailsClosed(t *testing.T) {
+	app := fiber.New()
+	// Mirror the production wiring: an auth-wired app whose route was
+	// registered before Auth.
+	authRequired.Store(true)
+	t.Cleanup(func() { authRequired.Store(false) })
+	app.Get("/api/jev-shadow", RequireScope("conductor:read"), func(c *fiber.Ctx) error {
+		return c.SendString("leaked")
+	})
+	app.Use(Auth(auth.NewService("single-key")))
+
+	req := httptest.NewRequest("GET", "/api/jev-shadow", nil)
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("route registered before Auth: want 401, got %d", resp.StatusCode)
+	}
+}
+
+// TestScope_SingleKeyIsAdminScoped pins that single-key mode keeps its
+// documented admin-equivalence now that RequireScope fails closed without an
+// authenticated marker.
+func TestScope_SingleKeyIsAdminScoped(t *testing.T) {
+	app := fiber.New()
+	app.Use(Auth(auth.NewService("single-key")))
+	app.Get("/api/models/force-probe", RequireScope("conductor:admin"), func(c *fiber.Ctx) error {
+		return c.SendString("ok")
+	})
+
+	req := httptest.NewRequest("GET", "/api/models/force-probe", nil)
+	req.Header.Set("Authorization", "Bearer single-key")
+	resp, err := app.Test(req)
+	if err != nil {
+		t.Fatalf("app.Test: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("single-key admin: want 200, got %d", resp.StatusCode)
+	}
+
+	anon := httptest.NewRequest("GET", "/api/models/force-probe", nil)
+	resp2, err := app.Test(anon)
+	if err != nil {
+		t.Fatalf("app.Test anon: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("single-key anon: want 401, got %d", resp2.StatusCode)
 	}
 }
