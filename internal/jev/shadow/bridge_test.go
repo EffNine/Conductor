@@ -60,7 +60,20 @@ func (b *busStore) firstRow() *shadow.Observation {
 	if len(b.rows) == 0 {
 		return nil
 	}
-	return &b.rows[0]
+	// Return a copy: the advisor updates the stored row from its own
+	// goroutine, so handing out a pointer would race with that update.
+	row := b.rows[0]
+	return &row
+}
+
+// firstAdvisoryStatus returns the first row's advisory status under the lock.
+func (b *busStore) firstAdvisoryStatus() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.rows) == 0 {
+		return ""
+	}
+	return b.rows[0].AdvisoryStatus
 }
 
 // backfillCount returns the number of backfill calls (thread-safe).
@@ -133,7 +146,12 @@ func TestBridgeWiresObservationToEvents(t *testing.T) {
 		Type:    eventbus.DecisionFinished,
 		Payload: trace,
 	})
-	waitForPred(t, 5*time.Second, func() bool { return store.rowCount() == 1 })
+	// Wait for the advisory update, not just the first save: Save and
+	// UpdateAdvisory are two separate writes and the assertion below reads a
+	// field written by the second one.
+	waitForPred(t, 5*time.Second, func() bool {
+		return store.firstAdvisoryStatus() == shadow.AdvisoryOK
+	})
 	obs := store.firstRow()
 	if obs == nil {
 		t.Fatal("no observation recorded")
@@ -193,7 +211,12 @@ func TestBridgeBackfillsOutcomeByCorrelation(t *testing.T) {
 		Type:    eventbus.DecisionFinished,
 		Payload: trace,
 	})
-	waitForPred(t, 5*time.Second, func() bool { return store.rowCount() == 1 })
+	// Wait for the advisory update, not just the first save: Save and
+	// UpdateAdvisory are two separate writes and the assertion below reads a
+	// field written by the second one.
+	waitForPred(t, 5*time.Second, func() bool {
+		return store.firstAdvisoryStatus() == shadow.AdvisoryOK
+	})
 	obs := store.firstRow()
 	if obs.CorrelationID != "corr-42" {
 		t.Fatalf("correlation id = %q, want corr-42", obs.CorrelationID)
@@ -269,7 +292,12 @@ func TestBridgeWithJEVClientAdvises(t *testing.T) {
 		Type:    eventbus.DecisionFinished,
 		Payload: routerTraceForTest("bridge-d3", "openai"),
 	})
-	waitForPred(t, 5*time.Second, func() bool { return store.rowCount() == 1 })
+	// Wait for the advisory update, not just the first save: Save and
+	// UpdateAdvisory are two separate writes and the assertion below reads a
+	// field written by the second one.
+	waitForPred(t, 5*time.Second, func() bool {
+		return store.firstAdvisoryStatus() == shadow.AdvisoryOK
+	})
 	obs := store.firstRow()
 	if obs == nil {
 		t.Fatal("no observation recorded")
