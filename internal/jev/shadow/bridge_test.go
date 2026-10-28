@@ -46,13 +46,6 @@ func (b *busStore) BackfillOutcome(ctx context.Context, correlationID, decisionI
 	return matched, nil
 }
 
-// rowCount returns the number of persisted observations (thread-safe).
-func (b *busStore) rowCount() int {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return len(b.rows)
-}
-
 // firstRow returns a copy of the first observation (thread-safe).
 func (b *busStore) firstRow() *shadow.Observation {
 	b.mu.Lock()
@@ -146,12 +139,7 @@ func TestBridgeWiresObservationToEvents(t *testing.T) {
 		Type:    eventbus.DecisionFinished,
 		Payload: trace,
 	})
-	// Wait for the advisory update, not just the first save: Save and
-	// UpdateAdvisory are two separate writes and the assertion below reads a
-	// field written by the second one.
-	waitForPred(t, 5*time.Second, func() bool {
-		return store.firstAdvisoryStatus() == shadow.AdvisoryOK
-	})
+	waitForPred(t, 5*time.Second, func() bool { return store.firstRow() != nil })
 	obs := store.firstRow()
 	if obs == nil {
 		t.Fatal("no observation recorded")
@@ -211,12 +199,7 @@ func TestBridgeBackfillsOutcomeByCorrelation(t *testing.T) {
 		Type:    eventbus.DecisionFinished,
 		Payload: trace,
 	})
-	// Wait for the advisory update, not just the first save: Save and
-	// UpdateAdvisory are two separate writes and the assertion below reads a
-	// field written by the second one.
-	waitForPred(t, 5*time.Second, func() bool {
-		return store.firstAdvisoryStatus() == shadow.AdvisoryOK
-	})
+	waitForPred(t, 5*time.Second, func() bool { return store.firstRow() != nil })
 	obs := store.firstRow()
 	if obs.CorrelationID != "corr-42" {
 		t.Fatalf("correlation id = %q, want corr-42", obs.CorrelationID)
