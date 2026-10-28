@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/config"
+	"github.com/EffNine/conductor/internal/database/migrations"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -153,8 +154,19 @@ func Connect(cfg *config.DatabaseConfig) (*Database, error) {
 	return &Database{DB: db}, nil
 }
 
-// Migrate runs database migrations
+// Migrate runs database migrations.
+//
+// Schema changes are versioned SQL (internal/database/migrations); AutoMigrate
+// runs afterwards as an additive safety net while every table is moved out of
+// model inference. A pre-versioning database is baselined rather than rebuilt.
 func (d *Database) Migrate() error {
+	sqlDB, err := d.DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying db: %w", err)
+	}
+	if err := migrations.Run(sqlDB); err != nil {
+		return err
+	}
 	return d.DB.AutoMigrate(
 		&UsageRecord{},
 		&RequestLog{},
