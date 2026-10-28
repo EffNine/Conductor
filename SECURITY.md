@@ -19,6 +19,15 @@ multi-tenant infrastructure.
 - The gateway key is never logged or echoed; `/api/config` redacts it.
 - If `CONDUCTOR_API_KEY` is unset, a random key is generated to
   `data/conductor.api_key` (mode `0600`) — set the env var explicitly in production.
+- **Route ordering is part of the auth model.** Fiber's middleware stack is
+  positional, so every route must be registered *after* `middleware.Register`.
+  `RequireScope` fails closed (401) on an auth-wired app when the request never
+  passed through `Auth`; a route registered too early is therefore refused
+  rather than silently opened.
+- **Scopes.** Dashboard reads require `conductor:read`; task creation,
+  retry/resume/cancel and chat/embeddings require `conductor:execute`
+  (they spend provider credits); admin actions require `conductor:admin`.
+  The single static gateway key is admin-equivalent.
 
 ### Secrets Handling
 

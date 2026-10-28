@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -43,15 +44,20 @@ func (h *Handler) WithCancelPool(cp CancelPool) {
 }
 
 // Register registers task API routes on the Fiber app.
+//
+// Task creation and retry/resume/cancel execute work and spend provider
+// credits, so they require conductor:execute; the read endpoints require
+// conductor:read. Before 2026-10-28 the whole group was unscoped, so a
+// read-only token could create and run tasks (S13).
 func (h *Handler) Register(app *fiber.App) {
 	group := app.Group("/api")
-	group.Post("/tasks", h.HandleCreate)
-	group.Get("/tasks", h.HandleList)
-	group.Get("/tasks/:id", h.HandleGet)
-	group.Get("/tasks/:id/tree", h.HandleTree)
-	group.Post("/tasks/:id/cancel", h.HandleCancel)
-	group.Post("/tasks/:id/retry", h.HandleRetry)
-	group.Post("/tasks/:id/resume", h.HandleResume)
+	group.Post("/tasks", middleware.RequireScope("conductor:execute"), h.HandleCreate)
+	group.Get("/tasks", middleware.RequireScope("conductor:read"), h.HandleList)
+	group.Get("/tasks/:id", middleware.RequireScope("conductor:read"), h.HandleGet)
+	group.Get("/tasks/:id/tree", middleware.RequireScope("conductor:read"), h.HandleTree)
+	group.Post("/tasks/:id/cancel", middleware.RequireScope("conductor:execute"), h.HandleCancel)
+	group.Post("/tasks/:id/retry", middleware.RequireScope("conductor:execute"), h.HandleRetry)
+	group.Post("/tasks/:id/resume", middleware.RequireScope("conductor:execute"), h.HandleResume)
 }
 
 // HandleCreate creates and executes a new task.
