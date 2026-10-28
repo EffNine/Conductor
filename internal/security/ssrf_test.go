@@ -119,3 +119,26 @@ func parseIPReal(s string) net.IP {
 	// net is already imported in ssrf.go, but not in this test file? we import it now
 	return net.ParseIP(s)
 }
+
+func TestIsLocalBaseURL(t *testing.T) {
+	cases := []struct {
+		url   string
+		local bool
+	}{
+		{"http://127.0.0.1:1234/v1", true},
+		{"https://127.0.0.1/v1", true},
+		{"http://localhost:8080/v1", true},
+		{"http://[::1]:9000/v1", true},
+		{"http://0.0.0.0:8000", true},
+		{"https://api.openai.com/v1", false},
+		{"https://10.0.0.1/v1", false},
+		{"https://example.com/localhost", false},
+		{"", false},
+		{"://bad", false},
+	}
+	for _, tc := range cases {
+		if got := IsLocalBaseURL(tc.url); got != tc.local {
+			t.Errorf("IsLocalBaseURL(%q) = %v, want %v", tc.url, got, tc.local)
+		}
+	}
+}

@@ -51,7 +51,7 @@ func WithCapabilities(caps provider.Capabilities) Option {
 
 // New creates a reusable OpenAI-compatible provider base with SSRF-protected transport.
 func New(name, apiKey, baseURL string, timeout time.Duration, opts ...Option) *Base {
-	allowPrivate := name == "ollama" || name == "lmstudio" || strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "[::1]") || strings.Contains(baseURL, "0.0.0.0")
+	allowPrivate := name == "ollama" || name == "lmstudio" || security.IsLocalBaseURL(baseURL)
 	client := security.NewSSRFProtectedClient(int(timeout.Seconds()), allowPrivate)
 	client.Timeout = timeout
 	// Validate baseURL eagerly at construction time (fail closed if insecure)

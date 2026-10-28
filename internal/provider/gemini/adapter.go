@@ -28,7 +28,7 @@ type Provider struct {
 
 // NewProvider creates a new native Gemini provider with SSRF-protected transport.
 func NewProvider(apiKey, baseURL string, timeout time.Duration) *Provider {
-	allowPrivate := strings.Contains(baseURL, "127.0.0.1") || strings.Contains(baseURL, "localhost") || strings.Contains(baseURL, "[::1]")
+	allowPrivate := security.IsLocalBaseURL(baseURL)
 	client := security.NewSSRFProtectedClient(int(timeout.Seconds()), allowPrivate)
 	client.Timeout = timeout
 	return &Provider{

@@ -46,10 +46,10 @@ func setupScopeApp(t *testing.T) (*fiber.App, *auth.Service, func(service, name 
 			s := time.Now().Format(time.RFC3339)
 			revokedAt = &s
 		}
-		_, err := db.Exec(`INSERT INTO service_token (id, service, name, token_hash, token_prefix, token_fingerprint, scopes, created_at, expires_at, revoked_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+		_, insertErr := db.Exec(`INSERT INTO service_token (id, service, name, token_hash, token_prefix, token_fingerprint, scopes, created_at, expires_at, revoked_at, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 			uuid.NewString(), service, name, hash, prefix, fp, string(scopesJSON), now, exp, revokedAt, "admin")
-		if err != nil {
-			t.Fatalf("insert: %v", err)
+		if insertErr != nil {
+			t.Fatalf("insert: %v", insertErr)
 		}
 		return raw
 	}

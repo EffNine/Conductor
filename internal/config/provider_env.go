@@ -258,7 +258,7 @@ func validate(cfg *Config) error {
 		if !enabled {
 			continue
 		}
-		allowPrivate := name == "ollama" || name == "lmstudio"
+		allowPrivate := name == "ollama" || name == "lmstudio" || security.IsLocalBaseURL(raw)
 		if err := security.ValidateProviderURL(raw, allowPrivate); err != nil {
 			return fmt.Errorf("invalid base_url for provider %q: %w", name, err)
 		}

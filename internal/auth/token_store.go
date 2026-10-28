@@ -138,10 +138,3 @@ func hasScope(tokenScopes []string, required string) bool {
 	}
 	return false
 }
-
-// MustClose is helper for main defer.
-func (ts *TokenStore) mustClose() {
-	if ts != nil {
-		_ = ts.Close()
-	}
-}

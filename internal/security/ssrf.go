@@ -99,6 +99,28 @@ func IsPrivateIP(ip net.IP) bool {
 	return false
 }
 
+// IsLocalBaseURL reports whether raw points at a loopback or unspecified-local
+// host. Plaintext HTTP and private addressing are acceptable there because the
+// traffic never leaves the machine; the rule matches what the provider adapters
+// already allow at construction time.
+func IsLocalBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback() || ip.IsUnspecified()
+	}
+	return false
+}
+
 // ValidateProviderURL validates a provider base URL against SSRF policy.
 // allowPrivate indicates whether localhost/private addresses are allowed (e.g. for Ollama/LMStudio).
 func ValidateProviderURL(raw string, allowPrivate bool) error {
