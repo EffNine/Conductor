@@ -108,25 +108,40 @@ func Auth(authService *auth.Service) fiber.Handler {
 			return unauthorized(c, "Invalid API key", "invalid_api_key")
 		}
 
-		if err := authService.Authenticate(token); err != nil {
+		principal, err := authService.AuthenticatePrincipal(token)
+		if err != nil {
 			if errors.Is(err, auth.ErrInsufficientScope) {
 				return forbidden(c, "Insufficient scope", "insufficient_scope")
 			}
 			return unauthorized(c, "Invalid API key", "invalid_api_key")
 		}
-		// Store scopes for downstream RequireScope checks. Single-key auth is
-		// admin-equivalent (see auth.AuthenticateWithScopes); make that explicit
-		// so RequireScope can tell "authenticated as admin" apart from "Auth
-		// never ran for this route" and fail closed on the latter.
-		scopes := authService.ScopesForToken(token)
+		// The principal is the only attribution source for this request.
+		// Handlers read user_id from here, never from a header.
+		scopes := principal.Scopes
 		if scopes == nil {
 			scopes = []string{"conductor:admin"}
 		}
+		c.Locals("principal", principal)
+		c.Locals("user_id", principal.UserID)
 		c.Locals("scopes", scopes)
 		c.Locals("authenticated", true)
 
 		return c.Next()
 	}
+}
+
+// PrincipalFrom returns the authenticated principal attached by Auth.
+func PrincipalFrom(c *fiber.Ctx) (*auth.Principal, bool) {
+	p, ok := c.Locals("principal").(*auth.Principal)
+	return p, ok && p != nil
+}
+
+// UserIDFrom returns the authenticated user id, or "" when unauthenticated.
+func UserIDFrom(c *fiber.Ctx) string {
+	if p, ok := PrincipalFrom(c); ok {
+		return p.UserID
+	}
+	return ""
 }
 
 // bearerToken extracts the Bearer credential from an Authorization header.

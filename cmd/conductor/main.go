@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/EffNine/conductor/internal/admin"
 	"github.com/EffNine/conductor/internal/agent"
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/automode"
@@ -133,6 +134,15 @@ func main() {
 		logger.Info("control-plane token store not attached; using single-key auth only", zap.Error(tsErr))
 	}
 	authService := auth.NewServiceWithStore(cfg.APIKey, tokenStore)
+
+	// Multi-user: users and API keys live in the gateway database. The static
+	// key keeps working (mapped to the default admin), so this is additive.
+	sqlDB, sqlErr := db.DB.DB()
+	if sqlErr != nil {
+		log.Fatalf("Failed to get database handle: %v", sqlErr)
+	}
+	keyStore := auth.NewKeyStore(sqlDB)
+	authService.SetKeyStore(keyStore)
 
 	// Initialize provider registry
 	registry := provider.NewRegistry()
@@ -451,6 +461,7 @@ func main() {
 	h.SetCacheEngine(cacheEngine)
 	h.SetStreamIdleTimeout(cfg.Stream.IdleTimeout)
 	h.Register(app)
+	admin.New(keyStore, logger).Register(app)
 
 	// Register task API handlers
 	taskStore := task.NewSQLiteStore(db)

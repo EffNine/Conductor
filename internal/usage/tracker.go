@@ -11,6 +11,7 @@ import (
 
 // Record represents a usage record to be tracked
 type Record struct {
+	UserID           string
 	RequestID        string
 	ModelID          string
 	ProviderModelID  string
@@ -78,6 +79,7 @@ func (t *Tracker) flushLocked() {
 
 		record := &database.UsageRecord{
 			ID:               r.RequestID,
+			UserID:           r.UserID,
 			RequestID:        r.RequestID,
 			ModelID:          r.ModelID,
 			ProviderModelID:  r.ProviderModelID,

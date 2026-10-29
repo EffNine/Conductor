@@ -340,7 +340,7 @@ func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionR
 			}
 			latency := time.Since(start).Milliseconds()
 			h.logRequestComplete(correlationID, requestID, resolved, latency, fiber.StatusOK, false, nil)
-			h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, cachedResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
+			h.trackUsage(middleware.UserIDFrom(c), requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, cachedResp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 			return c.JSON(&cachedResp)
 		}
 		h.logger.Info("cache_miss",
@@ -390,7 +390,7 @@ miss:
 	if res.WinnerIndex >= 0 {
 		winner := routes[res.WinnerIndex]
 		resp := win.resp
-		h.trackUsage(requestID, sink.usageModelID, winner.ProviderModelID, winner.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
+		h.trackUsage(middleware.UserIDFrom(c), requestID, sink.usageModelID, winner.ProviderModelID, winner.ProviderName, resp.Usage, time.Since(start), fiber.StatusOK, false, nil)
 		h.logRequestComplete(correlationID, requestID, winner, sink.lastDurationMs, fiber.StatusOK, false, nil)
 		if res.WinnerIndex == 0 && h.cacheEngine != nil && h.cacheEngine.IsEnabled() {
 			if cacheErr := h.cacheEngine.CacheResponse(cacheKey, resp); cacheErr != nil {
@@ -425,7 +425,7 @@ miss:
 	}
 
 	// All providers failed
-	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, res.LastError)
+	h.trackUsage(middleware.UserIDFrom(c), requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, res.LastError)
 	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, false, res.LastError)
 	return h.providerErrorResponse(c, res.LastError)
 }

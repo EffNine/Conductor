@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
+	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/gofiber/fiber/v2"
@@ -126,7 +127,7 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 			usageData.CompletionTokens = win.resp.Usage.CompletionTokens
 			usageData.TotalTokens = win.resp.Usage.TotalTokens
 		}
-		h.trackUsage(requestID, resolved.ModelID, winner.ProviderModelID, winner.ProviderName, usageData, time.Since(start), fiber.StatusOK, false, nil)
+		h.trackUsage(middleware.UserIDFrom(c), requestID, resolved.ModelID, winner.ProviderModelID, winner.ProviderName, usageData, time.Since(start), fiber.StatusOK, false, nil)
 		return c.JSON(win.resp)
 	}
 
@@ -140,6 +141,6 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 		})
 	}
 
-	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, res.LastError)
+	h.trackUsage(middleware.UserIDFrom(c), requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, false, res.LastError)
 	return h.providerErrorResponse(c, res.LastError)
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/failure"
 	"github.com/EffNine/conductor/internal/metrics"
+	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
@@ -136,6 +137,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 			h.attemptEmitter(rec)
 		}
 		return h.streamResponse(c, win.ch, &streamSession{
+			userID:          middleware.UserIDFrom(c),
 			requestID:       requestID,
 			correlationID:   correlationID,
 			providerName:    winner.ProviderName,
@@ -163,7 +165,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 	// All providers failed
 	cancel()
 	h.metrics.IncrementStreamErrors()
-	h.trackUsage(requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, true, res.LastError)
+	h.trackUsage(middleware.UserIDFrom(c), requestID, resolved.ModelID, resolved.ProviderModelID, resolved.ProviderName, nil, time.Since(start), fiber.StatusBadGateway, true, res.LastError)
 	h.logRequestComplete(correlationID, requestID, resolved, time.Since(start).Milliseconds(), fiber.StatusBadGateway, true, res.LastError)
 	return h.providerErrorResponse(c, res.LastError)
 }
@@ -171,6 +173,7 @@ func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequ
 // streamSession bundles per-stream context shared by the handler and the
 // response writer so every exit path cleans up exactly once.
 type streamSession struct {
+	userID          string
 	requestID       string
 	correlationID   string
 	providerName    string
@@ -254,7 +257,7 @@ func (h *Handler) writeStream(ch <-chan apitypes.StreamChunk, w *bufio.Writer, s
 				s.attemptFinalize(outcome, clientDisconnected, streamErr)
 			}
 
-			h.trackUsage(s.requestID, s.modelID, s.providerModelID, s.providerName, usageData, time.Since(s.start), fiber.StatusOK, true, streamErr)
+			h.trackUsage(s.userID, s.requestID, s.modelID, s.providerModelID, s.providerName, usageData, time.Since(s.start), fiber.StatusOK, true, streamErr)
 			h.logRequestComplete(s.correlationID, s.requestID, &router.ResolvedRoute{
 				ProviderName:    s.providerName,
 				ProviderModelID: s.providerModelID,

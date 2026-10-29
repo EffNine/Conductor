@@ -31,6 +31,9 @@ var files embed.FS
 // BaselineVersion is the version a pre-versioning database is stamped with.
 const BaselineVersion = 1
 
+// LatestVersion is the newest migration in this build.
+const LatestVersion = 2
+
 // Run applies every pending migration to db.
 //
 // It is idempotent: a second call is a no-op, and a pre-versioning database is

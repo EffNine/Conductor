@@ -8,6 +8,7 @@ import (
 	"github.com/EffNine/conductor/internal/buildinfo"
 	"github.com/EffNine/conductor/internal/database"
 	"github.com/EffNine/conductor/internal/metrics"
+	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/gofiber/fiber/v2"
@@ -102,8 +103,12 @@ func (h *Handler) HandleUsage(c *fiber.Ctx) error {
 	}
 
 	limit := defaultLimit(c.Query("limit"), 1000)
+	query := h.db.DB.Order("created_at DESC").Limit(limit)
+	if userID, scoped := h.userScope(c); scoped {
+		query = query.Where("user_id = ?", userID)
+	}
 	var records []database.UsageRecord
-	if err := h.db.DB.Order("created_at DESC").Limit(limit).Find(&records).Error; err != nil {
+	if err := query.Find(&records).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fiber.Map{
 				"message": "Failed to query usage",
@@ -128,8 +133,12 @@ func (h *Handler) HandleCosts(c *fiber.Ctx) error {
 	}
 
 	limit := defaultLimit(c.Query("limit"), 1000)
+	query := h.db.DB.Where("estimated_cost_usd IS NOT NULL").Order("created_at DESC").Limit(limit)
+	if userID, scoped := h.userScope(c); scoped {
+		query = query.Where("user_id = ?", userID)
+	}
 	var records []database.UsageRecord
-	if err := h.db.DB.Where("estimated_cost_usd IS NOT NULL").Order("created_at DESC").Limit(limit).Find(&records).Error; err != nil {
+	if err := query.Find(&records).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fiber.Map{
 				"message": "Failed to query costs",
@@ -181,8 +190,12 @@ func (h *Handler) HandleLogs(c *fiber.Ctx) error {
 	}
 
 	limit := defaultLimit(c.Query("limit"), 100)
+	query := h.db.DB.Order("created_at DESC").Limit(limit)
+	if userID, scoped := h.userScope(c); scoped {
+		query = query.Where("user_id = ?", userID)
+	}
 	var logs []database.RequestLog
-	if err := h.db.DB.Order("created_at DESC").Limit(limit).Find(&logs).Error; err != nil {
+	if err := query.Find(&logs).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": fiber.Map{
 				"message": "Failed to query logs",
@@ -286,4 +299,14 @@ func (h *Handler) HandleCircuitBreakerStatus(c *fiber.Ctx) error {
 		"breakers":  rows,
 		"enabled":   true,
 	})
+}
+
+// userScope returns the user filter for a read query. An admin (or an
+// unauthenticated test app) sees everything; everyone else sees their rows.
+func (h *Handler) userScope(c *fiber.Ctx) (string, bool) {
+	p, ok := middleware.PrincipalFrom(c)
+	if !ok || p.IsAdmin() {
+		return "", false
+	}
+	return p.UserID, true
 }

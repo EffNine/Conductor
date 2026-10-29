@@ -74,6 +74,7 @@ func ValidateTransition(from, to Status) error {
 type Task struct {
 	// Identity
 	ID       string  `gorm:"primaryKey;type:text" json:"id"`
+	UserID   string  `gorm:"type:text;index" json:"user_id,omitempty"`
 	ParentID *string `gorm:"type:text" json:"parent_id,omitempty"`
 	RootID   string  `gorm:"type:text;index" json:"root_id"`
 

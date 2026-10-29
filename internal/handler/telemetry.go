@@ -12,12 +12,13 @@ import (
 )
 
 // trackUsage records usage data
-func (h *Handler) trackUsage(requestID, modelID, providerModelID, provider string, usageData *apitypes.Usage, duration time.Duration, statusCode int, isStream bool, err error) {
+func (h *Handler) trackUsage(userID, requestID, modelID, providerModelID, provider string, usageData *apitypes.Usage, duration time.Duration, statusCode int, isStream bool, err error) {
 	if h.usageTracker == nil {
 		return
 	}
 
 	record := &usage.Record{
+		UserID:          userID,
 		RequestID:       requestID,
 		ModelID:         modelID,
 		ProviderModelID: providerModelID,

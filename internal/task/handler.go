@@ -76,6 +76,7 @@ func (h *Handler) HandleCreate(c *fiber.Ctx) error {
 
 	task := &Task{
 		ID:       uuid.New().String(),
+		UserID:   middleware.UserIDFrom(c),
 		Status:   StatusPending,
 		Input:    req.Input,
 		Priority: 0,
@@ -131,6 +132,11 @@ func (h *Handler) HandleRetry(c *fiber.Ctx) error {
 			"error": "failed to get task",
 		})
 	}
+	if !h.authorizeTask(c, task) {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{
+			"error": "task not found",
+		})
+	}
 	if task.Status != StatusFailed {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"error": "can only retry failed tasks (current: " + string(task.Status) + ")",
@@ -180,6 +186,11 @@ func (h *Handler) HandleResume(c *fiber.Ctx) error {
 			"error": "failed to get task",
 		})
 	}
+	if !h.authorizeTask(c, task) {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{
+			"error": "task not found",
+		})
+	}
 	// Only allow resuming paused tasks. Running tasks are already in progress
 	// and must not be resumed concurrently.
 	if task.Status != StatusPaused {
@@ -218,7 +229,11 @@ func (h *Handler) HandleList(c *fiber.Ctx) error {
 		offset = 0
 	}
 
-	tasks, err := h.store.ListTasks(limit, offset)
+	userID := ""
+	if p, ok := middleware.PrincipalFrom(c); ok && !p.IsAdmin() {
+		userID = p.UserID
+	}
+	tasks, err := h.store.ListTasksForUser(userID, limit, offset)
 	if err != nil {
 		h.logger.Error("failed to list tasks", zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
@@ -247,6 +262,11 @@ func (h *Handler) HandleGet(c *fiber.Ctx) error {
 			"error": "failed to get task",
 		})
 	}
+	if !h.authorizeTask(c, task) {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{
+			"error": "task not found",
+		})
+	}
 	return c.JSON(taskResponse(task))
 }
 
@@ -263,6 +283,11 @@ func (h *Handler) HandleCancel(c *fiber.Ctx) error {
 		h.logger.Error("failed to get task", zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "failed to get task",
+		})
+	}
+	if !h.authorizeTask(c, task) {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{
+			"error": "task not found",
 		})
 	}
 	if task.Status.IsTerminal() {
@@ -349,6 +374,9 @@ func (h *Handler) HandleTree(c *fiber.Ctx) error {
 		h.logger.Error("failed to get task", zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get task"})
 	}
+	if !h.authorizeTask(c, task) {
+		return c.Status(http.StatusNotFound).JSON(fiber.Map{"error": "task not found"})
+	}
 
 	children, err := h.store.ListChildTasks(id, 100, 0)
 	if err != nil {
@@ -383,3 +411,14 @@ func (h *Handler) HandleTree(c *fiber.Ctx) error {
 
 // compile-time check: SQLiteStore satisfies Store.
 var _ Store = (*SQLiteStore)(nil)
+
+// authorizeTask reports whether the caller may act on this task. A non-admin
+// may only see and control their own tasks; a missing match is reported as
+// 404 by the caller so task ids do not leak across users.
+func (h *Handler) authorizeTask(c *fiber.Ctx, task *Task) bool {
+	p, ok := middleware.PrincipalFrom(c)
+	if !ok || p.IsAdmin() {
+		return true
+	}
+	return task.UserID == "" || task.UserID == p.UserID
+}

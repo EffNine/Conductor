@@ -62,6 +62,9 @@ type Store interface {
 	// ListTasks returns tasks paginated by limit/offset, ordered by created_at desc.
 	ListTasks(limit, offset int) ([]Task, error)
 
+	// ListTasksForUser returns tasks for one user; userID == "" means all.
+	ListTasksForUser(userID string, limit, offset int) ([]Task, error)
+
 	// ListTasksByStatus returns tasks with the given status, paginated.
 	ListTasksByStatus(status Status, limit, offset int) ([]Task, error)
 
@@ -282,6 +285,16 @@ func (s *SQLiteStore) DeleteTask(id string) error {
 		}
 		return tx.Delete(&Task{}, "id = ?", id).Error
 	})
+}
+
+func (s *SQLiteStore) ListTasksForUser(userID string, limit, offset int) ([]Task, error) {
+	query := s.db.DB.Order("created_at DESC").Limit(limit).Offset(offset)
+	if userID != "" {
+		query = query.Where("user_id = ?", userID)
+	}
+	var tasks []Task
+	err := query.Find(&tasks).Error
+	return tasks, err
 }
 
 func (s *SQLiteStore) ListTasks(limit, offset int) ([]Task, error) {

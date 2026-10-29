@@ -22,6 +22,7 @@ type Database struct {
 // UsageRecord represents a single API request usage record
 type UsageRecord struct {
 	ID               string    `gorm:"primaryKey;type:text" json:"id"`
+	UserID           string    `gorm:"type:text;index" json:"user_id"`
 	RequestID        string    `gorm:"type:text;index" json:"request_id"`
 	ModelID          string    `gorm:"type:text;index" json:"model_id"`
 	ProviderModelID  string    `gorm:"type:text" json:"provider_model_id"`

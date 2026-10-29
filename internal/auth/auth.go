@@ -35,6 +35,7 @@ var (
 type Service struct {
 	apiKey     string
 	tokenStore *TokenStore
+	keys       *KeyStore
 }
 
 // NewService creates a new auth service with single-key only.
@@ -57,6 +58,54 @@ func (s *Service) SetTokenStore(ts *TokenStore) {
 	s.tokenStore = ts
 }
 
+// SetKeyStore attaches the gateway's own users/API-keys store. Local keys are
+// checked first, then the control-plane token store, then the static key.
+func (s *Service) SetKeyStore(ks *KeyStore) {
+	s.keys = ks
+}
+
+// AuthenticatePrincipal resolves a credential to its principal.
+//
+// Order: gateway API keys (users/api_keys) -> control-plane service tokens ->
+// the static gateway key. A revoked or expired local key fails immediately and
+// does not fall through; an unknown one does, so the three sources can coexist.
+func (s *Service) AuthenticatePrincipal(providedKey string) (*Principal, error) {
+	if s.keys != nil {
+		principal, err := s.keys.Authenticate(providedKey)
+		if err == nil {
+			return principal, nil
+		}
+		if !errors.Is(err, ErrTokenNotFound) {
+			return nil, err
+		}
+	}
+
+	if s.tokenStore != nil {
+		scopes, fingerprint, err := s.tokenStore.Verify(providedKey, nil)
+		if err == nil {
+			// Control-plane tokens carry a service, not a person; attribute the
+			// fingerprint so their usage is still separable.
+			return &Principal{UserID: "svc:" + fingerprint, Scopes: scopes, Role: RoleMember}, nil
+		}
+		if !errors.Is(err, ErrTokenNotFound) && !errors.Is(err, ErrWrongService) {
+			return nil, err
+		}
+	}
+
+	if s.apiKey != "" && subtle.ConstantTimeCompare(hashKey(s.apiKey), hashKey(providedKey)) == 1 {
+		return &Principal{
+			UserID: "default",
+			Role:   RoleAdmin,
+			Scopes: []string{"conductor:admin", "conductor:read", "conductor:execute"},
+		}, nil
+	}
+
+	if s.apiKey == "" && s.tokenStore == nil && s.keys == nil {
+		return nil, ErrNotConfigured
+	}
+	return nil, ErrInvalidAPIKey
+}
+
 // Authenticate validates a provided API key.
 //
 // If a TokenStore is configured, the method first looks up the token by
@@ -70,36 +119,8 @@ func (s *Service) SetTokenStore(ts *TokenStore) {
 // constant time regardless of key length (digests are always 32 bytes).
 // The raw key or credential never appears in any returned error.
 func (s *Service) Authenticate(providedKey string) error {
-	// Try token store first (service-token path)
-	if s.tokenStore != nil {
-		if _, _, err := s.tokenStore.Verify(providedKey, nil); err == nil {
-			return nil
-		} else {
-			// revoked/expired are auth failures (401), not scope failures.
-			if errors.Is(err, ErrTokenRevoked) || errors.Is(err, ErrTokenExpired) {
-				return ErrInvalidAPIKey
-			}
-			if errors.Is(err, ErrInsufficientScope) {
-				return ErrInsufficientScope
-			}
-			// not found / wrong_service fall through to single-key check; other errors are invalid.
-			if errors.Is(err, ErrTokenNotFound) || errors.Is(err, ErrWrongService) {
-				// fall through
-			} else {
-				return ErrInvalidAPIKey
-			}
-		}
-	}
-
-	if s.apiKey == "" {
-		return ErrNotConfigured
-	}
-
-	if subtle.ConstantTimeCompare(hashKey(s.apiKey), hashKey(providedKey)) != 1 {
-		return ErrInvalidAPIKey
-	}
-
-	return nil
+	_, err := s.AuthenticatePrincipal(providedKey)
+	return err
 }
 
 // AuthenticateWithScopes validates that the provided key is valid and carries one of the required scopes.
