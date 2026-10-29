@@ -1,6 +1,7 @@
 # Multi-user Conductor — design proposal
 
-- **Status:** Proposed (2026-10-30)
+- **Status:** Accepted; slices 1–3 implemented 2026-10-30, slice 4 pending
+  (quotas, per-user rate limit, model allowlist)
 - **Scope:** authentication, attribution, authorization and quotas for more than one
   caller on a single Conductor instance.
 - **Non-goal:** multi-tenant isolation (separate databases, processes or trust
@@ -186,3 +187,20 @@ enabled user, mirroring the fail-closed posture of the rest of the gateway. Roll
    and is a monthly reset acceptable?
 
 Answers to (1)–(3) determine whether slice 1 is a few hundred lines or a subsystem.
+
+## 9. Implementation status (2026-10-30)
+
+| Slice | State |
+|---|---|
+| 1 — schema, principal, authenticator, default user | **done** (`0002_multi_user`, `auth.KeyStore`, `AuthenticatePrincipal`) |
+| 2 — attribution and filtered reads | **done for usage, logs and tasks**; `routing_traces.user_id` and `request_attempts.user_id` exist but are not populated yet (the router/executor do not carry the principal) |
+| 3 — admin API | **done** (`/api/users`, `/api/users/:id`, `/api/users/:id/keys`, `/api/api-keys`) |
+| 4 — quotas, per-user rate limit, model allowlist | **not implemented** |
+
+Operational notes:
+
+- `auth.mode` is not needed: local keys are additive. The static key maps to `default`
+  (admin); the token store maps to `svc:<fingerprint>` (member).
+- Create the first non-default user with `POST /api/users` using the static key, then issue
+  that user a key with `POST /api/users/{id}/keys`.
+- The raw key is returned once and never stored; only its SHA-256 hash is persisted.
