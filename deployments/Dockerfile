@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # go-sqlite3 (via gorm) requires CGO + a C compiler.
 RUN apk add --no-cache git ca-certificates gcc musl-dev

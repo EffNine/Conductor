@@ -72,45 +72,45 @@ func TestKeyStoreIssueAndAuthenticate(t *testing.T) {
 
 func TestKeyStoreRevokedExpiredDisabled(t *testing.T) {
 	ks := testKeyStore(t)
-	if err := ks.CreateUser(User{ID: "bob", Label: "Bob", Role: RoleMember}); err != nil {
-		t.Fatalf("create user: %v", err)
+	if createErr := ks.CreateUser(User{ID: "bob", Label: "Bob", Role: RoleMember}); createErr != nil {
+		t.Fatalf("create user: %v", createErr)
 	}
-	raw, key, err := ks.CreateKey("bob", []string{"conductor:read"}, nil)
-	if err != nil {
-		t.Fatalf("create key: %v", err)
+	raw, key, keyErr := ks.CreateKey("bob", []string{"conductor:read"}, nil)
+	if keyErr != nil {
+		t.Fatalf("create key: %v", keyErr)
 	}
-	if err := ks.RevokeKey(key.ID); err != nil {
-		t.Fatalf("revoke: %v", err)
+	if revokeErr := ks.RevokeKey(key.ID); revokeErr != nil {
+		t.Fatalf("revoke: %v", revokeErr)
 	}
-	if _, err := ks.Authenticate(raw); !errors.Is(err, ErrTokenRevoked) {
-		t.Fatalf("revoked key error = %v, want ErrTokenRevoked", err)
+	if _, authErr := ks.Authenticate(raw); !errors.Is(authErr, ErrTokenRevoked) {
+		t.Fatalf("revoked key error = %v, want ErrTokenRevoked", authErr)
 	}
 
-	if err := ks.CreateUser(User{ID: "carol", Label: "Carol", Role: RoleMember}); err != nil {
-		t.Fatalf("create user: %v", err)
+	if carolErr := ks.CreateUser(User{ID: "carol", Label: "Carol", Role: RoleMember}); carolErr != nil {
+		t.Fatalf("create user: %v", carolErr)
 	}
 	ttl := time.Millisecond
-	rawExpired, _, err := ks.CreateKey("carol", []string{"conductor:read"}, &ttl)
-	if err != nil {
-		t.Fatalf("create expiring key: %v", err)
+	rawExpired, _, expiredKeyErr := ks.CreateKey("carol", []string{"conductor:read"}, &ttl)
+	if expiredKeyErr != nil {
+		t.Fatalf("create expiring key: %v", expiredKeyErr)
 	}
 	time.Sleep(5 * time.Millisecond)
-	if _, err := ks.Authenticate(rawExpired); !errors.Is(err, ErrTokenExpired) {
-		t.Fatalf("expired key error = %v, want ErrTokenExpired", err)
+	if _, expiredAuthErr := ks.Authenticate(rawExpired); !errors.Is(expiredAuthErr, ErrTokenExpired) {
+		t.Fatalf("expired key error = %v, want ErrTokenExpired", expiredAuthErr)
 	}
 
-	if err := ks.CreateUser(User{ID: "dave", Label: "Dave", Role: RoleMember}); err != nil {
-		t.Fatalf("create user: %v", err)
+	if daveErr := ks.CreateUser(User{ID: "dave", Label: "Dave", Role: RoleMember}); daveErr != nil {
+		t.Fatalf("create user: %v", daveErr)
 	}
-	rawDisabled, _, err := ks.CreateKey("dave", []string{"conductor:read"}, nil)
-	if err != nil {
-		t.Fatalf("create key: %v", err)
+	rawDisabled, _, disabledKeyErr := ks.CreateKey("dave", []string{"conductor:read"}, nil)
+	if disabledKeyErr != nil {
+		t.Fatalf("create key: %v", disabledKeyErr)
 	}
-	if err := ks.SetUserDisabled("dave", true); err != nil {
-		t.Fatalf("disable: %v", err)
+	if disableErr := ks.SetUserDisabled("dave", true); disableErr != nil {
+		t.Fatalf("disable: %v", disableErr)
 	}
-	if _, err := ks.Authenticate(rawDisabled); !errors.Is(err, ErrTokenRevoked) {
-		t.Fatalf("disabled user key error = %v, want ErrTokenRevoked", err)
+	if _, disabledAuthErr := ks.Authenticate(rawDisabled); !errors.Is(disabledAuthErr, ErrTokenRevoked) {
+		t.Fatalf("disabled user key error = %v, want ErrTokenRevoked", disabledAuthErr)
 	}
 }
 
