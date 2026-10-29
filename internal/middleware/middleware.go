@@ -8,9 +8,9 @@ import (
 
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/config"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/cors"
-	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/cors"
+	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"go.uber.org/zap"
 )
 
@@ -45,7 +45,6 @@ func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, log
 
 	// CORS
 	if cfg.Server.CORS.Enabled {
-		allowOrigins := joinStrings(cfg.Server.CORS.Origins)
 		allowCredentials := true
 		for _, origin := range cfg.Server.CORS.Origins {
 			if origin == "*" {
@@ -55,9 +54,9 @@ func Register(app *fiber.App, cfg *config.Config, authService *auth.Service, log
 			}
 		}
 		app.Use(cors.New(cors.Config{
-			AllowOrigins:     allowOrigins,
-			AllowMethods:     joinStrings(cfg.Server.CORS.Methods),
-			AllowHeaders:     joinStrings(cfg.Server.CORS.Headers),
+			AllowOrigins:     cfg.Server.CORS.Origins,
+			AllowMethods:     cfg.Server.CORS.Methods,
+			AllowHeaders:     cfg.Server.CORS.Headers,
 			AllowCredentials: allowCredentials,
 		}))
 	}
@@ -93,7 +92,7 @@ var errMalformedCredentials = errors.New("malformed authorization header")
 // On success it stores the token's scopes (if any) in c.Locals("scopes") and
 // the token fingerprint in c.Locals("token_fp") for downstream authorization.
 func Auth(authService *auth.Service) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Operational liveness/readiness probes (e.g. Fly.io checks) must not
 		// require credentials; everything else is protected.
 		if c.Path() == "/health" {
@@ -147,7 +146,7 @@ func bearerToken(header string) (string, error) {
 
 // unauthorized writes the standard 401 authentication error envelope with a
 // Bearer challenge. Neither the message nor the code embeds the credential.
-func unauthorized(c *fiber.Ctx, message, code string) error {
+func unauthorized(c fiber.Ctx, message, code string) error {
 	c.Set(fiber.HeaderWWWAuthenticate, authSchemeBearer)
 	return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 		"error": fiber.Map{
@@ -159,7 +158,7 @@ func unauthorized(c *fiber.Ctx, message, code string) error {
 }
 
 // forbidden writes the standard 403 authorization error envelope (valid token, insufficient scope).
-func forbidden(c *fiber.Ctx, message, code string) error {
+func forbidden(c fiber.Ctx, message, code string) error {
 	return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 		"error": fiber.Map{
 			"message": message,
@@ -177,7 +176,7 @@ func forbidden(c *fiber.Ctx, message, code string) error {
 // the auth middleware (`/api/jev-shadow`, fixed 2026-10-28). Valid token without
 // scope → 403. Admin scope (conductor:admin) satisfies any requirement.
 func RequireScope(required string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// On an auth-wired app, a missing authenticated marker means this route
 		// was registered before Auth and never passed through it. Fail closed:
 		// treating it as single-key admin was the /api/jev-shadow bypass.
@@ -202,7 +201,7 @@ func RequireScope(required string) fiber.Handler {
 
 // Logging returns middleware that logs requests
 func Logging(logger *zap.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		start := time.Now()
 		err := c.Next()
 		duration := time.Since(start)
@@ -224,7 +223,7 @@ func Logging(logger *zap.Logger) fiber.Handler {
 
 // Recovery returns middleware that recovers from panics
 func Recovery(logger *zap.Logger) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		defer func() {
 			if r := recover(); r != nil {
 				logger.Error("panic recovered",
@@ -242,16 +241,4 @@ func Recovery(logger *zap.Logger) fiber.Handler {
 		}()
 		return c.Next()
 	}
-}
-
-// joinStrings joins a slice of strings with comma
-func joinStrings(strs []string) string {
-	result := ""
-	for i, s := range strs {
-		if i > 0 {
-			result += ", "
-		}
-		result += s
-	}
-	return result
 }

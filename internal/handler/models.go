@@ -7,11 +7,11 @@ import (
 	"github.com/EffNine/conductor/internal/catalog"
 	"github.com/EffNine/conductor/internal/health"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // HandleListModels handles GET /v1/models
-func (h *Handler) HandleListModels(c *fiber.Ctx) error {
+func (h *Handler) HandleListModels(c fiber.Ctx) error {
 	modelList := make([]apitypes.ModelInfo, 0, len(router.AllVirtualModels()))
 
 	// Add all virtual models as the primary catalog entries.
@@ -34,15 +34,15 @@ func (h *Handler) HandleListModels(c *fiber.Ctx) error {
 // HandleDashboardModels handles GET /api/models
 // Query: include_unreachable=true returns the full catalog with reachability fields
 // even when hide_unreachable would omit them from /v1/models.
-func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
+func (h *Handler) HandleDashboardModels(c fiber.Ctx) error {
 	includeUnreachable := c.Query("include_unreachable") == "true" || c.Query("include_unreachable") == "1"
 
 	var entries []catalog.Entry
 	var err error
 	if includeUnreachable {
-		entries, err = h.catalog.ListAll(c.Context())
+		entries, err = h.catalog.ListAll(c.RequestCtx())
 	} else {
-		entries, err = h.catalog.List(c.Context())
+		entries, err = h.catalog.List(c.RequestCtx())
 	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -125,7 +125,7 @@ func (h *Handler) HandleDashboardModels(c *fiber.Ctx) error {
 }
 
 // HandleModelStatus handles GET /api/models/status — cached probe results only.
-func (h *Handler) HandleModelStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleModelStatus(c fiber.Ctx) error {
 	if h.modelStatus == nil {
 		return c.JSON(fiber.Map{
 			"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -139,7 +139,7 @@ func (h *Handler) HandleModelStatus(c *fiber.Ctx) error {
 }
 
 // HandleResetModelStatus handles POST /api/models/reset-status — clears health cache.
-func (h *Handler) HandleResetModelStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleResetModelStatus(c fiber.Ctx) error {
 	if h.modelStatus == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "model status store not available",
@@ -151,7 +151,7 @@ func (h *Handler) HandleResetModelStatus(c *fiber.Ctx) error {
 
 // HandleForceProbe handles POST /api/models/force-probe — admin re-probe of one model.
 // Accepts model_id as query (?model_id=...) or JSON body {"model_id":"..."}.
-func (h *Handler) HandleForceProbe(c *fiber.Ctx) error {
+func (h *Handler) HandleForceProbe(c fiber.Ctx) error {
 	if h.modelProber == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -167,7 +167,7 @@ func (h *Handler) HandleForceProbe(c *fiber.Ctx) error {
 		var body struct {
 			ModelID string `json:"model_id"`
 		}
-		_ = c.BodyParser(&body)
+		_ = c.Bind().Body(&body)
 		modelID = body.ModelID
 	}
 	if modelID == "" {

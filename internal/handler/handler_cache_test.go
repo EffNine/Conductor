@@ -18,7 +18,7 @@ import (
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -121,7 +121,7 @@ func setupCachedTestApp(t *testing.T, cacheEnabled bool) (*fiber.App, *metrics.C
 	}
 
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr")
 		c.Locals("request_id", "test-req")
 		return c.Next()
@@ -235,7 +235,7 @@ func TestFailedRequestBypassesCache(t *testing.T) {
 	h.SetCacheEngine(cacheEngine)
 
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr")
 		c.Locals("request_id", "test-req")
 		return c.Next()
@@ -352,7 +352,7 @@ func TestCacheTTLExpiration(t *testing.T) {
 	h.SetCacheEngine(cacheEngine)
 
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr")
 		c.Locals("request_id", "test-req")
 		return c.Next()
@@ -425,7 +425,7 @@ func TestCacheEviction(t *testing.T) {
 	h.SetCacheEngine(cacheEngine)
 
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr")
 		c.Locals("request_id", "test-req")
 		return c.Next()

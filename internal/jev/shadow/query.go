@@ -2,7 +2,7 @@ package shadow
 
 import (
 	"github.com/EffNine/conductor/internal/apitypes"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
@@ -27,7 +27,7 @@ func NewQueryHandler(store Store, logger *zap.Logger) *QueryHandler {
 // handler so the caller can register it under a specific path.
 func (h *QueryHandler) Handle() fiber.Handler {
 	if h.store == nil {
-		return func(c *fiber.Ctx) error {
+		return func(c fiber.Ctx) error {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(apitypes.ErrorResponse{
 				Error: apitypes.ErrorDetail{
 					Message: "jev shadow advisor not enabled",
@@ -41,13 +41,13 @@ func (h *QueryHandler) Handle() fiber.Handler {
 }
 
 // HandleList returns recent shadow observations (most recent first).
-func (h *QueryHandler) HandleList(c *fiber.Ctx) error {
+func (h *QueryHandler) HandleList(c fiber.Ctx) error {
 	if h.store == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "store not configured",
 		})
 	}
-	rows, err := h.store.List(c.Context(), 100)
+	rows, err := h.store.List(c.RequestCtx(), 100)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "list failed",

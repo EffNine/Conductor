@@ -19,7 +19,7 @@ import (
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/usage"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -197,7 +197,7 @@ func setupTestApp(t *testing.T) (*fiber.App, *database.Database) {
 
 	app := fiber.New()
 	authService := auth.NewService("test-key")
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr-"+uuid.New().String()[:8])
 		c.Locals("request_id", "test-req-"+uuid.New().String()[:8])
 		key := c.Get("Authorization")
@@ -315,7 +315,7 @@ func TestHandleConfigReturnsRedactedConfig(t *testing.T) {
 
 	testApp := fiber.New()
 	authService := auth.NewService("test-key")
-	testApp.Use(func(c *fiber.Ctx) error {
+	testApp.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr-"+uuid.New().String()[:8])
 		c.Locals("request_id", "test-req-"+uuid.New().String()[:8])
 		key := c.Get("Authorization")

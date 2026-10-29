@@ -10,21 +10,21 @@ import (
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/usage"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // HandleHealth handles GET /health
-func (h *Handler) HandleHealth(c *fiber.Ctx) error {
+func (h *Handler) HandleHealth(c fiber.Ctx) error {
 	return c.JSON(apitypes.HealthResponse{Status: "ok", Version: buildinfo.Version})
 }
 
 // HandleProviderHealth handles GET /api/health
-func (h *Handler) HandleProviderHealth(c *fiber.Ctx) error {
+func (h *Handler) HandleProviderHealth(c fiber.Ctx) error {
 	providers := h.registry.All()
 	healthStatuses := make([]apitypes.ProviderHealth, 0, len(providers))
 
 	for _, p := range providers {
-		status, err := p.HealthCheck(c.Context())
+		status, err := p.HealthCheck(c.RequestCtx())
 		ph := apitypes.ProviderHealth{
 			Name:      p.Name(),
 			CheckedAt: time.Now().UTC().Format(time.RFC3339),
@@ -47,7 +47,7 @@ func (h *Handler) HandleProviderHealth(c *fiber.Ctx) error {
 }
 
 // HandleListProviders handles GET /api/providers
-func (h *Handler) HandleListProviders(c *fiber.Ctx) error {
+func (h *Handler) HandleListProviders(c fiber.Ctx) error {
 	type providerDetail struct {
 		Name             string   `json:"name"`
 		DisplayName      string   `json:"display_name"`
@@ -91,7 +91,7 @@ type UsageSummary struct {
 }
 
 // HandleUsage handles GET /api/usage
-func (h *Handler) HandleUsage(c *fiber.Ctx) error {
+func (h *Handler) HandleUsage(c fiber.Ctx) error {
 	if h.db == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -117,7 +117,7 @@ func (h *Handler) HandleUsage(c *fiber.Ctx) error {
 }
 
 // HandleCosts handles GET /api/usage/costs
-func (h *Handler) HandleCosts(c *fiber.Ctx) error {
+func (h *Handler) HandleCosts(c fiber.Ctx) error {
 	if h.db == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -170,7 +170,7 @@ func costMap(m map[string]usage.Bucket) map[string]fiber.Map {
 }
 
 // HandleLogs handles GET /api/logs
-func (h *Handler) HandleLogs(c *fiber.Ctx) error {
+func (h *Handler) HandleLogs(c fiber.Ctx) error {
 	if h.db == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -205,7 +205,7 @@ func defaultLimit(q string, fallback int) int {
 }
 
 // HandleConfig handles GET /api/config
-func (h *Handler) HandleConfig(c *fiber.Ctx) error {
+func (h *Handler) HandleConfig(c fiber.Ctx) error {
 	if h.cfg == nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "configuration not available",
@@ -215,7 +215,7 @@ func (h *Handler) HandleConfig(c *fiber.Ctx) error {
 }
 
 // HandleReloadConfig handles PUT /api/config/reload
-func (h *Handler) HandleReloadConfig(c *fiber.Ctx) error {
+func (h *Handler) HandleReloadConfig(c fiber.Ctx) error {
 	if h.reloadFn == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": fiber.Map{
@@ -241,7 +241,7 @@ func (h *Handler) HandleReloadConfig(c *fiber.Ctx) error {
 }
 
 // HandleMetrics handles GET /api/metrics — Prometheus-compatible metrics export.
-func (h *Handler) HandleMetrics(c *fiber.Ctx) error {
+func (h *Handler) HandleMetrics(c fiber.Ctx) error {
 	snap := h.metrics.Snapshot()
 	output := metrics.ExportPrometheus(snap)
 	c.Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -249,7 +249,7 @@ func (h *Handler) HandleMetrics(c *fiber.Ctx) error {
 }
 
 // HandleCircuitBreakerStatus handles GET /api/circuit-breaker — per-provider breaker status.
-func (h *Handler) HandleCircuitBreakerStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleCircuitBreakerStatus(c fiber.Ctx) error {
 	pool := h.router.BreakerPool()
 	if pool == nil {
 		return c.JSON(fiber.Map{

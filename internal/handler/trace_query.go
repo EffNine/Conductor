@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
@@ -67,7 +67,7 @@ func (h *Handler) SetTraceStore(store router.TraceStore) {
 //	to           RFC3339, inclusive upper bound on decision timestamp
 //	limit        1..200, default 50
 //	offset       >= 0, default 0
-func (h *Handler) HandleRoutingTraces(c *fiber.Ctx) error {
+func (h *Handler) HandleRoutingTraces(c fiber.Ctx) error {
 	if h.traceStore == nil {
 		return traceStoreUnavailable(c)
 	}
@@ -114,7 +114,7 @@ func (h *Handler) HandleRoutingTraces(c *fiber.Ctx) error {
 	filter.From = from
 	filter.To = to
 
-	summaries, err := h.traceStore.List(c.Context(), filter)
+	summaries, err := h.traceStore.List(c.RequestCtx(), filter)
 	if err != nil {
 		h.logger.Warn("routing traces query failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -159,13 +159,13 @@ func (h *Handler) HandleRoutingTraces(c *fiber.Ctx) error {
 
 // HandleRoutingTraceByID handles GET /api/routing/traces/:id — the complete,
 // canonical persisted DecisionTrace for one decision. Unknown IDs return 404.
-func (h *Handler) HandleRoutingTraceByID(c *fiber.Ctx) error {
+func (h *Handler) HandleRoutingTraceByID(c fiber.Ctx) error {
 	if h.traceStore == nil {
 		return traceStoreUnavailable(c)
 	}
 
 	id := router.DecisionID(c.Params("id"))
-	trace, err := h.traceStore.Get(c.Context(), id)
+	trace, err := h.traceStore.Get(c.RequestCtx(), id)
 	if err != nil {
 		if errors.Is(err, router.ErrTraceNotFound) {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
@@ -195,7 +195,7 @@ func (h *Handler) HandleRoutingTraceByID(c *fiber.Ctx) error {
 // traceStoreUnavailable is the shared 503 response when trace persistence is
 // not enabled (e.g. routing disabled, no store wired). Matches the existing
 // dashboard convention for unavailable subsystems (HandleUsage, HandleRuntime).
-func traceStoreUnavailable(c *fiber.Ctx) error {
+func traceStoreUnavailable(c fiber.Ctx) error {
 	return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 		"error": fiber.Map{
 			"message": "Routing trace store not available",
@@ -207,7 +207,7 @@ func traceStoreUnavailable(c *fiber.Ctx) error {
 
 // traceQueryBadRequest returns a 400 in the established dashboard error
 // envelope with the offending parameter named.
-func traceQueryBadRequest(c *fiber.Ctx, param, msg string) error {
+func traceQueryBadRequest(c fiber.Ctx, param, msg string) error {
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"error": fiber.Map{
 			"message": msg,

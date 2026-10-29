@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/EffNine/conductor/internal/middleware"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -61,9 +61,9 @@ func (h *Handler) Register(app *fiber.App) {
 }
 
 // HandleCreate creates and executes a new task.
-func (h *Handler) HandleCreate(c *fiber.Ctx) error {
+func (h *Handler) HandleCreate(c fiber.Ctx) error {
 	var req CreateTaskRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(http.StatusBadRequest).JSON(fiber.Map{
 			"error": "invalid request body",
 		})
@@ -100,7 +100,7 @@ func (h *Handler) HandleCreate(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := h.executor.Execute(c.Context(), task.ID); err != nil {
+	if err := h.executor.Execute(c.RequestCtx(), task.ID); err != nil {
 		h.logger.Error("task execution failed", zap.String("task_id", task.ID), zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "task execution failed: " + err.Error(),
@@ -117,7 +117,7 @@ func (h *Handler) HandleCreate(c *fiber.Ctx) error {
 }
 
 // HandleRetry re-runs a failed task from its latest checkpoint (if any).
-func (h *Handler) HandleRetry(c *fiber.Ctx) error {
+func (h *Handler) HandleRetry(c fiber.Ctx) error {
 	id := c.Params("id")
 	task, err := h.store.GetTask(id)
 	if err == ErrTaskNotFound {
@@ -152,7 +152,7 @@ func (h *Handler) HandleRetry(c *fiber.Ctx) error {
 			"error": "failed to retry task",
 		})
 	}
-	if err := h.executor.Execute(c.Context(), id); err != nil {
+	if err := h.executor.Execute(c.RequestCtx(), id); err != nil {
 		h.logger.Error("retry execution failed", zap.String("task_id", id), zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "retry failed: " + err.Error(),
@@ -166,7 +166,7 @@ func (h *Handler) HandleRetry(c *fiber.Ctx) error {
 }
 
 // HandleResume resumes a paused or interrupted task from its checkpoint.
-func (h *Handler) HandleResume(c *fiber.Ctx) error {
+func (h *Handler) HandleResume(c fiber.Ctx) error {
 	id := c.Params("id")
 	task, err := h.store.GetTask(id)
 	if err == ErrTaskNotFound {
@@ -192,7 +192,7 @@ func (h *Handler) HandleResume(c *fiber.Ctx) error {
 			"error": "no checkpoint found for resume",
 		})
 	}
-	if err := h.executor.Execute(c.Context(), id); err != nil {
+	if err := h.executor.Execute(c.RequestCtx(), id); err != nil {
 		h.logger.Error("resume execution failed", zap.String("task_id", id), zap.Error(err))
 		return c.Status(http.StatusInternalServerError).JSON(fiber.Map{
 			"error": "resume failed: " + err.Error(),
@@ -206,7 +206,7 @@ func (h *Handler) HandleResume(c *fiber.Ctx) error {
 }
 
 // HandleList returns a paginated list of tasks.
-func (h *Handler) HandleList(c *fiber.Ctx) error {
+func (h *Handler) HandleList(c fiber.Ctx) error {
 	limitStr := c.Query("limit", "20")
 	offsetStr := c.Query("offset", "0")
 	limit, err := strconv.Atoi(limitStr)
@@ -233,7 +233,7 @@ func (h *Handler) HandleList(c *fiber.Ctx) error {
 }
 
 // HandleGet returns a single task by ID.
-func (h *Handler) HandleGet(c *fiber.Ctx) error {
+func (h *Handler) HandleGet(c fiber.Ctx) error {
 	id := c.Params("id")
 	task, err := h.store.GetTask(id)
 	if err == ErrTaskNotFound {
@@ -251,7 +251,7 @@ func (h *Handler) HandleGet(c *fiber.Ctx) error {
 }
 
 // HandleCancel cancels a non-terminal task.
-func (h *Handler) HandleCancel(c *fiber.Ctx) error {
+func (h *Handler) HandleCancel(c fiber.Ctx) error {
 	id := c.Params("id")
 	task, err := h.store.GetTask(id)
 	if err == ErrTaskNotFound {
@@ -339,7 +339,7 @@ func taskResponse(t *Task) fiber.Map {
 }
 
 // HandleTree returns the parent/child task hierarchy for a given task ID.
-func (h *Handler) HandleTree(c *fiber.Ctx) error {
+func (h *Handler) HandleTree(c fiber.Ctx) error {
 	id := c.Params("id")
 	task, err := h.store.GetTask(id)
 	if err == ErrTaskNotFound {

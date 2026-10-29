@@ -3,7 +3,7 @@ package middleware
 import (
 	"strings"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 )
 
@@ -13,7 +13,7 @@ const (
 )
 
 // GetCorrelationIDFromLocals returns the correlation ID stored in Fiber Locals.
-func GetCorrelationIDFromLocals(c *fiber.Ctx) string {
+func GetCorrelationIDFromLocals(c fiber.Ctx) string {
 	if v, ok := c.Locals(correlationIDKey).(string); ok {
 		return v
 	}
@@ -21,7 +21,7 @@ func GetCorrelationIDFromLocals(c *fiber.Ctx) string {
 }
 
 // GetRequestIDFromLocals returns the request ID stored in Fiber Locals.
-func GetRequestIDFromLocals(c *fiber.Ctx) string {
+func GetRequestIDFromLocals(c fiber.Ctx) string {
 	if v, ok := c.Locals(requestIDKey).(string); ok {
 		return v
 	}
@@ -32,7 +32,7 @@ func GetRequestIDFromLocals(c *fiber.Ctx) string {
 // per request. It reads the X-Correlation-ID header; if absent, it generates one.
 // The ID is stored in Fiber Locals and echoed back in the response header.
 func CorrelationID() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		id := c.Get("X-Correlation-ID", "")
 		if id == "" {
 			id = uuid.New().String()
@@ -54,7 +54,7 @@ func CorrelationID() fiber.Handler {
 // in Fiber Locals. Uses the requestid middleware's output if available (which
 // sets "requestid"), otherwise generates a UUID.
 func RequestContextID() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		existing := c.Locals("requestid")
 		id := ""
 		if s, ok := existing.(string); ok && s != "" {

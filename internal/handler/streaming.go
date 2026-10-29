@@ -18,13 +18,13 @@ import (
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // handleStreaming handles a streaming chat completion request
-func (h *Handler) handleStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
+func (h *Handler) handleStreaming(c fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
 	start := time.Now()
 	requestID := uuid.New().String()
 	policy := h.retryPolicy()
@@ -194,7 +194,7 @@ type streamSession struct {
 // streamResponse streams chunks to the client with full lifecycle
 // accounting: metrics, structured logs and deterministic cleanup of the
 // provider goroutine, the provider channel and the idle timer.
-func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, s *streamSession) error {
+func (h *Handler) streamResponse(c fiber.Ctx, ch <-chan apitypes.StreamChunk, s *streamSession) error {
 	h.metrics.RecordStreamStarted(s.providerName)
 	h.metrics.IncrementActiveStreams()
 	h.logger.Info("stream_start", s.logFields(0, 0, 0)...)
@@ -204,12 +204,11 @@ func (h *Handler) streamResponse(c *fiber.Ctx, ch <-chan apitypes.StreamChunk, s
 	// it inside the body-stream goroutine would race with that reset. The
 	// captured channel fires only when the server shuts down; client
 	// disconnects are detected via write errors on the response pipe.
-	requestDone := c.Context().Done()
+	requestDone := c.RequestCtx().Done()
 
-	c.Context().SetBodyStreamWriter(func(w *bufio.Writer) {
+	return c.SendStreamWriter(func(w *bufio.Writer) {
 		h.writeStream(ch, w, s, requestDone)
 	})
-	return nil
 }
 
 // writeStream writes SSE frames to the client until the stream terminates,

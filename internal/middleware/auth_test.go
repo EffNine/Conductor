@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/EffNine/conductor/internal/auth"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,10 +19,10 @@ const authTestKey = "test-secret-key"
 func authTestApp(service *auth.Service) *fiber.App {
 	app := fiber.New()
 	app.Use(Auth(service))
-	app.Get("/v1/models", func(c *fiber.Ctx) error {
+	app.Get("/v1/models", func(c fiber.Ctx) error {
 		return c.SendString("models")
 	})
-	app.Get("/health", func(c *fiber.Ctx) error {
+	app.Get("/health", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 	return app

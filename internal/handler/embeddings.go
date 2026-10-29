@@ -7,7 +7,7 @@ import (
 	"github.com/EffNine/conductor/internal/apitypes"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -22,9 +22,9 @@ type embeddingsWinner struct {
 // guarantees as chat: primary route, then static fallbacks, then dynamic
 // category-matched alternates. The request only fails when no candidate can
 // serve it.
-func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
+func (h *Handler) HandleEmbeddings(c fiber.Ctx) error {
 	var req apitypes.EmbeddingRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{
 				Message: "Invalid request body",
@@ -66,7 +66,7 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 	for i := range fallbacks {
 		routes = append(routes, &fallbacks[i])
 	}
-	if dyn := h.dynamicFallbackRoutes(c.Context(), &apitypes.ChatCompletionRequest{Model: req.Model}, resolved, fallbacks); len(dyn) > 0 {
+	if dyn := h.dynamicFallbackRoutes(c.RequestCtx(), &apitypes.ChatCompletionRequest{Model: req.Model}, resolved, fallbacks); len(dyn) > 0 {
 		for i := range dyn {
 			routes = append(routes, &dyn[i])
 		}
@@ -97,7 +97,7 @@ func (h *Handler) HandleEmbeddings(c *fiber.Ctx) error {
 		})
 	}
 
-	res := resilience.ExecutePlan(c.Context(), resilience.Plan{
+	res := resilience.ExecutePlan(c.RequestCtx(), resilience.Plan{
 		Candidates: candidates,
 		Retry:      h.retryPolicy(),
 	})

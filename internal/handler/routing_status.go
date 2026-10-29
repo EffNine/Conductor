@@ -8,11 +8,11 @@ import (
 	"github.com/EffNine/conductor/internal/cache"
 	"github.com/EffNine/conductor/internal/metrics"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // HandleRouting handles GET /api/routing — intelligent routing scores and decisions.
-func (h *Handler) HandleRouting(c *fiber.Ctx) error {
+func (h *Handler) HandleRouting(c fiber.Ctx) error {
 	if h.routingEngine == nil {
 		return c.JSON(fiber.Map{
 			"enabled": false,
@@ -105,7 +105,7 @@ func truncateHash(s string, n int) string {
 }
 
 // HandleCacheStatus handles GET /api/cache — cache dashboard information.
-func (h *Handler) HandleCacheStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleCacheStatus(c fiber.Ctx) error {
 	resp := fiber.Map{
 		"enabled": false,
 		"stats": fiber.Map{
@@ -162,7 +162,7 @@ func (h *Handler) HandleCacheStatus(c *fiber.Ctx) error {
 }
 
 // HandleStreamStatus handles GET /api/streams — the streaming dashboard.
-func (h *Handler) HandleStreamStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleStreamStatus(c fiber.Ctx) error {
 	snap := h.metrics.Snapshot()
 	avg := func(hist metrics.MetricHistogram) float64 {
 		if hist.Count == 0 {
@@ -218,13 +218,13 @@ func (h *Handler) HandleStreamStatus(c *fiber.Ctx) error {
 }
 
 // HandleRuntime handles GET /api/runtime — returns provider runtime state.
-func (h *Handler) HandleRuntime(c *fiber.Ctx) error {
+func (h *Handler) HandleRuntime(c fiber.Ctx) error {
 	if h.runtimeManager == nil {
 		return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 			"error": "runtime subsystem not initialized",
 		})
 	}
-	snap := h.runtimeManager.Snapshot(c.Context())
+	snap := h.runtimeManager.Snapshot(c.RequestCtx())
 	providers := make([]fiber.Map, 0, len(snap.Providers))
 	for name, ps := range snap.Providers {
 		providers = append(providers, fiber.Map{

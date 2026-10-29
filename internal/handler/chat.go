@@ -9,13 +9,13 @@ import (
 	"github.com/EffNine/conductor/internal/middleware"
 	"github.com/EffNine/conductor/internal/resilience"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
 // HandleAutoStatus reports the runtime auto model selection status.
-func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
+func (h *Handler) HandleAutoStatus(c fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"enabled": h.router.HasAutoSelector(),
 		"note":    "auto mode selects from all registered providers using health, cost, and latency scoring",
@@ -23,14 +23,14 @@ func (h *Handler) HandleAutoStatus(c *fiber.Ctx) error {
 }
 
 // HandleChatCompletion handles POST /v1/chat/completions
-func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
+func (h *Handler) HandleChatCompletion(c fiber.Ctx) error {
 	// The correlation id (middleware-generated) runs through the whole
 	// request: pipeline decisions, execution-attempt records, and logs. It
 	// is observability metadata — routing behavior is unaffected.
 	correlationID := middleware.GetCorrelationIDFromLocals(c)
 
 	var req apitypes.ChatCompletionRequest
-	if err := c.BodyParser(&req); err != nil {
+	if err := c.Bind().Body(&req); err != nil {
 		h.metrics.IncrementErrors()
 		return c.Status(fiber.StatusBadRequest).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{
@@ -102,7 +102,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 				},
 			})
 		}
-		selection, selErr := h.virtualResolver.Resolve(c.Context(), vm, &req)
+		selection, selErr := h.virtualResolver.Resolve(c.RequestCtx(), vm, &req)
 		if selErr != nil {
 			h.metrics.IncrementErrors()
 			h.logger.Warn("virtual model selection failed",
@@ -151,7 +151,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		fallbacks = nil
 	} else {
 		// Legacy Engine normalization: model/alias/route resolution and candidate construction.
-		resolved, fallbacks, err = h.router.ResolveWithFallbackAndContext(c.Context(), req.Model, req.Messages)
+		resolved, fallbacks, err = h.router.ResolveWithFallbackAndContext(c.RequestCtx(), req.Model, req.Messages)
 		if err != nil {
 			// Legacy engine could not resolve. If a decision pipeline or routing engine
 			// is available, fall back to auto-selection across all registered providers.
@@ -162,13 +162,13 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 					env := router.Environment{
 						CircuitBreakerEnabled: h.router.BreakerPool() != nil,
 					}
-					result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.Context(), &req, env, cfgSnap, nil, correlationID)
+					result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.RequestCtx(), &req, env, cfgSnap, nil, correlationID)
 					if pplineErr == nil && result != nil && result.Candidate != nil {
 						selection = result
 					}
 				}
 				if selection == nil && h.routingEngine != nil {
-					sel, selErr := h.routingEngine.SelectBestProvider(c.Context(), req.Model, &req)
+					sel, selErr := h.routingEngine.SelectBestProvider(c.RequestCtx(), req.Model, &req)
 					if selErr == nil && sel != nil {
 						selection = sel
 					}
@@ -209,7 +209,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 	// Append dynamic, category-matched alternates after the primary route
 	// and static fallback chain (no-op when disabled or unavailable).
 	staticRoutes := 1 + len(fallbacks)
-	if dyn := h.dynamicFallbackRoutes(c.Context(), &req, resolved, fallbacks); len(dyn) > 0 {
+	if dyn := h.dynamicFallbackRoutes(c.RequestCtx(), &req, resolved, fallbacks); len(dyn) > 0 {
 		fallbacks = append(fallbacks, dyn...)
 	}
 
@@ -224,7 +224,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		env := router.Environment{
 			CircuitBreakerEnabled: h.router.BreakerPool() != nil,
 		}
-		result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.Context(), &req, env, cfgSnap, candidates, correlationID)
+		result, pplineErr := h.decisionPipeline.ExecuteWithCorrelation(c.RequestCtx(), &req, env, cfgSnap, candidates, correlationID)
 		if pplineErr != nil {
 			h.logger.Warn("decision pipeline failed, using legacy resolution",
 				zap.String("correlation_id", middleware.GetCorrelationIDFromLocals(c)),
@@ -254,7 +254,7 @@ func (h *Handler) HandleChatCompletion(c *fiber.Ctx) error {
 		}
 	} else if h.routingEngine != nil {
 		// Legacy path: RouterEngine selects from pre-resolved candidates.
-		selection, selErr := h.routingEngine.SelectFromRoutes(c.Context(), candidates, &req)
+		selection, selErr := h.routingEngine.SelectFromRoutes(c.RequestCtx(), candidates, &req)
 		if selErr == nil && selection != nil && selection.Candidate != nil {
 			for i := range candidates {
 				if candidates[i].ProviderName == selection.Candidate.ProviderName &&
@@ -304,7 +304,7 @@ func (h *Handler) buildConfigSnapshot() router.ConfigSnapshot {
 }
 
 // handleNonStreaming handles a non-streaming chat completion request
-func (h *Handler) handleNonStreaming(c *fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
+func (h *Handler) handleNonStreaming(c fiber.Ctx, req *apitypes.ChatCompletionRequest, resolved *router.ResolvedRoute, fallbacks []router.ResolvedRoute, staticRoutes int, correlationID string) error {
 	start := time.Now()
 	requestID := uuid.New().String()
 
@@ -383,7 +383,7 @@ miss:
 		Budget:          h.executionBudget(),
 		EstimatedTokens: int64(router.EstimateRequestTokens(req)),
 	}
-	res := resilience.ExecutePlan(c.Context(), plan)
+	res := resilience.ExecutePlan(c.RequestCtx(), plan)
 
 	// Winner handling: usage, completion log, cache store (primary only,
 	// as before), then the JSON response.

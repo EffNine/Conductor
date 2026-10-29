@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/auth"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -65,10 +65,10 @@ func setupScopeApp(t *testing.T) (*fiber.App, *auth.Service, func(service, name 
 	app := fiber.New()
 	app.Use(SecurityHeaders())
 	app.Use(Auth(svc))
-	app.Get("/health", func(c *fiber.Ctx) error { return c.SendString("ok") })
-	app.Get("/api/models", RequireScope("conductor:read"), func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
-	app.Post("/v1/chat/completions", RequireScope("conductor:execute"), func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
-	app.Post("/api/models/force-probe", RequireScope("conductor:admin"), func(c *fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
+	app.Get("/health", func(c fiber.Ctx) error { return c.SendString("ok") })
+	app.Get("/api/models", RequireScope("conductor:read"), func(c fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
+	app.Post("/v1/chat/completions", RequireScope("conductor:execute"), func(c fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
+	app.Post("/api/models/force-probe", RequireScope("conductor:admin"), func(c fiber.Ctx) error { return c.JSON(fiber.Map{"ok": true}) })
 
 	return app, svc, create
 }
@@ -179,7 +179,7 @@ func TestScope_RouteRegisteredBeforeAuthFailsClosed(t *testing.T) {
 	// registered before Auth.
 	authRequired.Store(true)
 	t.Cleanup(func() { authRequired.Store(false) })
-	app.Get("/api/jev-shadow", RequireScope("conductor:read"), func(c *fiber.Ctx) error {
+	app.Get("/api/jev-shadow", RequireScope("conductor:read"), func(c fiber.Ctx) error {
 		return c.SendString("leaked")
 	})
 	app.Use(Auth(auth.NewService("single-key")))
@@ -201,7 +201,7 @@ func TestScope_RouteRegisteredBeforeAuthFailsClosed(t *testing.T) {
 func TestScope_SingleKeyIsAdminScoped(t *testing.T) {
 	app := fiber.New()
 	app.Use(Auth(auth.NewService("single-key")))
-	app.Get("/api/models/force-probe", RequireScope("conductor:admin"), func(c *fiber.Ctx) error {
+	app.Get("/api/models/force-probe", RequireScope("conductor:admin"), func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 

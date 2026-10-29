@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/apitypes"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // rateLimiter is a fixed-window per-minute counter guarding the single
@@ -44,7 +44,7 @@ func RateLimit(enabled bool, requestsPerMinute int) fiber.Handler {
 		window: time.Minute,
 		limit:  requestsPerMinute,
 	}
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		if c.Path() == "/health" {
 			return c.Next()
 		}

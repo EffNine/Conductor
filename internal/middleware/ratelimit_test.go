@@ -4,14 +4,14 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 func TestRateLimitBlocksAfterCeiling(t *testing.T) {
 	app := fiber.New()
 	app.Use(RateLimit(true, 3))
-	app.Get("/v1/models", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Get("/health", func(c *fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/v1/models", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
+	app.Get("/health", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
 
 	for i := 0; i < 3; i++ {
 		resp, _ := app.Test(httptest.NewRequest("GET", "/v1/models", nil))

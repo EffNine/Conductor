@@ -54,7 +54,7 @@ import (
 	toolshell "github.com/EffNine/conductor/internal/tool/shell"
 	"github.com/EffNine/conductor/internal/usage"
 	"github.com/EffNine/conductor/internal/worker"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 

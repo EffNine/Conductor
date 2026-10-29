@@ -19,7 +19,7 @@ import (
 	"github.com/EffNine/conductor/internal/handler"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/valyala/fasthttp/fasthttputil"
 	"go.uber.org/zap"
 )
@@ -91,7 +91,7 @@ func newStreamTestApp(t testing.TB, p provider.Provider, opts ...func(*handler.H
 func postStream(app *fiber.App, timeout int) (string, int) {
 	req, _ := http.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(streamTestBody))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := app.Test(req, timeout)
+	resp, err := app.Test(req, fiber.TestConfig{Timeout: time.Duration(timeout) * time.Millisecond})
 	if err != nil {
 		return "", 0
 	}

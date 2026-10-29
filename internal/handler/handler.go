@@ -16,7 +16,7 @@ import (
 	"github.com/EffNine/conductor/internal/runtime"
 	runtimeadapter "github.com/EffNine/conductor/internal/runtime/adapter"
 	"github.com/EffNine/conductor/internal/usage"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 

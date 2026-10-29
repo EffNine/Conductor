@@ -6,7 +6,7 @@ import (
 
 	"github.com/EffNine/conductor/internal/auth"
 	"github.com/EffNine/conductor/internal/middleware"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/EffNine/conductor/internal/database"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
@@ -39,7 +39,7 @@ func (h *Handler) SetAttemptStore(store *database.AttemptStore) {
 //	window   duration (e.g. 1h, 24h); default unbounded, capped at 30d
 //	limit    1..200, default 50
 //	offset   >= 0, default 0
-func (h *Handler) HandleFailures(c *fiber.Ctx) error {
+func (h *Handler) HandleFailures(c fiber.Ctx) error {
 	if h.attemptStore == nil {
 		return attemptStoreUnavailable(c)
 	}
@@ -74,7 +74,7 @@ func (h *Handler) HandleFailures(c *fiber.Ctx) error {
 		filter.Offset = n
 	}
 
-	rows, total, err := h.attemptStore.ListFailures(c.Context(), filter)
+	rows, total, err := h.attemptStore.ListFailures(c.RequestCtx(), filter)
 	if err != nil {
 		h.logger.Warn("failures api: list failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -96,7 +96,7 @@ func (h *Handler) HandleFailures(c *fiber.Ctx) error {
 //
 //	window duration (e.g. 1h, 24h); default 24h, capped at 30d
 //	bucket duration; defaults to window/12 (min 1m)
-func (h *Handler) HandleFailuresSummary(c *fiber.Ctx) error {
+func (h *Handler) HandleFailuresSummary(c fiber.Ctx) error {
 	if h.attemptStore == nil {
 		return attemptStoreUnavailable(c)
 	}
@@ -122,7 +122,7 @@ func (h *Handler) HandleFailuresSummary(c *fiber.Ctx) error {
 	}
 
 	since := time.Now().UTC().Add(-window)
-	summary, err := h.attemptStore.FailureSummary(c.Context(), since, bucket)
+	summary, err := h.attemptStore.FailureSummary(c.RequestCtx(), since, bucket)
 	if err != nil {
 		h.logger.Warn("failures api: summary failed", zap.Error(err))
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -139,7 +139,7 @@ func (h *Handler) HandleFailuresSummary(c *fiber.Ctx) error {
 	})
 }
 
-func failuresBadRequest(c *fiber.Ctx, param, msg string) error {
+func failuresBadRequest(c fiber.Ctx, param, msg string) error {
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 		"error": fiber.Map{
 			"message": msg,
@@ -149,7 +149,7 @@ func failuresBadRequest(c *fiber.Ctx, param, msg string) error {
 	})
 }
 
-func attemptStoreUnavailable(c *fiber.Ctx) error {
+func attemptStoreUnavailable(c fiber.Ctx) error {
 	return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{
 		"error": fiber.Map{
 			"message": "attempt persistence is disabled",

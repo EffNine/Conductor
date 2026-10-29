@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +13,7 @@ import (
 func TestCorrelationIDGeneratesWhenMissing(t *testing.T) {
 	app := fiber.New()
 	app.Use(CorrelationID())
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		id := GetCorrelationIDFromLocals(c)
 		return c.SendString(id)
 	})
@@ -32,7 +32,7 @@ func TestCorrelationIDGeneratesWhenMissing(t *testing.T) {
 func TestCorrelationIDForwardsHeader(t *testing.T) {
 	app := fiber.New()
 	app.Use(CorrelationID())
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		id := GetCorrelationIDFromLocals(c)
 		return c.SendString(id)
 	})
@@ -51,7 +51,7 @@ func TestCorrelationIDForwardsHeader(t *testing.T) {
 func TestCorrelationIDResponseHeader(t *testing.T) {
 	app := fiber.New()
 	app.Use(CorrelationID())
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		return c.SendString("ok")
 	})
 
@@ -67,7 +67,7 @@ func TestCorrelationIDResponseHeader(t *testing.T) {
 func TestRequestContextIDGenerates(t *testing.T) {
 	app := fiber.New()
 	app.Use(RequestContextID())
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		id := GetRequestIDFromLocals(c)
 		return c.SendString(id)
 	})
@@ -84,12 +84,12 @@ func TestRequestContextIDGenerates(t *testing.T) {
 
 func TestRequestContextIDUsesExistingRequestID(t *testing.T) {
 	app := fiber.New()
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("requestid", "existing-request-123")
 		return c.Next()
 	})
 	app.Use(RequestContextID())
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		id := GetRequestIDFromLocals(c)
 		return c.SendString(id)
 	})
@@ -106,7 +106,7 @@ func TestRequestContextIDUsesExistingRequestID(t *testing.T) {
 
 func TestGetCorrelationIDFromLocalsReturnsEmptyWhenMissing(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		id := GetCorrelationIDFromLocals(c)
 		return c.SendString(id)
 	})

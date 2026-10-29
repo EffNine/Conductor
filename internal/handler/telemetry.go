@@ -7,7 +7,7 @@ import (
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
 	"github.com/EffNine/conductor/internal/usage"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
 
@@ -95,7 +95,7 @@ func (h *Handler) logRequestComplete(correlationID, requestID string, resolved *
 }
 
 // providerErrorResponse returns a normalized error response
-func (h *Handler) providerErrorResponse(c *fiber.Ctx, err error) error {
+func (h *Handler) providerErrorResponse(c fiber.Ctx, err error) error {
 	if providerErr, ok := err.(*provider.ProviderError); ok {
 		return c.Status(providerErr.StatusCode).JSON(apitypes.ErrorResponse{
 			Error: apitypes.ErrorDetail{

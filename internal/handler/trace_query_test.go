@@ -18,7 +18,7 @@ import (
 	"github.com/EffNine/conductor/internal/handler"
 	"github.com/EffNine/conductor/internal/provider"
 	"github.com/EffNine/conductor/internal/router"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -52,7 +52,7 @@ func setupTraceQueryApp(t *testing.T, store router.TraceStore) (*fiber.App, *dat
 
 	app := fiber.New()
 	authService := auth.NewService("test-key")
-	app.Use(func(c *fiber.Ctx) error {
+	app.Use(func(c fiber.Ctx) error {
 		c.Locals("correlation_id", "test-corr-"+uuid.New().String()[:8])
 		c.Locals("request_id", "test-req-"+uuid.New().String()[:8])
 		key := c.Get("Authorization")
